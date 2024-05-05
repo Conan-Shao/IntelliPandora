@@ -1,0 +1,19 @@
+# Requirements needed for development and for building releases.
+twine
+setuptools
+six
+pendulum
+tabulate
+retrying
+assertpy
+bs4
+pluggy
+pyyaml
+pycryptodome
+urllib3
+requests
+websockets
+httpretty
+pytest
+robotframework
+psutil

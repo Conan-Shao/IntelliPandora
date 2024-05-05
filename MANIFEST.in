@@ -1,0 +1,10 @@
+recursive-include intellipandora/conf *
+recursive-include intellipandora/statistics *
+global-include CHANGELOG
+global-include AUTHORS.rst
+global-exclude __pycache__
+global-exclude *.py[co]
+global-exclude .gitignore
+prune intellipandora/conf/pytest_template/.git
+
+
