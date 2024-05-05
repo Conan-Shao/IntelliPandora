@@ -1,4 +1,4 @@
-IntelliPandora Test Framework contributors
+IntelliPandora Test Framework contributors\n
 =========================================
 
 This file lists contributors to IntelliPandora Test Framework Framework
