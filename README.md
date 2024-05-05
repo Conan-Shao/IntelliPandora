@@ -18,7 +18,7 @@
 
 - 下载、安装
 ```shell script
-pip install ipandora
+pip install intellipandora
 ```
 
 ### 脚手架能力

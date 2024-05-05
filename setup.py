@@ -9,7 +9,7 @@
 import os
 from setuptools import setup, find_packages
 try:
-    from intellipandora.version import get_latest_version
+    from ipandora.version import get_latest_version
 except ImportError:
     get_latest_version = None
 
@@ -55,7 +55,7 @@ setup(
     description=DESCRIPTION,
     long_description=LONG_DESCRIPTION,
     long_description_content_type="text/markdown",
-    keywords="ipandora",
+    keywords="intellipandora",
     packages=find_packages('src'),
     package_data={"": ["LICENSE"]},
     package_dir={"": "src"},
@@ -88,7 +88,7 @@ setup(
     scripts=['src/ipandora/run/runner.py'],
     entry_points={
         'console_scripts': [
-            'ipandora = intellipandora.run:command_line',
+            'ipandora = ipandora.run:command_line',
         ]
     },
 )
