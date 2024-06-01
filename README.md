@@ -34,7 +34,7 @@ ipandora -h
 
 ## 三、开发
 * [IntelliPandora开发说明](docs/dev/IntelliPandora_Dev.md)
-* 
+
 ### **3.1 框架结构介绍**
 > 代码都在***src/intellipandora***
 * **core**: 提供自动化核心能力接口。
@@ -45,6 +45,12 @@ ipandora -h
 * **run**: 框架的命令行模块
 * **utils**: 框架基础功能，如log、error...
 * **conf**: 配置文件
+
+### **3.2 框架设计**
+
+* **架构图**
+* ![IntelliPandora架构图](./docs/dev/static/framework_architecture.jpg)
+* ![IntelliPandora业务流程图](./docs/dev/static/business_flow.png)
 
 
 ## GitHub Feature
