@@ -1,6 +1,6 @@
 # 开发手册
 
-### 1.基础
+## 1.基础
 - **语言**
 > **PYTHON3.7+**
 
@@ -18,8 +18,9 @@
     twine upload -r local dist/*.whl
     ```
 
-### 2.开发规范
-* **目录结构**
+## 2.开发规范
+
+###  **目录结构**
 ```shell
 .
 ├── src
@@ -36,7 +37,7 @@
     └── __init__.py
 ```
 
-* **说明**
+###  **说明**
     > 代码都在***src/intellipandora***
   * **core**: 提供自动化核心能力接口。
     * **base**: 基础类(基类)，如SingletonClass、BaseRepository等
@@ -47,9 +48,15 @@
   * **utils**: 框架基础功能，如log、error...
   * **conf**: 配置文件
 
-* **开发手册**
+### 框架设计
+
+* 架构图
+* ![IntelliPandora架构图](./static/framework_architecture.jpg)
+* ![IntelliPandora业务流程图](./static/business_flow.png)
+
+### **开发手册**
   * [IntelliPandora开发手册(完善中)](./Python_Dev_Standard.md)
 
-### 3.单元测试
+## 3.单元测试
 > test目录下编写单元测试用例
 > 参考 test/testhttp/test_http_get.py
