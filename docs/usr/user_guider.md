@@ -1,5 +1,5 @@
-# User Guider of PandoGT
-`This is the user guider of PandoGT.`
+# User Guider of Pandora
+`This is the user guider of Pandora.`
 
 ## 1. 安装说明
 

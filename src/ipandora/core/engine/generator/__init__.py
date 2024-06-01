@@ -4,7 +4,7 @@
 @File  : __init__.py.py
 @Time  : 2024-04-28
 """
-from pandoragt.core.engine.generator.provider.robotprovider import (RobotSuiteProvider,
+from ipandora.core.engine.generator.provider.robotprovider import (RobotSuiteProvider,
                                                                     RobotCaseProvider)
 __all__ = ['RobotSuiteProvider', 'RobotCaseProvider', 'GeneratorApi']
 

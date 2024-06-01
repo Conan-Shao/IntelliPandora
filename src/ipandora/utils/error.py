@@ -2,7 +2,7 @@
 # @Author: Shao Feng
 # @File  : error.py
 # @Time  : 2024-04-17
-class PandoraGTError(Exception):
+class PandoraError(Exception):
     """Base class for FusionPandora Framework errors.
 
     Do not raise this method but use more specific errors instead.
@@ -17,7 +17,7 @@ class PandoraGTError(Exception):
         return str(self)
 
 
-class FrameworkError(PandoraGTError):
+class FrameworkError(PandoraError):
     """Can be used when the core framework goes to unexpected state.
 
     It is good to explicitly raise a FrameworkError if some framework
@@ -26,7 +26,7 @@ class FrameworkError(PandoraGTError):
     """
 
 
-class DataError(PandoraGTError):
+class DataError(PandoraError):
     """Used when the provided test data is invalid.
 
     DataErrors are not caught by keywords that run other keywords
@@ -52,3 +52,9 @@ class FileError(DataError):
 
 class CommandError(Exception):
     pass
+
+
+class CryptoError(PandoraError):
+    """
+    Used when exception occurred while Encryption and decryption.
+    """

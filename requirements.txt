@@ -9,7 +9,7 @@ assertpy
 bs4
 pluggy
 pyyaml
-pycryptodome
+cryptography
 urllib3
 requests
 websockets
@@ -17,3 +17,5 @@ httpretty
 pytest
 robotframework
 psutil
+Jinja2
+pymysql

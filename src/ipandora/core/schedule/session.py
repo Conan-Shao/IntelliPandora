@@ -7,7 +7,6 @@
 import logging
 from threading import current_thread, RLock
 from typing import Dict
-
 import requests
 from requests.structures import CaseInsensitiveDict
 from requests.utils import default_headers

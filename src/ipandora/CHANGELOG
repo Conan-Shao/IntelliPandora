@@ -1,4 +1,11 @@
-v1.0.5
+v1.0.7
+==============
+* add common libraries -- timeutils, fileutils, stringutils
+* add utils -- pathutils, robotlogparser, fileload, filewrite
+* add core.engine -- crypto
+* add core.engine -- generator, repository and service for testcase
+
+v1.0.6
 ==============
 * rename src/intellipandora to src/ipandora
 * add common libraries

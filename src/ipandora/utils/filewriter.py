@@ -8,7 +8,7 @@ import csv
 import json
 import yaml
 import os
-from ipandora.core import logger
+from ipandora.utils.log import logger
 from ipandora.utils.error import FileError, DataError
 
 
@@ -40,6 +40,7 @@ class FileWriter(object):
             if os.path.isabs(self.directory):
                 self.filename = os.path.join(self.directory, self.filename)
             else:
+                logger.warning(f"The <{self.directory}> is not exist. files will be stored <home>")
                 self.filename = os.path.join(os.path.expanduser('~'), self.filename)
         _dir_name = os.path.dirname(self.filename)
         # check directory exists and create if not
@@ -134,7 +135,7 @@ class YAMLFileWriter(FileWriter):
 class RobotFileWriter(FileWriter):
     """
     RobotFileWriter is a class that writes.
-    Content should be a string. which has be rendered by RobotRenderer.
+    Content should be a string. which has be rendered by RobotRendererLegacy.
     The file will be created in the home directory if filename is not the absolute path.
     """
     def _write(self):
@@ -144,6 +145,21 @@ class RobotFileWriter(FileWriter):
     @property
     def extension(self):
         return '.robot'
+
+
+class HtmlFileWriter(FileWriter):
+    """
+    HtmlFileWriter is a class that writes.
+    Content should be a string. which has be rendered by HtmlRenderer.
+    The file will be created in the home directory if filename is not the absolute path.
+    """
+    def _write(self):
+        with open(self.filename, 'w', encoding='utf-8') as file:
+            file.write(self.content)
+
+    @property
+    def extension(self):
+        return '.html'
 
 
 if __name__ == '__main__':

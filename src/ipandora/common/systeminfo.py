@@ -8,12 +8,17 @@ import platform
 import socket
 import psutil
 import os
-from ipandora.core import logger
+import getpass
+from ipandora.utils.log import logger
 
 
 class SystemInfo(object):
     def __init__(self):
         pass
+
+    @property
+    def user(self):
+        return getpass.getuser()
 
     @property
     def host(self):
@@ -56,7 +61,7 @@ class SystemInfo(object):
         return psutil.virtual_memory()
 
     @staticmethod
-    def get_host_name(self):
+    def get_host_name():
         return socket.gethostname()
 
     @staticmethod
@@ -112,7 +117,9 @@ class SystemInfo(object):
 
 
 if __name__ == '__main__':
-    pids = (SystemInfo().get_pids_by_name('python', 'remote', 'stop'))
-    for p in pids:
-        SystemInfo().kill_process(p)
+    print(SystemInfo().get_host())
+    print(SystemInfo().user)
+    # pids = (SystemInfo().get_pids_by_name('python', 'remote', 'stop'))
+    # for p in pids:
+    #     SystemInfo().kill_process(p)
 

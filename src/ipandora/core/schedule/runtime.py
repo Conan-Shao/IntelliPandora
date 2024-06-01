@@ -4,15 +4,169 @@
 @File  : runtime.py
 @Time  : 2024-04-19
 """
+import os
 import socket
 from typing import Union
+
+from ipandora.common.dictutils import DictUtils
+from ipandora.common.stringaction import StringAction
+from ipandora.common.systeminfo import SystemInfo
 from ipandora.core.base.classwrap.classproperty import classproperty, ClassPropertyMeta
+from ipandora.core.engine.crypto.crypto import CryptoFactory
+from ipandora.utils.fileload import FileLoad
+from ipandora.utils.pathutils import PathUtils
 
 
 class Runtime(object):
 	exc_info = ''
 	product = ''
-	settings = {}  # type:dict
+	settings = FileLoad(
+		os.path.join(PathUtils().pandora_path, 'conf/config.yaml')).load_yaml()  # type:dict
+
+	class User(metaclass=ClassPropertyMeta):
+		_user = ''
+
+		@classproperty
+		def user(self):
+			if not self._user:
+				self._user = SystemInfo().user
+			return self._user
+
+		@user.set
+		def user(self, value):
+			self._user = value
+
+	class Mysql(metaclass=ClassPropertyMeta):
+		_host = ''
+		_username = ''
+		_password = ''
+		_port = 3306
+		_database = ''
+
+		@classproperty
+		def host(self):
+			if not self._host:
+				self._host = DictUtils.safe_get(Runtime.settings, 'mysql', 'host')
+			return self._host
+
+		@host.set
+		def host(self, value):
+			self._host = value
+
+		@classproperty
+		def username(self):
+			if not self._username:
+				self._username = DictUtils.safe_get(Runtime.settings, 'mysql', 'username')
+			return self._username
+
+		@username.set
+		def username(self, value):
+			self._username = value
+
+		@classproperty
+		def password(self):
+			if not self._password:
+				self._password = DictUtils.safe_get(Runtime.settings, 'mysql', 'password')
+				if self._password and StringAction.is_base64_encoded(self._password):
+					self._password = CryptoFactory().aes.decrypt(self._password)
+			return self._password
+
+		@password.set
+		def password(self, value):
+			self._password = value
+
+		@classproperty
+		def port(self):
+			if not self._port:
+				self._port = DictUtils.safe_get(Runtime.settings, 'mysql', 'port')
+			return self._port
+
+		@port.set
+		def port(self, value):
+			self._port = value
+
+		@classproperty
+		def database(self):
+			if not self._database:
+				self._database = DictUtils.safe_get(Runtime.settings, 'mysql', 'database')
+			return self._database
+
+		@database.set
+		def database(self, value):
+			self._database = value
+
+	class Email(metaclass=ClassPropertyMeta):
+		_host = ''
+		_username = ''
+		_password = ''
+		_port = 465
+		_recipients = []
+
+		@classproperty
+		def host(self):
+			if not self._host:
+				self._host = DictUtils.safe_get(Runtime.settings, 'email', 'host')
+			return self._host
+
+		@host.set
+		def host(self, value):
+			self._host = value
+
+		@classproperty
+		def username(self):
+			if not self._username:
+				self._username = DictUtils.safe_get(Runtime.settings, 'email', 'username')
+			return self._username
+
+		@username.set
+		def username(self, value):
+			self._username = value
+
+		@classproperty
+		def password(self):
+			if not self._password:
+				self._password = DictUtils.safe_get(Runtime.settings, 'email', 'password')
+			if self._password and StringAction.is_base64_encoded(self._password):
+				self._password = CryptoFactory().aes.decrypt(self._password)
+			return self._password
+
+		@password.set
+		def password(self, value):
+			self._password = value
+
+		@classproperty
+		def port(self):
+			if not self._port:
+				self._port = DictUtils.safe_get(Runtime.settings, 'email', 'port')
+			return self._port
+
+		@port.set
+		def port(self, value):
+			self._port = value
+
+		@classproperty
+		def recipients(self):
+			if not self._recipients:
+				_tmp = DictUtils.safe_get(Runtime.settings, 'addressesTo', 'recipients')
+				self._recipients = _tmp if _tmp else []
+			return self._recipients
+
+		@recipients.set
+		def recipients(self, value):
+			self._recipients = value
+
+	class Path(metaclass=ClassPropertyMeta):
+		_pandora_path = ''
+
+		@classproperty
+		def pandora_path(self):
+			if not self._pandora_path:
+				self._pandora_path = PathUtils().pandora_path
+			return self._pandora_path
+
+		@pandora_path.set
+		def pandora_path(self, value):
+			self._pandora_path = value
 
 	class Device(metaclass=ClassPropertyMeta):
 

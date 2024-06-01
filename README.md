@@ -34,5 +34,20 @@ ipandora -h
 
 ## 三、开发
 * [IntelliPandora开发说明](docs/dev/IntelliPandora_Dev.md)
+* 
+### **3.1 框架结构介绍**
+> 代码都在***src/intellipandora***
+* **core**: 提供自动化核心能力接口。
+  * **base**: 基础类(基类)，如SingletonClass、BaseRepository等
+  * **protocol**: 提供协议能力，支持与被测对象交互/通信。如http、grpc、websocket等
+  * **engine**: 提供执行引擎，提供框架核心功能，如自动生成、加密、分布式执行处理等
+* **common**: 基础方法封装，支持自动化测试断言、数据准备、数据处理等
+* **run**: 框架的命令行模块
+* **utils**: 框架基础功能，如log、error...
+* **conf**: 配置文件
 
 
+## GitHub Feature
+
+1. You can use Readme\_XXX.md to support different languages, such as Readme\_en.md, Readme\_zh.md
+2. Explore open source project [IntelliPandora](https://github.com/Conan-Shao/IntelliPandora)

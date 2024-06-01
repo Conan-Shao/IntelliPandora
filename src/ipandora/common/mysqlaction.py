@@ -7,16 +7,24 @@
 import pymysql
 import pymysql.cursors
 from pymysql.err import MySQLError
-from pandoragt.core import logger
+from ipandora.utils.log import logger
 
 
 class MysqlAction(object):
-    def __init__(self, host, user, password, database):
+    def __init__(self, host, username, password, database, port = 3306):
         self.connection = None
         self.host = host
-        self.user = user
+        self.user = username
         self.password = password
         self.database = database
+        self.port = port
+
+    def __enter__(self):
+        self.connect()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
 
     def connect(self):
         """
@@ -26,17 +34,19 @@ class MysqlAction(object):
         if self.connection is not None:
             logger.warn("Connection already established.")
             return self.connection
-        try:
-            self.connection = pymysql.connect(
-                host=self.host,
-                user=self.user,
-                password=self.password,
-                database=self.database,
-                cursorclass=pymysql.cursors.DictCursor
-            )
-            logger.info("Database connection established.")
-        except MySQLError as e:
-            raise MySQLError(f"Error connecting to MySQL Platform: {e}")
+        else:
+            try:
+                self.connection = pymysql.connect(
+                    host=self.host,
+                    user=self.user,
+                    password=self.password,
+                    database=self.database,
+                    cursorclass=pymysql.cursors.DictCursor
+                )
+                logger.info("Database connection established.")
+                return self
+            except MySQLError as e:
+                raise MySQLError(f"Error connecting to MySQL Platform: {e}")
 
     def execute_query(self, query):
         """
@@ -67,8 +77,10 @@ class MysqlAction(object):
         try:
             with self.connection.cursor() as cursor:
                 cursor.execute(query)
+                affected_rows = cursor.rowcount
                 self.connection.commit()
-                logger.info("Transaction committed.")
+                logger.info(f"Transaction committed. {affected_rows} rows affected.")
+                return affected_rows
         except MySQLError as e:
             logger.warn(f"Error during transaction, rolling back: {e}")
             self.connection.rollback()

@@ -2,50 +2,108 @@
 """
 @Author: Shao Feng
 @File  : robotrenderer.py
-@Time  : 2024-04-28
+@Time  : 2024-05-25
 """
-from pandoragt.core.engine.generator.model import RobotSuite
+from ipandora.core.engine.generator.model.data.robotsuite import (RobotSuite, RobotSettings,
+                                                                  RobotCase)
 
 
-class RobotRenderer(object):
-    def __init__(self, suite: RobotSuite):
-        self.suite = suite
+class RobotRenderer:
+    def __init__(self, _robot_suite: RobotSuite):
+        self.robot_suite = _robot_suite
 
-    def content(self):
+    def content(self) -> str:
         content = ""
         content += self.render_setting()
         content += self.render_case()
         return content
 
-    def render_setting(self):
-        content = f"*** Settings ***\n"
-        max_key_length = max(len(key) for key in self.suite.setting) + 4
-        for _key, _value in self.suite.setting.items():
-            if isinstance(_value, list) and (_key == "Library" or _key == "Resource"):
-                for _v in _value:
-                    content += f"{_key:<{max_key_length}}{_v}\n"
-            elif isinstance(_value, list) and (_key == "Test Tags"):
-                _value = "    ".join(_value)
-                content += f"{_key:<{max_key_length}}{_value}\n"
-            else:
-                content += f"{_key:<{max_key_length}}{_value}\n"
+    def render_setting(self) -> str:
+        _settings = self.robot_suite.settings
+        content = "*** Settings ***\n"
+
+        setting_fields = {
+            "suite_setup": "Suite Setup",
+            "suite_teardown": "Suite Teardown",
+            "test_setup": "Test Setup",
+            "test_teardown": "Test Teardown",
+            "test_template": "Test Template",
+            "resource": "Resource",
+            "library": "Library",
+            "force_tag": "Force Tags"
+        }
+        for attr, keyword in setting_fields.items():
+            value = getattr(_settings, attr)
+            if isinstance(value, list):
+                for item in value:
+                    content += f"{keyword}    {item}\n"
+            elif value:
+                content += f"{keyword}    {value}\n"
         content += "\n"
         return content
 
-    def render_case(self):
-        content = f"*** Test Cases ***\n"
-        for _case_obj in self.suite.cases:
-            content += f"{_case_obj.name}\n"
-            if _case_obj.setup:
-                content += f"    [Setup]    {_case_obj.setup}\n"
-            for _step in _case_obj.steps:
-                content += f"    {_step}\n"
-            if _case_obj.teardown:
-                content += f"    [Teardown]    {_case_obj.teardown}\n"
+    def render_case(self) -> str:
+        content = "*** Test Cases ***\n"
+        case_fields = {
+            "documentation": "Documentation",
+            "setup": "Setup",
+            "teardown": "Teardown",
+            "tags": "Tags",
+            "steps": "Steps"
+        }
+
+        for case in self.robot_suite.cases:
+            content += f"{case.name}\n"
+            for attr, keyword in case_fields.items():
+                value = getattr(case, attr)
+                if isinstance(value, list) and keyword == "Steps":
+                    for step in value:
+                        content += f"    {step}\n"
+                elif isinstance(value, list):
+                    content += f"    [{keyword}]    {'    '.join(value)}\n"
+                elif value:
+                    content += f"    [{keyword}]    {value}\n"
             content += "\n"
         return content
 
 
 if __name__ == '__main__':
-    pass
+    # 示例用法
+    settings = RobotSettings(
+        suite_setup="Setup Suite 012",
+        suite_teardown="Teardown Suite 012",
+        test_setup="Setup Test 012",
+        test_teardown="Teardown Test 012",
+        test_template="Test Template 012",
+        resource=["Resource1", "Resource2"],
+        library=["Library1", "Library2"],
+        force_tag=["Tag1", "Tag2"]
+    )
 
+    cases = [
+        RobotCase(
+            name="Test Case 1",
+            steps=["Step 1", "Step 2"],
+            setup="Setup Case 1",
+            teardown="Teardown Case 1",
+            documentation="Documentation Case 1",
+            tags=["Tag1", "Tag2"]
+        ),
+        RobotCase(
+            name="Test Case 2",
+            steps=["Step 1", "Step 2", "Step 3"],
+            setup="Setup Case 2",
+            teardown="Teardown Case 2",
+            documentation="Documentation Case 2",
+            tags=["Tag3", "Tag4"]
+        )
+    ]
+
+    suite = RobotSuite(
+        name="Test Suite",
+        settings=settings,
+        cases=cases
+    )
+    print(suite)
+    renderer = RobotRenderer(suite)
+    print(renderer.content())

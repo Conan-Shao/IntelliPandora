@@ -7,7 +7,7 @@ TARGET_DIR := dist
 
 # 安装所有依赖
 install:
-	pip install -r requirements_dev.txt
+	pip install -r requirements.txt
 
 # 运行测试
 test:

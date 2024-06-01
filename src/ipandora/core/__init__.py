@@ -2,14 +2,10 @@
 # @Author: Shao Feng
 # @File  : __init__.py.py
 # @Time  : 2024-04-17
-import logging
 import os
 import sys
 from ipandora.core.schedule.runtime import Runtime
-from ipandora.core.protocol.http import Api
-from ipandora.core.log import logger
-
-
+from ipandora.core.protocol import Api
 api = Api()
 
 
@@ -19,4 +15,4 @@ def init(product=''):
     Runtime.product = product
 
 
-__all__ = ['api', 'init', 'logger']
+__all__ = ['api', 'init']
