@@ -49,8 +49,10 @@ ipandora -h
 ### **3.2 框架设计**
 
 * **架构图**
-* ![IntelliPandora架构图](./docs/dev/static/framework_architecture.jpg)
-* ![IntelliPandora业务流程图](./docs/dev/static/business_flow.png)
+  ![IntelliPandora架构图](./docs/dev/static/framework_architecture.jpg)
+
+* **业务流程图**
+![IntelliPandora业务流程图](./docs/dev/static/business_flow.png)
 
 
 ## GitHub Feature
