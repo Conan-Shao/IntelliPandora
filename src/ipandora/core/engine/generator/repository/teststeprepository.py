@@ -19,37 +19,29 @@ class TestStepRepository(BaseRepository):
         rows = self.execute_query(query % test_case_id)
         return [TestStep(**row) for row in rows] if rows else []
 
+    def get_test_steps_by_case_id(self, test_case_id: int) -> List[TestStep]:
+        query = "SELECT * FROM TestSteps WHERE TestCaseID = %s"
+        rows = self.execute_query(query, (test_case_id,))
+        return [TestStep(**row) for row in rows] if rows else []
+
     def get_latest_step(self, test_case_id: int) -> Optional[TestStep]:
         query = "SELECT * FROM TestSteps WHERE TestCaseID = %s ORDER BY StepNumber DESC LIMIT 1"
         rows = self.execute_query(query, (test_case_id,))
         return TestStep(**rows[0]) if rows else None
 
     def insert_test_step(self, test_step: TestStep) -> int:
-        fields, values = AttrValueSplit(test_step).get_fields_and_values()
-        query = f"""
-                    INSERT INTO TestSteps ({', '.join(fields)}, ModifiedBy)
-                    VALUES ({', '.join(['%s'] * len(values))}, %s)
-                """
+        query, values = self.generate_insert_query(test_step, "TestSteps")
         return self.execute_insert(query, tuple(values))
 
     def update_test_step(self, test_step: TestStepUpdate) -> int:
-        fields, values = AttrValueSplit(test_step, "StepID").get_fields_and_values()
-        query = f"""
-            UPDATE TestSteps
-            SET {', '.join(fields)}, UpdatedTime = %s, ModifiedBy = %s
-            WHERE StepID = %s
-        """
-        values.append(test_step.StepID)
+        query, values = self.generate_update_query(test_step, "TestSteps",
+                                                   "StepID")
         return self.execute_update(query, tuple(values))
 
     def insert_test_step_as_transaction(self, test_step: TestStep,
                                         connection: Optional[Connection] = None,
                                         last_trans: bool = False):
-        fields, values = AttrValueSplit(test_step).get_fields_and_values()
-        query = f"""
-                    INSERT INTO TestSteps ({', '.join(fields)}, ModifiedBy)
-                    VALUES ({', '.join(['%s'] * len(values))}, %s)
-                """
+        query, values = self.generate_insert_query(test_step, "TestSteps")
         _conn, result = self.execute_with_transaction(query, tuple(values), connection)
         if last_trans:
             self.commit_transaction(_conn)

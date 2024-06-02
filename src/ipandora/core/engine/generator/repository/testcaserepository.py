@@ -100,9 +100,6 @@ class TestCaseRepository(BaseRepository):
             ) tct ON tc.TestCaseID = tct.TestCaseID
         """
         rows = self.execute_query(query, tuple(tag_ids + [tag_count]))
-        print(query)
-        print(tuple(tag_ids + [tag_count]))
-        print(rows)
         return [TestCase(**row) for row in rows] if rows else []
 
     def get_test_cases_by_contain_tag_ids(self, tag_ids: List[int]) -> List[TestCase]:
@@ -247,21 +244,12 @@ class TestCaseRepository(BaseRepository):
         return None
 
     def insert_test_case(self, test_case: TestCase) -> int:
-        fields, values = AttrValueSplit(test_case).get_fields_and_values()
-        query = f"""
-            INSERT INTO TestCases ({', '.join(fields)}, ModifiedBy)
-            VALUES ({', '.join(['%s'] * len(values))}, %s)
-        """
+        query, values = self.generate_insert_query(test_case, "TestCases")
         return self.execute_insert(query, tuple(values))
 
     def update_test_case(self, case_update: TestCaseUpdate) -> int:
-        fields, values = AttrValueSplit(case_update, "TestCaseID").get_fields_and_values()
-        query = f"""
-            UPDATE TestCases
-            SET {', '.join(fields)}, UpdatedTime = %s, ModifiedBy = %s
-            WHERE TestCaseID = %s
-        """
-        values.append(case_update.TestCaseID)
+        query, values = self.generate_update_query(case_update, "TestCases",
+                                                   "TestCaseID")
         return self.execute_update(query, tuple(values))
 
     def insert_test_case_as_transaction(self, test_case: TestCase,
@@ -274,11 +262,7 @@ class TestCaseRepository(BaseRepository):
         :param last_trans:
         :return:
         """
-        fields, values = AttrValueSplit(test_case).get_fields_and_values()
-        query = f"""
-            INSERT INTO TestCases ({', '.join(fields)}, ModifiedBy)
-            VALUES ({', '.join(['%s'] * len(values))}, %s)
-        """
+        query, values = self.generate_insert_query(test_case, "TestCases")
         _conn, result = self.execute_with_transaction(query, tuple(values), connection)
         if last_trans:
             self.commit_transaction(_conn)
@@ -301,3 +285,4 @@ if __name__ == '__main__':
     resp4 = TestCaseRepository().get_full_cases()
     print(resp4)
     print(len(resp4))
+

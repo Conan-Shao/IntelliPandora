@@ -1,3 +1,9 @@
+v1.0.9
+==============
+* update BaseRepository, generate_insert_query and generate_update_query
+* refactory BaseRepository.execute_with_transaction
+* add UUIDFactory
+
 v1.0.8
 ==============
 * add architecture for the framework

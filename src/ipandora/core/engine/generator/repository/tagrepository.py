@@ -27,7 +27,6 @@ class TagRepository(BaseRepository):
 
     def get_tags_by_name(self, tag_name: str) -> List[Tag]:
         query = "SELECT * FROM Tags WHERE TagName = '%s'"
-        print(query % tag_name)
         rows = self.execute_query(query % tag_name)
         return [Tag(**row) for row in rows] if rows else []
 
@@ -47,29 +46,15 @@ class TagRepository(BaseRepository):
         return rows[0]['TagID'] if rows else None
 
     def insert_tag(self, tag: Tag) -> int:
-        fields, values = AttrValueSplit(tag).get_fields_and_values()
-        query = f"""
-            INSERT INTO Tags ({', '.join(fields)}, ModifiedBy)
-            VALUES ({', '.join(['%s'] * len(values))}, %s)
-        """
+        query, values = self.generate_insert_query(tag, "Tags")
         return self.execute_insert(query, tuple(values))
 
     def update_tag(self, tag: TagUpdate) -> int:
-        fields, values = AttrValueSplit(tag, "TagID").get_fields_and_values()
-        query = f"""
-            UPDATE Tags
-            SET {', '.join(fields)}, UpdatedTime = %s, ModifiedBy = %s
-            WHERE TagID = %s
-        """
-        values.append(tag.TagID)
+        query, values = self.generate_update_query(tag, "Tags", "TagID")
         return self.execute_update(query, tuple(values))
 
     def insert_tag_as_transaction(self, tag: Tag, last_trans: bool = False):
-        fields, values = AttrValueSplit(tag).get_fields_and_values()
-        query = f"""
-            INSERT INTO Tags ({', '.join(fields)}, ModifiedBy)
-            VALUES ({', '.join(['%s'] * len(values))}, %s)
-        """
+        query, values = self.generate_insert_query(tag, "Tags")
         _conn, result = self.execute_with_transaction(query, tuple(values))
         if last_trans:
             self.commit_transaction(_conn)

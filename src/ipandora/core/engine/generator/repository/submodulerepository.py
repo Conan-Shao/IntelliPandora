@@ -24,19 +24,9 @@ class SubmoduleRepository(BaseRepository):
         return [Submodule(**row) for row in rows] if rows else []
 
     def insert_submodule(self, submodule: Submodule) -> int:
-        fields, values = AttrValueSplit(submodule).get_fields_and_values()
-        query = f"""
-            INSERT INTO Submodules ({', '.join(fields)}, ModifiedBy)
-            VALUES ({', '.join(['%s'] * len(values))}, %s)
-        """
+        query, values = self.generate_insert_query(submodule, "Submodules")
         return self.execute_insert(query, tuple(values))
 
     def update_submodule(self, submodule_update: SubmoduleUpdate) -> int:
-        fields, values = AttrValueSplit(submodule_update, "SubmoduleID").get_fields_and_values()
-        query = f"""
-            UPDATE Submodules
-            SET {', '.join(fields)}, UpdatedTime = %s, ModifiedBy = %s
-            WHERE SubmoduleID = %s
-        """
-        values.append(submodule_update.SubmoduleID)
+        query, values = self.generate_update_query(submodule_update, "Submodules", "SubmoduleID")
         return self.execute_update(query, tuple(values))

@@ -20,21 +20,11 @@ class ProjectRepository(BaseRepository):
         return [Project(**row) for row in rows] if rows else []
 
     def insert_project(self, project: Project) -> int:
-        fields, values = AttrValueSplit(project).get_fields_and_values()
-        query = f"""
-            INSERT INTO Projects ({', '.join(fields)}, ModifiedBy)
-            VALUES ({', '.join(['%s'] * len(values))}, %s)
-        """
+        query, values = self.generate_insert_query(project, "Projects")
         return self.execute_insert(query, tuple(values))
 
     def update_project(self, project_update: ProjectUpdate) -> int:
-        fields, values = AttrValueSplit(project_update, "ProjectID").get_fields_and_values()
-        query = f"""
-            UPDATE Projects
-            SET {', '.join(fields)}, UpdatedTime = %s, ModifiedBy = %s
-            WHERE ProjectID = %s
-        """
-        values.append(project_update.ProjectID)
+        query, values = self.generate_update_query(project_update, "Projects", "ProjectID")
         return self.execute_update(query, tuple(values))
 
 

@@ -6,15 +6,16 @@
 """
 from typing import List, Optional
 from pymysql.connections import Connection
+from ipandora.common.timeutils import TimeUtils
 from ipandora.core.engine.generator.repository.testcaserepository import TestCaseRepository
 from ipandora.core.engine.generator.repository.teststeprepository import TestStepRepository
 from ipandora.core.engine.generator.repository.tagrepository import TagRepository
 from ipandora.core.engine.generator.repository.testcasetagsrepository import TestCaseTagsRepository
 from ipandora.core.engine.generator.model.data.testcase import (TestCase, TestStep, Tag,
-                                                                 TestCaseTag, TestCaseUpdate,
-                                                                 TestCaseFull)
+                                                                TestCaseTag, TestCaseUpdate,
+                                                                TestCaseFull)
 from ipandora.core.engine.generator.model.data.robotsuite import (RobotSuite, RobotCase,
-                                                                   RobotSettings)
+                                                                  RobotSettings)
 from ipandora.utils.log import logger
 
 
@@ -33,7 +34,27 @@ class TestCaseService:
         test_case_tags = self.test_case_tags_repo.get_test_case_tags_by_test_case_id(test_case_id)
         return [self.tag_repo.get_tag_by_id(tag.TagID) for tag in test_case_tags]
 
+    def get_steps_by_case_id(self, test_case_id: int) -> List[TestStep]:
+        return self.test_step_repo.get_test_steps_by_case_id(test_case_id)
+
     def get_test_cases_by_tags(self, tag_names: List[str]) -> List[TestCase]:
+        """
+        Get test cases by tag names. Return test cases that tags exactly the same as the tag ids.
+        :param tag_names:
+        :return:
+        """
+        tags = [self.tag_repo.get_tags_by_name(tag_name) for tag_name in tag_names]
+        tag_ids = [tag[0].TagID for tag in tags if tag]
+        if not tag_ids:
+            return []
+        return self.test_case_repo.get_test_cases_by_exact_tag_ids(tag_ids)
+
+    def get_test_cases_contain_tags(self, tag_names: List[str]) -> List[TestCase]:
+        """
+        Get test cases by tag names. Return test cases that tags contain the tag ids.
+        :param tag_names:
+        :return:
+        """
         tags = [self.tag_repo.get_tags_by_name(tag_name) for tag_name in tag_names]
         tag_ids = [tag[0].TagID for tag in tags if tag]
         if not tag_ids:
@@ -47,12 +68,11 @@ class TestCaseService:
             return []
         return self.test_case_repo.get_automated_cases_by_tag_ids(tag_ids, True)
 
-    def get_test_cases_by_contain_tags(self, tag_names: List[str]) -> List[TestCase]:
-        tags = [self.tag_repo.get_tags_by_name(tag_name) for tag_name in tag_names]
-        tag_ids = [tag[0].TagID for tag in tags if tag]
-        if not tag_ids:
-            return []
-        return self.test_case_repo.get_test_cases_by_contain_tag_ids(tag_ids)
+    def get_full_case_by_id(self, test_case_id: int) -> TestCaseFull:
+        _steps_obj = self.get_steps_by_case_id(test_case_id)
+        _full_case_obj = self.test_case_repo.get_full_case_by_id(test_case_id)
+        _full_case_obj.Steps = _steps_obj
+        return _full_case_obj
 
     def get_full_cases_by_tag(self, tag_name: str) -> List[TestCaseFull]:
         _tag_id = self.tag_repo.get_tag_id_by_name(tag_name)
@@ -61,7 +81,7 @@ class TestCaseService:
         _case_id_list = self.test_case_tags_repo.get_test_case_ids_by_tag_id(_tag_id)
         if not _case_id_list:
             return []
-        return [self.test_case_repo.get_full_case_by_id(_case_id)
+        return [self.get_full_case_by_id(_case_id)
                 for _case_id in _case_id_list]
 
     def get_automated_full_cases_by_tag(self, tag_name: str) -> List[TestCaseFull]:
@@ -71,7 +91,7 @@ class TestCaseService:
         _case_id_list = self.test_case_repo.get_automated_case_id_by_tag_id(_tag_id)
         if not _case_id_list:
             return []
-        return [self.test_case_repo.get_full_case_by_id(_case_id)
+        return [self.get_full_case_by_id(_case_id)
                 for _case_id in _case_id_list]
 
     def add_testcase(self, test_case: TestCase) -> int:
@@ -116,101 +136,99 @@ class TestCaseService:
             raise e
 
     def create_test_case(self, test_case: TestCase, steps: List[TestStep],
-                         tags: List[TestCaseTag]) -> bool:
+                         tags: List[str]) -> bool:
         _connection: Optional[Connection] = None
+        _test_case_id = -1
         try:
             # add case with transaction.
+            logger.info("Start to create test case.")
             _connection, _test_case_id = self.test_case_repo.insert_test_case_as_transaction(
                 test_case)
             if _test_case_id == -1:
+                logger.warning("Failed to insert test case. Rollback transaction.")
                 self.test_case_repo.close_connection(_connection)
                 raise Exception("Failed to insert test case")
 
             # add test steps.
+            logger.info("Start to add test steps.")
             for step in steps:
                 step.TestCaseID = _test_case_id
-                _, _step_ids = self.test_step_repo.insert_test_step_as_transaction(step, _connection)
+                _, _step_ids = self.test_step_repo.insert_test_step_as_transaction(step,
+                                                                                   _connection)
                 if _step_ids == -1:
-                    # self.test_step_repo.close_connection(connection)
+                    logger.warning("Failed to insert test step. Rollback transaction.")
                     raise Exception("Failed to insert test step")
-            # add tags and the last one will commit.
-            for i, tag in enumerate(tags):
-                tag.TestCaseID = _test_case_id
+            # generated TagCase object and add tags; the last one will commit.
+            logger.info("Start to add tags.")
+            for i, tag_name in enumerate(tags):
+                _tag_id = self.tag_repo.get_tag_id_by_name(tag_name)
+                if not _tag_id:
+                    logger.warning(f"No tags found with the provided names: <{tag_name}>.")
+                    if i == len(tags) - 1:
+                        self.test_case_repo.commit_transaction(_connection)
+                    continue
+                tag_case_obj = TestCaseTag(TestCaseID=_test_case_id, TagID=_tag_id)
                 if i == len(tags) - 1:
+                    logger.info("This is the last sql statement, commit transaction.")
                     _, _tag_case_id = self.test_case_tags_repo.insert_test_case_tag_as_transaction(
-                        tag, _connection, True)
+                        tag_case_obj, _connection, True)
                     if _tag_case_id == -1:
-                        # self.test_case_tags_repo.close_connection(connection)
+                        logger.warning("Failed to insert test case tag(last). Rollback transaction.")
                         raise Exception("Failed to insert test case tag")
                 else:
                     _, _tag_case_id = self.test_case_tags_repo.insert_test_case_tag_as_transaction(
-                        tag, _connection)
+                        tag_case_obj, _connection)
                     if _tag_case_id == -1:
+                        logger.warning("Failed to insert test case tag. Rollback transaction.")
                         # self.test_case_tags_repo.close_connection(connection)
                         raise Exception("Failed to insert test case tag")
-            return True
         except Exception as e:
             if _connection:
                 # rollback transaction
+                logger.warning("Start to Rollback transaction.")
                 self.test_case_repo.rollback_transaction(_connection)
             logger.error(f"Error creating test case: {e}")
             return False
         finally:
             if _connection:
-                _connection.close()
+                self.test_case_repo.close_connection(_connection)
+            return _test_case_id
 
 
 if __name__ == '__main__':
     from ipandora.core.engine.generator.model.data.testcase import TestCase
-    # 创建服务实例
+    # # create service
     test_case_service = TestCaseService()
-    result = test_case_service.get_full_cases_by_tag('G40')
-    print(result)
-    result = test_case_service.get_automated_full_cases_by_tag('G40')
-    print(result)
+    # result = test_case_service.get_full_cases_by_tag('G40')
+    # print(result)
+    # result = test_case_service.get_automated_full_cases_by_tag('G40')
+    # print(result)
 
-    # # 创建一个测试用例对象
-    # new_test_case = TestCase(
-    #     TestCaseID=None,
-    #     SubmoduleID=11,
-    #     Title="Test Case Title Shaft 006",
-    #     Description="Test Case Description Shaft 006",
-    #     Precondition="Precondition Shaft 006",
-    #     IsAutomated=True,
-    # )
-    # print(new_test_case)
-    # _case_id = test_case_service.add_testcase(new_test_case)
-    # print(f"New test case ID: {_case_id}")
-    #
-    # modify_test = TestCaseUpdate(
-    #     TestCaseID=_case_id,
-    #     SubmoduleID=None,
-    #     Title="Test Case Title Shaft 006, Modified222",
-    #     Description=None,
-    #     Precondition=None,
-    #     IsAutomated=True,
-    # )
-    # print(modify_test)
-    # test_case_service.modify_test_case(modify_test)
-
-    # # add test steps and tags
-    # test_case_service.add_tags_to_case(_case_id, ['smoke', 'G00', 'generator'])
-
-    # _test_step1 = TestStep(
-    #     StepID=None,
-    #     TestCaseID=None,
-    #     StepDescription="Test Step Description Shaft 005 - 001",
-    #     StepNumber=1,
-    #     ExpectedResult="Expected Result Shaft 005 - 001",
-    # )
-    # test_case_service.add_test_step_to_case(_case_id, _test_step1)
-    #
-    # _test_step2 = TestStep(
-    #     StepID=None,
-    #     TestCaseID=None,
-    #     StepDescription="Test Step Description Shaft 005 - 002",
-    #     StepNumber=1,
-    #     ExpectedResult="Expected Result Shaft 005 - 002",
-    # )
-    #
-    # test_case_service.add_test_step_to_case(7, _test_step1)
+    # 创建一个测试用例对象
+    new_test_case = TestCase(
+        TestCaseID=None,
+        SubmoduleID=11,
+        Title="Test Case Title Shaft 006",
+        Description="Test Case Description Shaft 006",
+        Precondition="Precondition Shaft 006",
+        IsAutomated=True,
+    )
+    print(new_test_case)
+    # create steps
+    _steps = []
+    for _i in range(1, 6):
+        _timestamp = TimeUtils.get_current_timestamp_ms()
+        _test_step = TestStep(
+            StepID=None,
+            TestCaseID=None,
+            StepDescription=f"Test Step Description Shaft create 00{_i} - {_timestamp}",
+            StepNumber=_i,
+            ExpectedResult=f"Expected Result Shaft create- 00{_i}",
+        )
+        _steps.append(_test_step)
+    # test_case_service.add_test_step_to_case(_case_id, _test_step3)
+    _new_case_id = test_case_service.create_test_case(new_test_case, _steps,
+                                                      ['smoke', 'G00', 'document'])
+    print(_new_case_id)
+    _full_case = test_case_service.get_full_case_by_id(_new_case_id)
+    print(_full_case)

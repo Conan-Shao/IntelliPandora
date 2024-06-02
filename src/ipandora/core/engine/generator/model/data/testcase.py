@@ -177,6 +177,19 @@ class TestCaseFull:
     Precondition: Optional[str]
     IsAutomated: bool
     Tags: List[str] = field(default_factory=list)
+    Steps: List[TestStep] = field(default_factory=list)
+    ModifiedBy: Optional[str] = None
+    CreatedTime: Optional[datetime] = None
+    UpdatedTime: Optional[datetime] = None
+
+
+@dataclass
+class TestCaseAttachment:
+    AttachmentID: Optional[int]
+    TestCaseID: int
+    OriginalFileName: str
+    FilePath: str
+    Description: Optional[str]
     ModifiedBy: Optional[str] = None
     CreatedTime: Optional[datetime] = None
     UpdatedTime: Optional[datetime] = None

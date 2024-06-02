@@ -35,21 +35,12 @@ class TagCategoryRepository(BaseRepository):
         return [TagCategory(**row) for row in rows] if rows else []
 
     def insert_tag_category(self, tag_category: TagCategory) -> int:
-        fields, values = AttrValueSplit(tag_category).get_fields_and_values()
-        query = f"""
-            INSERT INTO TagCategories ({', '.join(fields)}, ModifiedBy)
-            VALUES ({', '.join(['%s'] * len(values))}, %s)
-        """
+        query, values = self.generate_insert_query(tag_category, "TagCategories")
         return self.execute_insert(query, tuple(values))
 
     def update_tag_category(self, tag_category_update: TagCategoryUpdate) -> int:
-        fields, values = AttrValueSplit(tag_category_update, "CategoryId").get_fields_and_values()
-        query = f"""
-            UPDATE TagCategories
-            SET {', '.join(fields)}, UpdatedTime = %s, ModifiedBy = %s
-            WHERE CategoryId = %s
-        """
-        values.append(tag_category_update.CategoryId)
+        query, values = self.generate_update_query(tag_category_update, "TagCategories",
+                                                   "CategoryId")
         return self.execute_update(query, tuple(values))
 
 
