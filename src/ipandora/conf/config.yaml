@@ -1,0 +1,18 @@
+mysql:
+  host: localhost
+  username: root
+  password:
+  database: TestCaseDB
+file:
+  host: localhost
+  username: root
+  password:
+  directory: /var/data/test_case_attachments
+email:
+  host:
+  port:
+  username:
+  password:
+addressesTo:
+  recipients:
+    - xxx@gmail.com

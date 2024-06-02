@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        h1 {
+            width: 60%;
+            margin: 20px 0;
+            float: left;
+        }
+        h2 {
+            width: 80%;
+            margin: 10px 0;
+        }
+        table {
+            width: 80%;
+            border-collapse: collapse;
+            background-color: #ffffff;
+            margin: 10px 0;
+        }
+        th, td {
+            border: 1px solid #dddddd;
+            text-align: left;
+            padding: 8px;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        .generated {
+            float: right;
+            text-align: right;
+            font-size: small;
+            white-space: nowrap;
+        }
+        .summary-container {
+            width: 80%;
+            margin: 0 auto;
+        }
+        .header {
+            width: 60em;
+            height: 3em;
+            margin: 20px 0 6px 0;
+        }
+        .PASS {
+            color: green;
+        }
+        .FAIL {
+            color: red;
+        }
+        .FAIL_MSG {
+            color: red;
+        }
+        .link {
+            text-decoration: none;
+            font-weight: bold;
+            color: blue;
+        }
+    </style>
+</head>
+<body>
+    <div class='summary-container'>
+        <div id='header'><h1>Automatic Test Report</h1></div>
+        <div class='generated'>
+            <p>Generated: {{ head.generated }}<br>Execution: {{ head.execution }}<sp></p>
+        </div>
+    </div>
+    <h2>Test Execution Summary</h2>
+    <table class='summary_table'>
+        <tr>
+            <th>Total</th><th>Pass</th><th>Fail</th><th>PR</th><th>Details</th>
+        </tr>
+        <tr>
+            <td>{{ statistics.total }}</td>
+            <td>{{ statistics.pass }}</td>
+            <td>{{ statistics.fail }}</td>
+            <td>{{ statistics.pass_rate }}</td>
+            <td><a href="{{ statistics.log_url }}" class='link'>Log</a></td>
+        </tr>
+    </table>
+    <h2 id='details'>Test Execution Details</h2>
+    <table>
+        <tr><th>Suite</th><th>Test Case</th><th>Result</th><th>Message</th></tr>
+        {% for suite_name, test_cases in Details.items() %}
+            {% for test_case in test_cases %}
+                <tr>
+                    {% if loop.first %}
+                        <td rowspan="{{ test_cases|length }}">{{ suite_name }}</td>
+                    {% endif %}
+                    <td>{{ test_case.test_case_name }}</td>
+                    <td class="{{ test_case.result }}">{{ test_case.result }}</td>
+                    <td class="{{ test_case.result }}_MSG">{{ test_case.message }}</td>
+                </tr>
+            {% endfor %}
+        {% endfor %}
+    </table>
+</body>
+</html>
