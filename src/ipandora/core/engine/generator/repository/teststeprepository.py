@@ -6,8 +6,8 @@
 """
 from typing import List, Optional
 from pymysql.connections import Connection
-from ipandora.core.base.classwrap.attrvaluesplit import AttrValueSplit
-from ipandora.core.engine.generator.model.data.testcase import TestStep, TestStepUpdate
+from ipandora.core.engine.generator.model.data.testcase import (TestStep, TestStepUpdate,
+                                                                TestStepGetter)
 from ipandora.core.base.repository.baserepository import BaseRepository
 from ipandora.utils.log import logger
 
@@ -19,10 +19,11 @@ class TestStepRepository(BaseRepository):
         rows = self.execute_query(query % test_case_id)
         return [TestStep(**row) for row in rows] if rows else []
 
-    def get_test_steps_by_case_id(self, test_case_id: int) -> List[TestStep]:
-        query = "SELECT * FROM TestSteps WHERE TestCaseID = %s"
+    def get_test_steps_by_case_id(self, test_case_id: int) -> List[TestStepGetter]:
+        query = self.generate_select_query(TestStepGetter, "TestSteps",
+                                           "TestCaseID")
         rows = self.execute_query(query, (test_case_id,))
-        return [TestStep(**row) for row in rows] if rows else []
+        return [TestStepGetter(**row) for row in rows] if rows else []
 
     def get_latest_step(self, test_case_id: int) -> Optional[TestStep]:
         query = "SELECT * FROM TestSteps WHERE TestCaseID = %s ORDER BY StepNumber DESC LIMIT 1"
@@ -44,10 +45,13 @@ class TestStepRepository(BaseRepository):
         query, values = self.generate_insert_query(test_step, "TestSteps")
         _conn, result = self.execute_with_transaction(query, tuple(values), connection)
         if last_trans:
+            _conn = connection if _conn is None else _conn
             self.commit_transaction(_conn)
         return _conn, result
 
 
 if __name__ == '__main__':
-    resp = TestStepRepository().get_test_steps(2)
-    print(resp)
+    # resp = TestStepRepository().get_test_steps(2)
+    # print(resp)
+    resp1 = TestStepRepository().get_test_steps_by_case_id(82)
+    print(resp1)

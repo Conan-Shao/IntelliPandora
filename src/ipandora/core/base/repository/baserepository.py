@@ -15,13 +15,13 @@ from ipandora.utils.log import logger
 
 class BaseRepository(object):
     def __init__(self, db_config = None):
-        _tmp_config = {'host': Runtime.Mysql.host,
-                       'username': Runtime.Mysql.username,
-                       'password': Runtime.Mysql.password,
-                       'database': Runtime.Mysql.database,
-                       'port': Runtime.Mysql.port}
+        _tmp_config = {'host': GTRuntime.Mysql.host,
+                       'username': GTRuntime.Mysql.username,
+                       'password': GTRuntime.Mysql.password,
+                       'database': GTRuntime.Mysql.database,
+                       'port': GTRuntime.Mysql.port}
         self.db_config = db_config if db_config else _tmp_config
-        self.modified_by = Runtime.User.user
+        self.modified_by = GTRuntime.User.user
 
     def execute_query(self, query: str, params: tuple = ()) -> Any:
         try:
@@ -60,6 +60,11 @@ class BaseRepository(object):
             return -1
 
     def start_transaction(self) -> Connection:
+        """
+        Start a transaction and return the connection.
+        :return:
+        """
+        logger.info("Start a transaction.")
         try:
             mysql = MysqlAction(**self.db_config).connect()
             mysql.start_transaction()
@@ -70,6 +75,7 @@ class BaseRepository(object):
 
     @staticmethod
     def commit_transaction(connection: Connection):
+        logger.info("Start to commit transaction.")
         try:
             connection.commit()
         except MySQLError as e:
@@ -81,6 +87,12 @@ class BaseRepository(object):
 
     @staticmethod
     def rollback_transaction(connection: Connection):
+        """
+        Rollback a transaction.
+        :param connection:
+        :return:
+        """
+        logger.warning("Start to rollback transaction.")
         try:
             connection.rollback()
         except MySQLError as e:
@@ -138,18 +150,24 @@ class BaseRepository(object):
             raise
 
     @staticmethod
-    def _get_fields_and_values(obj, operation= 'insert', exclude_fields=None):
+    def _get_fields_and_values(obj, operation= "insert", exclude_fields=None):
         exclude_fields = exclude_fields or []
         fields = []
         values = []
-        for attr, value in obj.__dict__.items():
-            # Add any other necessary checks or transformations
-            if value is not None and attr not in exclude_fields:
-                if operation == 'update':
-                    fields.append(f"{attr} = %s")
-                elif operation == 'insert':
-                    fields.append(attr)
-                values.append(value)
+        if isinstance(obj, type):
+            if "__annotations__" in dir(obj):
+                for attr, value in obj.__annotations__.items():
+                    if attr not in exclude_fields:
+                        fields.append(attr)
+        else:
+            for attr, value in obj.__dict__.items():
+                # Add any other necessary checks or transformations
+                if value is not None and attr not in exclude_fields:
+                    if operation == "update":
+                        fields.append(f"{attr} = %s")
+                    elif operation == "insert":
+                        fields.append(attr)
+                    values.append(value)
         return fields, values
 
     def generate_insert_query(self, obj, table_name):
@@ -171,6 +189,22 @@ class BaseRepository(object):
         # Add the primary key value to the values list
         values.extend([obj.__dict__[primary_key_field]])
         return query, values
+
+    def generate_select_query(self, obj, table_name, primary_key_field=None):
+        fields, values = self._get_fields_and_values(obj, 'select', primary_key_field)
+        field_str = ', '.join(fields)
+        if primary_key_field:
+            query = f"""SELECT {field_str} FROM {table_name} WHERE {primary_key_field} = %s"""
+        else:
+            query = f"""SELECT {field_str} FROM {table_name}"""
+        return query
+
+
+if __name__ == '__main__':
+    from ipandora.core.engine.generator.model.data.testcase import TestAttachmentGetter
+    resp = BaseRepository().generate_select_query(TestAttachmentGetter,
+                                                  'TestCaseAttachments')
+    print(resp)
 
 
 

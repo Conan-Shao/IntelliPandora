@@ -5,11 +5,9 @@
 @Time  : 2024-05-22
 """
 from typing import List, Optional
-
-from ipandora.core.base.classwrap.attrvaluesplit import AttrValueSplit
+from pymysql import Connection
 from ipandora.core.engine.generator.model.data.testcase import Tag, TagUpdate
 from ipandora.core.base.repository.baserepository import BaseRepository
-from ipandora.utils.error import DataError
 from ipandora.utils.log import logger
 
 
@@ -53,10 +51,13 @@ class TagRepository(BaseRepository):
         query, values = self.generate_update_query(tag, "Tags", "TagID")
         return self.execute_update(query, tuple(values))
 
-    def insert_tag_as_transaction(self, tag: Tag, last_trans: bool = False):
+    def insert_tag_as_transaction(self, tag: Tag,
+                                  connection: Optional[Connection] = None,
+                                  last_trans: bool = False):
         query, values = self.generate_insert_query(tag, "Tags")
-        _conn, result = self.execute_with_transaction(query, tuple(values))
+        _conn, result = self.execute_with_transaction(query, tuple(values), connection)
         if last_trans:
+            _conn = connection if _conn is None else _conn
             self.commit_transaction(_conn)
         return _conn, result
 

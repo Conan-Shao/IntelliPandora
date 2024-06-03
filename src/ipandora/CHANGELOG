@@ -1,3 +1,7 @@
+v1.1.0
+==============
+* add TestAttachmentRepository
+
 v1.0.9
 ==============
 * update BaseRepository, generate_insert_query and generate_update_query

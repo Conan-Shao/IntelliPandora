@@ -265,6 +265,7 @@ class TestCaseRepository(BaseRepository):
         query, values = self.generate_insert_query(test_case, "TestCases")
         _conn, result = self.execute_with_transaction(query, tuple(values), connection)
         if last_trans:
+            _conn = connection if _conn is None else _conn
             self.commit_transaction(_conn)
         return _conn, result
 

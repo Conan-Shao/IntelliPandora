@@ -7,16 +7,23 @@
 from typing import List, Optional
 from pymysql.connections import Connection
 from ipandora.common.timeutils import TimeUtils
+from ipandora.common.uuidutils import UUIDFactory
 from ipandora.core.engine.generator.repository.testcaserepository import TestCaseRepository
 from ipandora.core.engine.generator.repository.teststeprepository import TestStepRepository
 from ipandora.core.engine.generator.repository.tagrepository import TagRepository
 from ipandora.core.engine.generator.repository.testcasetagsrepository import TestCaseTagsRepository
 from ipandora.core.engine.generator.model.data.testcase import (TestCase, TestStep, Tag,
                                                                 TestCaseTag, TestCaseUpdate,
-                                                                TestCaseFull)
+                                                                TestCaseFull, TestAttachment,
+                                                                TestStepGetter,
+                                                                TestAttachmentGetter)
 from ipandora.core.engine.generator.model.data.robotsuite import (RobotSuite, RobotCase,
                                                                   RobotSettings)
 from ipandora.utils.log import logger
+
+
+class TestAttachmentRepository:
+    pass
 
 
 class TestCaseService:
@@ -26,6 +33,7 @@ class TestCaseService:
         self.test_step_repo = TestStepRepository()
         self.tag_repo = TagRepository()
         self.test_case_tags_repo = TestCaseTagsRepository()
+        self.test_attachment_repo = TestAttachmentRepository()
 
     def get_test_case_by_id(self, test_case_id: int) -> TestCase:
         return self.test_case_repo.get_test_case_by_id(test_case_id)
@@ -34,8 +42,11 @@ class TestCaseService:
         test_case_tags = self.test_case_tags_repo.get_test_case_tags_by_test_case_id(test_case_id)
         return [self.tag_repo.get_tag_by_id(tag.TagID) for tag in test_case_tags]
 
-    def get_steps_by_case_id(self, test_case_id: int) -> List[TestStep]:
+    def get_steps_by_case_id(self, test_case_id: int) -> List[TestStepGetter]:
         return self.test_step_repo.get_test_steps_by_case_id(test_case_id)
+
+    def get_attachments_by_case_id(self, test_case_id: int) -> List[TestAttachmentGetter]:
+        return self.test_attachment_repo.get_attachments_by_test_case_id(test_case_id)
 
     def get_test_cases_by_tags(self, tag_names: List[str]) -> List[TestCase]:
         """
@@ -70,8 +81,10 @@ class TestCaseService:
 
     def get_full_case_by_id(self, test_case_id: int) -> TestCaseFull:
         _steps_obj = self.get_steps_by_case_id(test_case_id)
+        _attachments_obj = self.get_attachments_by_case_id(test_case_id)
         _full_case_obj = self.test_case_repo.get_full_case_by_id(test_case_id)
         _full_case_obj.Steps = _steps_obj
+        _full_case_obj.Attachments = _attachments_obj
         return _full_case_obj
 
     def get_full_cases_by_tag(self, tag_name: str) -> List[TestCaseFull]:
@@ -136,7 +149,7 @@ class TestCaseService:
             raise e
 
     def create_test_case(self, test_case: TestCase, steps: List[TestStep],
-                         tags: List[str]) -> bool:
+                         tags: List[str], attachments: List[TestAttachment] = None) -> bool:
         _connection: Optional[Connection] = None
         _test_case_id = -1
         try:
@@ -160,32 +173,30 @@ class TestCaseService:
                     raise Exception("Failed to insert test step")
             # generated TagCase object and add tags; the last one will commit.
             logger.info("Start to add tags.")
-            for i, tag_name in enumerate(tags):
-                _tag_id = self.tag_repo.get_tag_id_by_name(tag_name)
-                if not _tag_id:
-                    logger.warning(f"No tags found with the provided names: <{tag_name}>.")
-                    if i == len(tags) - 1:
-                        self.test_case_repo.commit_transaction(_connection)
-                    continue
-                tag_case_obj = TestCaseTag(TestCaseID=_test_case_id, TagID=_tag_id)
-                if i == len(tags) - 1:
-                    logger.info("This is the last sql statement, commit transaction.")
-                    _, _tag_case_id = self.test_case_tags_repo.insert_test_case_tag_as_transaction(
-                        tag_case_obj, _connection, True)
-                    if _tag_case_id == -1:
-                        logger.warning("Failed to insert test case tag(last). Rollback transaction.")
-                        raise Exception("Failed to insert test case tag")
-                else:
-                    _, _tag_case_id = self.test_case_tags_repo.insert_test_case_tag_as_transaction(
-                        tag_case_obj, _connection)
+            if tags:
+                for _tag_name in tags:
+                    _tag_id = self.tag_repo.get_tag_id_by_name(_tag_name)
+                    if not _tag_id:
+                        logger.warning(f"No tags found with the provided names: <{_tag_name}>.")
+                        continue
+                    tag_case_obj = TestCaseTag(TestCaseID=_test_case_id, TagID=_tag_id)
+                    _, _tag_case_id = (
+                        self.test_case_tags_repo.insert_test_case_tag_as_transaction(tag_case_obj,
+                                                                                     _connection))
                     if _tag_case_id == -1:
                         logger.warning("Failed to insert test case tag. Rollback transaction.")
-                        # self.test_case_tags_repo.close_connection(connection)
                         raise Exception("Failed to insert test case tag")
+            if attachments:
+                for _attachment in attachments:
+                    if isinstance(_attachment, TestAttachment):
+                        _attachment.TestCaseID = _test_case_id
+                        self.test_attachment_repo.insert_attachment_as_transaction(_attachment,
+                                                                                   _connection)
+            # commit transaction
+            self.test_attachment_repo.commit_transaction(_connection)
         except Exception as e:
             if _connection:
                 # rollback transaction
-                logger.warning("Start to Rollback transaction.")
                 self.test_case_repo.rollback_transaction(_connection)
             logger.error(f"Error creating test case: {e}")
             return False
@@ -204,7 +215,7 @@ if __name__ == '__main__':
     # result = test_case_service.get_automated_full_cases_by_tag('G40')
     # print(result)
 
-    # 创建一个测试用例对象
+    # create case object
     new_test_case = TestCase(
         TestCaseID=None,
         SubmoduleID=11,
@@ -214,7 +225,7 @@ if __name__ == '__main__':
         IsAutomated=True,
     )
     print(new_test_case)
-    # create steps
+    # create steps object
     _steps = []
     for _i in range(1, 6):
         _timestamp = TimeUtils.get_current_timestamp_ms()
@@ -226,9 +237,21 @@ if __name__ == '__main__':
             ExpectedResult=f"Expected Result Shaft create- 00{_i}",
         )
         _steps.append(_test_step)
-    # test_case_service.add_test_step_to_case(_case_id, _test_step3)
+    # create attachments object, attachment is optional.
+    _attachment_new_list = []
+    for _j in range(1, 3):
+        uuid_str = UUIDFactory().generate_uuid4()
+        _attachment_new = TestAttachment(
+            AttachmentID=None,
+            TestCaseID=None,
+            OriginalFileName=f"test_program_origin.txt",
+            FilePath=f"/var/data/test_case_attachments/{uuid_str}.txt",
+        )
+        _attachment_new_list.append(_attachment_new)
+    # create test case, tag is optional and tags is a list of tag names.
     _new_case_id = test_case_service.create_test_case(new_test_case, _steps,
-                                                      ['smoke', 'G00', 'document'])
+                                                      ['smoke', 'G00', 'document'],
+                                                      _attachment_new_list)
     print(_new_case_id)
     _full_case = test_case_service.get_full_case_by_id(_new_case_id)
     print(_full_case)

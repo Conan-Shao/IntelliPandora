@@ -115,6 +115,13 @@ class TestStepUpdate:
 
 
 @dataclass
+class TestStepGetter:
+    StepNumber: int
+    StepDescription: Optional[str]
+    ExpectedResult: Optional[str]
+
+
+@dataclass
 class TagCategory:
     CategoryId: Optional[int]
     CategoryName: str
@@ -166,6 +173,25 @@ class TestCaseTagUpdate:
 
 
 @dataclass
+class TestAttachment:
+    AttachmentID: Optional[int]
+    TestCaseID: Optional[int]
+    OriginalFileName: str
+    FilePath: str
+    Description: Optional[str] = None
+    ModifiedBy: Optional[str] = None
+    CreatedTime: Optional[datetime] = None
+    UpdatedTime: Optional[datetime] = None
+
+
+@dataclass
+class TestAttachmentGetter:
+    OriginalFileName: str
+    FilePath: str
+    Description: Optional[str]
+
+
+@dataclass
 class TestCaseFull:
     TestCaseID: Optional[int]
     Title: str
@@ -177,19 +203,8 @@ class TestCaseFull:
     Precondition: Optional[str]
     IsAutomated: bool
     Tags: List[str] = field(default_factory=list)
-    Steps: List[TestStep] = field(default_factory=list)
-    ModifiedBy: Optional[str] = None
-    CreatedTime: Optional[datetime] = None
-    UpdatedTime: Optional[datetime] = None
-
-
-@dataclass
-class TestCaseAttachment:
-    AttachmentID: Optional[int]
-    TestCaseID: int
-    OriginalFileName: str
-    FilePath: str
-    Description: Optional[str]
+    Steps: List[TestStepGetter] = field(default_factory=list)
+    Attachments: List[TestAttachmentGetter] = field(default_factory=list)
     ModifiedBy: Optional[str] = None
     CreatedTime: Optional[datetime] = None
     UpdatedTime: Optional[datetime] = None
