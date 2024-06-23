@@ -2,56 +2,51 @@
 # @Author: Shao Feng
 # @File  : classproperty.py
 # @Time  : 2024-04-17
-import json
-
-
 class ClassPropertyMeta(type):
-    def __setattr__(self, key, value):
-        obj = self.__dict__.get(key) if key in self.__dict__ else None
-        if obj and type(obj) is ClassProperty:
-            return obj.__set__(self, value)
+    def __new__(mcs, name, bases, dct):
+        # Convert properties decorated with @classproperty into ClassProperty instances.
+        for key, value in dct.items():
+            if isinstance(value, ClassProperty):
+                dct[key] = value
+        return super(ClassPropertyMeta, mcs).__new__(mcs, name, bases, dct)
 
-        return super(ClassPropertyMeta, self).__setattr__(key, value)
+    def __setattr__(cls, key, value):
+        obj = cls.__dict__.get(key)
+        if obj and isinstance(obj, ClassProperty):
+            return obj.__set__(cls, value)
+        return super(ClassPropertyMeta, cls).__setattr__(key, value)
+
+    def __getattr__(cls, item):
+        return cls.get_meta_data(option=item)
 
     @classmethod
-    def getMetaData(mcs, option=None, default=None):
-        return None
-
-    def __getattr__(self, item):
-        return self.getMetaData(option=item)
+    def get_meta_data(mcs, option=None, default=None):
+        return default
 
 
-class ClassProperty(object):
-    def __init__(self, fget, fset=None):
-        self.fget = fget
-        self.fset = fset
+class ClassProperty:
+    def __init__(self, f_get, f_set=None):
+        self.f_get = f_get
+        self.f_set = f_set
 
-    def __get__(self, obj, klass=None):
-        if klass is None:
-            klass = type(obj)
-        return self.fget.__get__(obj, klass)()
+    def __get__(self, obj, cls=None):
+        if cls is None:
+            cls = type(obj)
+        return self.f_get.__get__(obj, cls)()
 
     def __set__(self, obj, value):
-        if not self.fset:
+        if not self.f_set:
             raise AttributeError("can't set attribute")
-        # type_ = type(obj)
-        # return self.fset.__get__(obj, obj)(value)
-        return self.fset.__func__(obj, value)
+        self.f_set.__func__(obj, value)
 
-    def set(self, func):
+    def setter(self, func):
         if not isinstance(func, (classmethod, staticmethod)):
             func = classmethod(func)
-        self.fset = func
+        self.f_set = func
         return self
 
 
-def classproperty(f):
-    if not isinstance(f, (classmethod, staticmethod)):
-        f = classmethod(f)
-
-    return ClassProperty(f)
-
-
-class StrEncoder(json.JSONEncoder):
-    def default(self, obj):
-        return str(obj)
+def classproperty(f_get):
+    if not isinstance(f_get, (classmethod, staticmethod)):
+        f_get = classmethod(f_get)
+    return ClassProperty(f_get)

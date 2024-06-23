@@ -7,7 +7,6 @@
 import os
 import socket
 from typing import Union
-
 from ipandora.common.dictutils import DictUtils
 from ipandora.common.stringaction import StringAction
 from ipandora.common.systeminfo import SystemInfo
@@ -32,7 +31,7 @@ class Runtime(object):
 				self._user = SystemInfo().user
 			return self._user
 
-		@user.set
+		@user.setter
 		def user(self, value):
 			self._user = value
 
@@ -49,7 +48,7 @@ class Runtime(object):
 				self._host = DictUtils.safe_get(Runtime.settings, 'mysql', 'host')
 			return self._host
 
-		@host.set
+		@host.setter
 		def host(self, value):
 			self._host = value
 
@@ -59,7 +58,7 @@ class Runtime(object):
 				self._username = DictUtils.safe_get(Runtime.settings, 'mysql', 'username')
 			return self._username
 
-		@username.set
+		@username.setter
 		def username(self, value):
 			self._username = value
 
@@ -71,7 +70,7 @@ class Runtime(object):
 					self._password = CryptoFactory().aes.decrypt(self._password)
 			return self._password
 
-		@password.set
+		@password.setter
 		def password(self, value):
 			self._password = value
 
@@ -81,7 +80,7 @@ class Runtime(object):
 				self._port = DictUtils.safe_get(Runtime.settings, 'mysql', 'port')
 			return self._port
 
-		@port.set
+		@port.setter
 		def port(self, value):
 			self._port = value
 
@@ -91,7 +90,7 @@ class Runtime(object):
 				self._database = DictUtils.safe_get(Runtime.settings, 'mysql', 'database')
 			return self._database
 
-		@database.set
+		@database.setter
 		def database(self, value):
 			self._database = value
 
@@ -108,7 +107,7 @@ class Runtime(object):
 				self._host = DictUtils.safe_get(Runtime.settings, 'email', 'host')
 			return self._host
 
-		@host.set
+		@host.setter
 		def host(self, value):
 			self._host = value
 
@@ -118,7 +117,7 @@ class Runtime(object):
 				self._username = DictUtils.safe_get(Runtime.settings, 'email', 'username')
 			return self._username
 
-		@username.set
+		@username.setter
 		def username(self, value):
 			self._username = value
 
@@ -130,7 +129,7 @@ class Runtime(object):
 				self._password = CryptoFactory().aes.decrypt(self._password)
 			return self._password
 
-		@password.set
+		@password.setter
 		def password(self, value):
 			self._password = value
 
@@ -140,7 +139,7 @@ class Runtime(object):
 				self._port = DictUtils.safe_get(Runtime.settings, 'email', 'port')
 			return self._port
 
-		@port.set
+		@port.setter
 		def port(self, value):
 			self._port = value
 
@@ -151,7 +150,7 @@ class Runtime(object):
 				self._recipients = _tmp if _tmp else []
 			return self._recipients
 
-		@recipients.set
+		@recipients.setter
 		def recipients(self, value):
 			self._recipients = value
 
@@ -164,7 +163,7 @@ class Runtime(object):
 				self._pandora_path = PathUtils().pandora_path
 			return self._pandora_path
 
-		@pandora_path.set
+		@pandora_path.setter
 		def pandora_path(self, value):
 			self._pandora_path = value
 
@@ -192,7 +191,7 @@ class Runtime(object):
 		def cur_case_name(self) -> str:
 			return self._cur_case_name
 
-		@cur_case_name.set
+		@cur_case_name.setter
 		def cur_case_name(self, case_name):
 			self._cur_case_name = case_name
 
@@ -200,7 +199,7 @@ class Runtime(object):
 		def steps(self) -> list:
 			return self._case_steps.pop(self.cur_case_name, [])
 
-		@steps.set
+		@steps.setter
 		def steps(self, step: list):
 			if step:
 				_l = self._case_steps.setdefault(self.cur_case_name, [])
@@ -215,7 +214,7 @@ class Runtime(object):
 		def project_name(self):
 			return self._project_name
 
-		@project_name.set
+		@project_name.setter
 		def project_name(self, v):
 			self._project_name = v
 
@@ -299,7 +298,7 @@ class Runtime(object):
 			return self._only_api \
 				or self.getMetaData(option='only_api', default=False)
 
-		@only_api.set
+		@only_api.setter
 		def only_api(self, v: bool = False):
 			self._only_api = v
 
@@ -329,7 +328,7 @@ class Runtime(object):
 		def is_pytest(self):
 			return self._is_pytest
 
-		@is_pytest.set
+		@is_pytest.setter
 		def is_pytest(self, v):
 			self._is_pytest = v
 
@@ -337,7 +336,7 @@ class Runtime(object):
 		def is_locust(self):
 			return self._is_locust
 
-		@is_locust.set
+		@is_locust.setter
 		def is_locust(self, v):
 			self._is_locust = v
 
@@ -364,6 +363,6 @@ class Runtime(object):
 		def platform(self):
 			return self._platform or 'ui'
 
-		@platform.set
+		@platform.setter
 		def platform(self, v: str):
 			self._platform = v.lower()
