@@ -5,8 +5,7 @@
 @Time  : 2024-05-23
 """
 from typing import List
-from ipandora.core.engine.generator.model.data.testcase import (Module, Submodule, SubmoduleUpdate,
-                                                                ModuleUpdate)
+from ipandora.core.engine.generator.model.data.case import (Module, ModuleUpdate)
 from ipandora.core.base.repository.baserepository import BaseRepository
 from ipandora.utils.log import logger
 
@@ -14,9 +13,10 @@ from ipandora.utils.log import logger
 class ModuleRepository(BaseRepository):
 
     def get_modules(self) -> List[Module]:
-        query = "SELECT * FROM Modules"
+        query = "SELECT * FROM Modules WHERE Status = 1"
         rows = self.execute_query(query)
-        return [Module(**row) for row in rows] if rows else []
+        return self.filter_fields(rows, Module)
+        # return [Module(**row) for row in rows] if rows else []
 
     def insert_module(self, module: Module) -> int:
         query, values = self.generate_insert_query(module, "Module")

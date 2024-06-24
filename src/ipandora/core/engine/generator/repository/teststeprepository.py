@@ -14,32 +14,32 @@ from ipandora.utils.log import logger
 
 class TestStepRepository(BaseRepository):
 
-    def get_test_steps(self, test_case_id: int) -> List[TestStep]:
-        query = "SELECT * FROM TestSteps WHERE TestCaseID = %s"
-        rows = self.execute_query(query % test_case_id)
-        return [TestStep(**row) for row in rows] if rows else []
+    def get_test_steps(self) -> List[Step]:
+        query = "SELECT * FROM TestSteps WHERE Status = 1"
+        rows = self.execute_query(query)
+        return self.filter_fields(rows, Step)
 
-    def get_test_steps_by_case_id(self, test_case_id: int) -> List[TestStepGetter]:
-        query = self.generate_select_query(TestStepGetter, "TestSteps",
+    def get_test_steps_by_case_id(self, test_case_id: int) -> List[StepGetter]:
+        query = self.generate_select_query(StepGetter, "TestSteps",
                                            "TestCaseID")
         rows = self.execute_query(query, (test_case_id,))
-        return [TestStepGetter(**row) for row in rows] if rows else []
+        return self.filter_fields(rows, StepGetter)
 
-    def get_latest_step(self, test_case_id: int) -> Optional[TestStep]:
+    def get_latest_step(self, test_case_id: int) -> Optional[Step]:
         query = "SELECT * FROM TestSteps WHERE TestCaseID = %s ORDER BY StepNumber DESC LIMIT 1"
         rows = self.execute_query(query, (test_case_id,))
-        return TestStep(**rows[0]) if rows else None
+        return self.filter_single(rows, Step)
 
-    def insert_test_step(self, test_step: TestStep) -> int:
+    def insert_test_step(self, test_step: Step) -> int:
         query, values = self.generate_insert_query(test_step, "TestSteps")
         return self.execute_insert(query, tuple(values))
 
-    def update_test_step(self, test_step: TestStepUpdate) -> int:
+    def update_test_step(self, test_step: StepUpdate) -> int:
         query, values = self.generate_update_query(test_step, "TestSteps",
                                                    "StepID")
         return self.execute_update(query, tuple(values))
 
-    def insert_test_step_as_transaction(self, test_step: TestStep,
+    def insert_test_step_as_transaction(self, test_step: Step,
                                         connection: Optional[Connection] = None,
                                         last_trans: bool = False):
         query, values = self.generate_insert_query(test_step, "TestSteps")

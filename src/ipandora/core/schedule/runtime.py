@@ -31,7 +31,7 @@ class Runtime(object):
 				self._user = SystemInfo().user
 			return self._user
 
-		@user.setter
+		@user.set
 		def user(self, value):
 			self._user = value
 
@@ -48,7 +48,7 @@ class Runtime(object):
 				self._host = DictUtils.safe_get(Runtime.settings, 'mysql', 'host')
 			return self._host
 
-		@host.setter
+		@host.set
 		def host(self, value):
 			self._host = value
 
@@ -58,7 +58,7 @@ class Runtime(object):
 				self._username = DictUtils.safe_get(Runtime.settings, 'mysql', 'username')
 			return self._username
 
-		@username.setter
+		@username.set
 		def username(self, value):
 			self._username = value
 
@@ -70,7 +70,7 @@ class Runtime(object):
 					self._password = CryptoFactory().aes.decrypt(self._password)
 			return self._password
 
-		@password.setter
+		@password.set
 		def password(self, value):
 			self._password = value
 
@@ -80,7 +80,7 @@ class Runtime(object):
 				self._port = DictUtils.safe_get(Runtime.settings, 'mysql', 'port')
 			return self._port
 
-		@port.setter
+		@port.set
 		def port(self, value):
 			self._port = value
 
@@ -90,7 +90,7 @@ class Runtime(object):
 				self._database = DictUtils.safe_get(Runtime.settings, 'mysql', 'database')
 			return self._database
 
-		@database.setter
+		@database.set
 		def database(self, value):
 			self._database = value
 
@@ -107,7 +107,7 @@ class Runtime(object):
 				self._host = DictUtils.safe_get(Runtime.settings, 'email', 'host')
 			return self._host
 
-		@host.setter
+		@host.set
 		def host(self, value):
 			self._host = value
 
@@ -117,7 +117,7 @@ class Runtime(object):
 				self._username = DictUtils.safe_get(Runtime.settings, 'email', 'username')
 			return self._username
 
-		@username.setter
+		@username.set
 		def username(self, value):
 			self._username = value
 
@@ -129,7 +129,7 @@ class Runtime(object):
 				self._password = CryptoFactory().aes.decrypt(self._password)
 			return self._password
 
-		@password.setter
+		@password.set
 		def password(self, value):
 			self._password = value
 
@@ -139,7 +139,7 @@ class Runtime(object):
 				self._port = DictUtils.safe_get(Runtime.settings, 'email', 'port')
 			return self._port
 
-		@port.setter
+		@port.set
 		def port(self, value):
 			self._port = value
 
@@ -150,7 +150,7 @@ class Runtime(object):
 				self._recipients = _tmp if _tmp else []
 			return self._recipients
 
-		@recipients.setter
+		@recipients.set
 		def recipients(self, value):
 			self._recipients = value
 
@@ -163,7 +163,7 @@ class Runtime(object):
 				self._pandora_path = PathUtils().pandora_path
 			return self._pandora_path
 
-		@pandora_path.setter
+		@pandora_path.set
 		def pandora_path(self, value):
 			self._pandora_path = value
 
@@ -191,7 +191,7 @@ class Runtime(object):
 		def cur_case_name(self) -> str:
 			return self._cur_case_name
 
-		@cur_case_name.setter
+		@cur_case_name.set
 		def cur_case_name(self, case_name):
 			self._cur_case_name = case_name
 
@@ -199,7 +199,7 @@ class Runtime(object):
 		def steps(self) -> list:
 			return self._case_steps.pop(self.cur_case_name, [])
 
-		@steps.setter
+		@steps.set
 		def steps(self, step: list):
 			if step:
 				_l = self._case_steps.setdefault(self.cur_case_name, [])
@@ -214,7 +214,7 @@ class Runtime(object):
 		def project_name(self):
 			return self._project_name
 
-		@project_name.setter
+		@project_name.set
 		def project_name(self, v):
 			self._project_name = v
 
@@ -298,7 +298,7 @@ class Runtime(object):
 			return self._only_api \
 				or self.getMetaData(option='only_api', default=False)
 
-		@only_api.setter
+		@only_api.set
 		def only_api(self, v: bool = False):
 			self._only_api = v
 
@@ -328,7 +328,7 @@ class Runtime(object):
 		def is_pytest(self):
 			return self._is_pytest
 
-		@is_pytest.setter
+		@is_pytest.set
 		def is_pytest(self, v):
 			self._is_pytest = v
 
@@ -336,7 +336,7 @@ class Runtime(object):
 		def is_locust(self):
 			return self._is_locust
 
-		@is_locust.setter
+		@is_locust.set
 		def is_locust(self, v):
 			self._is_locust = v
 
@@ -363,6 +363,6 @@ class Runtime(object):
 		def platform(self):
 			return self._platform or 'ui'
 
-		@platform.setter
+		@platform.set
 		def platform(self, v: str):
 			self._platform = v.lower()

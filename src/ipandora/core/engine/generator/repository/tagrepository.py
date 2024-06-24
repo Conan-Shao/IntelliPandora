@@ -14,32 +14,32 @@ from ipandora.utils.log import logger
 class TagRepository(BaseRepository):
 
     def get_tags(self) -> List[Tag]:
-        query = "SELECT * FROM Tags"
+        query = "SELECT * FROM Tags WHERE Status = 1"
         rows = self.execute_query(query)
-        return [Tag(**row) for row in rows] if rows else []
+        return self.filter_fields(rows, Tag)
 
     def get_tags_by_category_id(self, category_id: int) -> List[Tag]:
-        query = "SELECT * FROM Tags WHERE CategoryId = %s"
+        query = "SELECT * FROM Tags WHERE CategoryId = %s AND Status = 1"
         rows = self.execute_query(query % category_id)
-        return [Tag(**row) for row in rows] if rows else []
+        return self.filter_fields(rows, Tag)
 
     def get_tags_by_name(self, tag_name: str) -> List[Tag]:
-        query = "SELECT * FROM Tags WHERE TagName = '%s'"
+        query = "SELECT * FROM Tags WHERE TagName = '%s' AND Status = 1"
         rows = self.execute_query(query % tag_name)
-        return [Tag(**row) for row in rows] if rows else []
+        return self.filter_fields(rows, Tag)
 
     def get_tags_by_description(self, description: str) -> List[Tag]:
         query = "SELECT * FROM Tags WHERE Description LIKE %s"
         rows = self.execute_query(query % f"%{description}%")
-        return [Tag(**row) for row in rows] if rows else []
+        return self.filter_fields(rows, Tag)
 
     def get_tag_by_id(self, tag_id: int) -> Optional[Tag]:
-        query = "SELECT * FROM Tags WHERE TagID = %s"
+        query = "SELECT * FROM Tags WHERE TagID = %s AND Status = 1"
         rows = self.execute_query(query % tag_id)
-        return Tag(**rows[0]) if rows else []
+        return self.filter_single(rows, Tag)
 
     def get_tag_id_by_name(self, tag_name: str) -> Optional[int]:
-        query = "SELECT TagID FROM Tags WHERE TagName = %s"
+        query = "SELECT TagID FROM Tags WHERE UPPER(TagName) = UPPER(%s) AND Status = 1"
         rows = self.execute_query(query, (tag_name,))
         return rows[0]['TagID'] if rows else None
 

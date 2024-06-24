@@ -4,24 +4,26 @@
 @File  : baserepository.py
 @Time  : 2024-05-23
 """
-from typing import Any, Optional, Tuple
+from dataclasses import fields
+from typing import Any, Dict, Tuple, List, Optional, TypeVar, Type
 from pymysql.connections import Connection
 from pymysql.err import MySQLError
 from ipandora.common.mysqlaction import MysqlAction
 from ipandora.common.timeutils import TimeUtils
 from ipandora.core.schedule.runtime import Runtime
 from ipandora.utils.log import logger
+T = TypeVar('T')
 
 
 class BaseRepository(object):
     def __init__(self, db_config = None):
-        _tmp_config = {'host': GTRuntime.Mysql.host,
-                       'username': GTRuntime.Mysql.username,
-                       'password': GTRuntime.Mysql.password,
-                       'database': GTRuntime.Mysql.database,
-                       'port': GTRuntime.Mysql.port}
+        _tmp_config = {'host': Runtime.Mysql.host,
+                       'username': Runtime.Mysql.username,
+                       'password': Runtime.Mysql.password,
+                       'database': Runtime.Mysql.database,
+                       'port': Runtime.Mysql.port}
         self.db_config = db_config if db_config else _tmp_config
-        self.modified_by = GTRuntime.User.user
+        self.modified_by = Runtime.User.user
 
     def execute_query(self, query: str, params: tuple = ()) -> Any:
         try:
@@ -125,7 +127,10 @@ class BaseRepository(object):
 
             # Modify params based on query type
             if query.strip().lower().startswith('insert'):
-                params_with_modified_by = params + (self.modified_by,)
+                if query.count('%s') - len(params) == 1:
+                    params_with_modified_by = params + (self.modified_by,)
+                else:
+                    params_with_modified_by = params
                 cursor.execute(query, params_with_modified_by)
                 result = cursor.lastrowid
             elif query.strip().lower().startswith('update'):
@@ -152,38 +157,40 @@ class BaseRepository(object):
     @staticmethod
     def _get_fields_and_values(obj, operation= "insert", exclude_fields=None):
         exclude_fields = exclude_fields or []
-        fields = []
+        _fields = []
         values = []
         if isinstance(obj, type):
             if "__annotations__" in dir(obj):
                 for attr, value in obj.__annotations__.items():
                     if attr not in exclude_fields:
-                        fields.append(attr)
+                        _fields.append(attr)
         else:
             for attr, value in obj.__dict__.items():
                 # Add any other necessary checks or transformations
                 if value is not None and attr not in exclude_fields:
                     if operation == "update":
-                        fields.append(f"{attr} = %s")
+                        _fields.append(f"{attr} = %s")
                     elif operation == "insert":
-                        fields.append(attr)
+                        _fields.append(attr)
                     values.append(value)
-        return fields, values
+        return _fields, values
 
     def generate_insert_query(self, obj, table_name):
-        fields, values = self._get_fields_and_values(obj, 'insert')
+        _fields, values = self._get_fields_and_values(obj, 'insert')
+        if 'ModifiedBy' not in _fields:
+            _fields.append('ModifiedBy')
         query = f"""
-            INSERT INTO {table_name} ({', '.join(fields)}, ModifiedBy)
-            VALUES ({', '.join(['%s'] * len(values))}, %s)
+            INSERT INTO {table_name} ({', '.join(_fields)})
+            VALUES ({', '.join(['%s'] * len(_fields))})
         """
         return query, values
 
     def generate_update_query(self, obj, table_name, primary_key_field):
-        fields, values = self._get_fields_and_values(obj, 'update',
-                                                     exclude_fields=[primary_key_field])
+        _fields, values = self._get_fields_and_values(obj, 'update',
+                                                      exclude_fields=[primary_key_field])
         query = f"""
             UPDATE {table_name}
-            SET {', '.join(fields)}, UpdatedTime = %s, ModifiedBy = %s
+            SET {', '.join(_fields)}, UpdatedTime = %s, ModifiedBy = %s
             WHERE {primary_key_field} = %s
         """
         # Add the primary key value to the values list
@@ -191,18 +198,32 @@ class BaseRepository(object):
         return query, values
 
     def generate_select_query(self, obj, table_name, primary_key_field=None):
-        fields, values = self._get_fields_and_values(obj, 'select', primary_key_field)
-        field_str = ', '.join(fields)
+        _fields, values = self._get_fields_and_values(obj, 'select', primary_key_field)
+        field_str = ', '.join(_fields)
+        query = f"""SELECT {field_str} FROM {table_name} WHERE Status = 1"""
         if primary_key_field:
-            query = f"""SELECT {field_str} FROM {table_name} WHERE {primary_key_field} = %s"""
-        else:
-            query = f"""SELECT {field_str} FROM {table_name}"""
+            query += f""" AND {primary_key_field} = %s"""
         return query
+
+    @staticmethod
+    def filter_fields(rows: List[Dict[str, Any]], dataclass_type: Type[T]) -> List[T]:
+        dataclass_fields = {field.name for field in fields(dataclass_type)}
+        filtered_rows = [{key: value for key, value in row.items() if key in dataclass_fields}
+                         for row in rows]
+        return [dataclass_type(**row) for row in filtered_rows] if filtered_rows else []
+
+    @staticmethod
+    def filter_single(rows: List[Dict[str, Any]], dataclass_type: Type[T]) -> Optional[T]:
+        if not rows:
+            return None
+        dataclass_fields = {field.name for field in fields(dataclass_type)}
+        filtered_row = {key: value for key, value in rows[0].items() if key in dataclass_fields}
+        return dataclass_type(**filtered_row) if filtered_row else None
 
 
 if __name__ == '__main__':
-    from ipandora.core.engine.generator.model.data.testcase import TestAttachmentGetter
-    resp = BaseRepository().generate_select_query(TestAttachmentGetter,
+    from pandoragt.core.engine.generator.model.data.case import AttachmentGetter
+    resp = BaseRepository().generate_select_query(AttachmentGetter,
                                                   'TestCaseAttachments')
     print(resp)
 

@@ -14,38 +14,38 @@ from ipandora.utils.log import logger
 
 class TestCaseTagsRepository(BaseRepository):
 
-    def get_test_case_tags_by_test_case_id(self, test_case_id: int) -> List[TestCaseTag]:
-        query = "SELECT * FROM TestCaseTags WHERE TestCaseID = %s"
+    def get_test_case_tags_by_test_case_id(self, test_case_id: int) -> List[CaseTag]:
+        query = "SELECT * FROM TestCaseTags WHERE TestCaseID = %s AND Status = 1"
         rows = self.execute_query(query % test_case_id)
-        return [TestCaseTag(**row) for row in rows] if rows else []
+        return self.filter_fields(rows, CaseTag)
 
-    def get_test_case_tags_by_tag_id(self, tag_id: int) -> List[TestCaseTag]:
-        query = "SELECT * FROM TestCaseTags WHERE TagID = %s"
+    def get_test_case_tags_by_tag_id(self, tag_id: int) -> List[CaseTag]:
+        query = "SELECT * FROM TestCaseTags WHERE TagID = %s AND Status = 1"
         rows = self.execute_query(query % tag_id)
-        return [TestCaseTag(**row) for row in rows] if rows else []
+        return self.filter_fields(rows, CaseTag)
 
     def get_test_case_ids_by_tag_id(self, tag_id: int) -> List[int]:
-        query = "SELECT TestCaseID FROM TestCaseTags WHERE TagID = %s"
+        query = "SELECT TestCaseID FROM TestCaseTags WHERE TagID = %s AND Status = 1"
         rows = self.execute_query(query, (tag_id,))
         return [row['TestCaseID'] for row in rows] if rows else []
 
-    def insert_test_case_tag(self, test_case_tag: TestCaseTag) -> int:
+    def insert_test_case_tag(self, test_case_tag: CaseTag) -> int:
         query, values = self.generate_insert_query(test_case_tag, "TestCaseTags")
         return self.execute_insert(query, tuple(values))
 
-    def update_test_case_tag(self, test_case_tag: TestCaseTagUpdate) -> int:
+    def update_test_case_tag(self, test_case_tag: CaseTagUpdate) -> int:
         fields, values = self._get_fields_and_values(test_case_tag, "TestCaseID")
         query = f"""
             UPDATE TestCaseTags
             SET {', '.join(fields)}, UpdatedTime = %s, ModifiedBy = %s
-            WHERE TestCaseTagID = %s
+            WHERE TestCaseTagID = %s AND Status = 1
         """
         values.append(test_case_tag.TestCaseID)
         query, values = self.generate_update_query(test_case_tag, "TestCaseTags",
                                                    "TestCaseID")
         return self.execute_update(query, tuple(values))
 
-    def insert_test_case_tag_as_transaction(self, test_case_tag: TestCaseTag,
+    def insert_test_case_tag_as_transaction(self, test_case_tag: CaseTag,
                                             connection: Optional[Connection] = None,
                                             last_trans: bool = False):
         query, values = self.generate_insert_query(test_case_tag, "TestCaseTags")

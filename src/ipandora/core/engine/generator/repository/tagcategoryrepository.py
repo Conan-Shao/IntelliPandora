@@ -15,24 +15,24 @@ from ipandora.utils.log import logger
 class TagCategoryRepository(BaseRepository):
 
     def get_tag_categories(self) -> List[TagCategory]:
-        query = "SELECT * FROM TagCategories"
+        query = "SELECT * FROM TagCategories WHERE Status = 1"
         rows = self.execute_query(query)
-        return [TagCategory(**row) for row in rows] if rows else []
+        return self.filter_fields(rows, TagCategory)
 
     def get_tag_category_by_id(self, category_id: int) -> Optional[TagCategory]:
-        query = "SELECT * FROM TagCategories WHERE CategoryId = %s"
+        query = "SELECT * FROM TagCategories WHERE CategoryId = %s AND Status = 1"
         rows = self.execute_query(query, (category_id,))
-        return TagCategory(**rows[0]) if rows else None
+        return self.filter_single(rows, TagCategory)
 
     def get_tag_categories_by_name(self, category_name: str) -> List[TagCategory]:
-        query = "SELECT * FROM TagCategories WHERE CategoryName = %s"
+        query = "SELECT * FROM TagCategories WHERE CategoryName = %s AND Status = 1"
         rows = self.execute_query(query, (category_name,))
-        return [TagCategory(**row) for row in rows] if rows else []
+        return self.filter_fields(rows, TagCategory)
 
     def get_tag_categories_by_description(self, description: str) -> List[TagCategory]:
         query = "SELECT * FROM TagCategories WHERE Description LIKE %s"
         rows = self.execute_query(query, (f"%{description}%",))
-        return [TagCategory(**row) for row in rows] if rows else []
+        return self.filter_fields(rows, TagCategory)
 
     def insert_tag_category(self, tag_category: TagCategory) -> int:
         query, values = self.generate_insert_query(tag_category, "TagCategories")

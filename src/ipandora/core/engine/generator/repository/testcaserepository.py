@@ -7,48 +7,53 @@
 from typing import List, Optional
 from pymysql.connections import Connection
 from ipandora.core.base.classwrap.attrvaluesplit import AttrValueSplit
-from ipandora.core.engine.generator.model.data.testcase import (TestCase, TestCaseUpdate,
-                                                                 TestCaseFull)
+from ipandora.core.engine.generator.model.data.case import (Case, CaseUpdate, TestCaseFull)
 from ipandora.core.base.repository.baserepository import BaseRepository
 from ipandora.utils.log import logger
 
 
 class TestCaseRepository(BaseRepository):
 
-    def get_test_cases(self) -> List[TestCase]:
-        query = "SELECT * FROM TestCases"
+    def get_test_cases(self) -> List[Case]:
+        query = "SELECT * FROM TestCases WHERE Status=1"
         rows = self.execute_query(query)
-        return [TestCase(**row) for row in rows] if rows else []
+        return self.filter_fields(rows, Case)
+        # return [Case(**row) for row in rows] if rows else []
 
-    def get_test_case_by_id(self, test_case_id: int) -> Optional[TestCase]:
-        query = "SELECT * FROM TestCases WHERE TestCaseID = %s"
+    def get_test_case_by_id(self, test_case_id: int) -> Optional[Case]:
+        query = "SELECT * FROM TestCases WHERE TestCaseID = %s AND Status=1"
         rows = self.execute_query(query, (test_case_id,))
-        return TestCase(**rows[0]) if rows else None
+        return self.filter_single(rows, Case)
 
-    def get_test_cases_by_is_automated(self, is_automated: bool) -> List[TestCase]:
+    def get_test_case_by_excel_case_id(self, excel_case_id: int) -> Optional[Case]:
+        query = "SELECT * FROM TestCases WHERE ExcelCaseID = %s AND Status=1"
+        rows = self.execute_query(query, (excel_case_id,))
+        return self.filter_single(rows, Case)
+
+    def get_test_cases_by_is_automated(self, is_automated: bool) -> List[Case]:
         """
         Get test cases by is_automated
         :param is_automated: True, return automated test cases; False, return manual test cases
         :return:
         """
-        query = "SELECT * FROM TestCases WHERE IsAutomated = %s"
+        query = "SELECT * FROM TestCases WHERE IsAutomated = %s AND Status=1"
         rows = self.execute_query(query, (int(is_automated),))
-        return [TestCase(**row) for row in rows] if rows else []
+        return self.filter_fields(rows, Case)
 
-    def get_automated_test_cases(self) -> List[TestCase]:
+    def get_automated_test_cases(self) -> List[Case]:
         return self.get_test_cases_by_is_automated(True)
 
-    def get_test_cases_by_title(self, title: str) -> List[TestCase]:
-        query = "SELECT * FROM TestCases WHERE Title = %s"
+    def get_test_cases_by_title(self, title: str) -> List[Case]:
+        query = "SELECT * FROM TestCases WHERE Title = %s AND Status=1"
         rows = self.execute_query(query, (title,))
-        return [TestCase(**row) for row in rows] if rows else []
+        return self.filter_fields(rows, Case)
 
-    def get_test_cases_by_submodule_id(self, submodule_id: int) -> List[TestCase]:
-        query = "SELECT * FROM TestCases WHERE SubmoduleID = %s"
+    def get_test_cases_by_submodule_id(self, submodule_id: int) -> List[Case]:
+        query = "SELECT * FROM TestCases WHERE SubmoduleID = %s AND Status=1"
         rows = self.execute_query(query, (submodule_id,))
-        return [TestCase(**row) for row in rows] if rows else []
+        return [Case(**row) for row in rows] if rows else []
 
-    def get_test_cases_by_tag_id(self, tag_id: int) -> List[TestCase]:
+    def get_test_cases_by_tag_id(self, tag_id: int) -> List[Case]:
         """
         Get test cases by tag id
         :param tag_id:
@@ -57,12 +62,12 @@ class TestCaseRepository(BaseRepository):
         query = """
             SELECT DISTINCT tc.* FROM TestCases tc
             JOIN TestCaseTags tct ON tc.TestCaseID = tct.TestCaseID
-            WHERE tct.TagID = %s
+            WHERE tct.TagID = %s AND tc.Status=1
         """
         rows = self.execute_query(query, (tag_id,))
-        return [TestCase(**row) for row in rows] if rows else []
+        return self.filter_fields(rows, Case)
 
-    def get_test_cases_by_tag_ids(self, tag_ids: List[int]) -> List[TestCase]:
+    def get_test_cases_by_tag_ids(self, tag_ids: List[int]) -> List[Case]:
         """
         Get test cases by tag ids, return test cases that contain one of the tag ids
         :param tag_ids:
@@ -71,12 +76,12 @@ class TestCaseRepository(BaseRepository):
         query = """
             SELECT DISTINCT tc.* FROM TestCases tc
             JOIN TestCaseTags tct ON tc.TestCaseID = tct.TestCaseID
-            WHERE tct.TagID IN (%s)
+            WHERE tct.TagID IN (%s) AND tc.Status=1
         """ % ','.join(['%s'] * len(tag_ids))
         rows = self.execute_query(query, tuple(tag_ids))
-        return [TestCase(**row) for row in rows] if rows else []
+        return self.filter_fields(rows, Case)
 
-    def get_test_cases_by_exact_tag_ids(self, tag_ids: List[int]) -> List[TestCase]:
+    def get_test_cases_by_exact_tag_ids(self, tag_ids: List[int]) -> List[Case]:
         """
         Get test cases by tag ids, return test cases that tags exactly the same as the tag ids.
         :param tag_ids:
@@ -100,9 +105,9 @@ class TestCaseRepository(BaseRepository):
             ) tct ON tc.TestCaseID = tct.TestCaseID
         """
         rows = self.execute_query(query, tuple(tag_ids + [tag_count]))
-        return [TestCase(**row) for row in rows] if rows else []
+        return self.filter_fields(rows, Case)
 
-    def get_test_cases_by_contain_tag_ids(self, tag_ids: List[int]) -> List[TestCase]:
+    def get_test_cases_by_contain_tag_ids(self, tag_ids: List[int]) -> List[Case]:
         """
         Get test cases by tag ids, return test cases that contain all the tag ids
         :param tag_ids:
@@ -117,10 +122,10 @@ class TestCaseRepository(BaseRepository):
             HAVING COUNT(DISTINCT tct.TagID) = %s
         """
         rows = self.execute_query(query, tuple(tag_ids + [len(tag_ids)]))
-        return [TestCase(**row) for row in rows] if rows else []
+        return self.filter_fields(rows, Case)
 
     def get_automated_cases_by_tag_ids(self, tag_ids: List[int],
-                                       is_automated: bool) -> List[TestCase]:
+                                       is_automated: bool) -> List[Case]:
         tag_count = len(tag_ids)
         tag_ids_str = ','.join(['%s'] * tag_count)
         query = f"""
@@ -137,10 +142,10 @@ class TestCaseRepository(BaseRepository):
                     WHERE innerTCT.TestCaseID = TestCaseTags.TestCaseID
                 )
             ) tct ON tc.TestCaseID = tct.TestCaseID
-            WHERE tc.IsAutomated = %s
+            WHERE tc.IsAutomated = %s AND tc.Status = 1
         """
         rows = self.execute_query(query, tuple(tag_ids + [tag_count, int(is_automated)]))
-        return [TestCase(**row) for row in rows] if rows else []
+        return self.filter_fields(rows, Case)
 
     def get_automated_case_id_by_tag_id(self, tag_id: int) -> List[int]:
         """
@@ -152,10 +157,20 @@ class TestCaseRepository(BaseRepository):
             SELECT DISTINCT tc.TestCaseID 
             FROM TestCases tc
             JOIN TestCaseTags tct ON tc.TestCaseID = tct.TestCaseID
-            WHERE tct.TagID = %s AND tc.IsAutomated = 1
+            WHERE tct.TagID = %s AND tc.IsAutomated = 1 AND tc.Status = 1
         """
         rows = self.execute_query(query, (tag_id,))
         return [row['TestCaseID'] for row in rows] if rows else []
+
+    def get_test_cases_by_source(self, source: str) -> List[Case]:
+        query = "SELECT * FROM TestCases WHERE Source = %s AND Status=1"
+        rows = self.execute_query(query, (source,))
+        return self.filter_fields(rows, Case)
+
+    def get_automated_test_cases_by_source(self, source: str) -> List[Case]:
+        query = "SELECT * FROM TestCases WHERE Source = %s AND Status=1 AND IsAutomated=1"
+        rows = self.execute_query(query, (source,))
+        return self.filter_fields(rows, Case)
 
     def get_full_cases(self, is_automated: Optional[bool] = None) -> List[TestCaseFull]:
         """
@@ -167,7 +182,7 @@ class TestCaseRepository(BaseRepository):
         query = """
             SELECT 
                 tc.TestCaseID, tc.Title, m.ModuleID, m.ModuleName, sm.SubmoduleID, sm.SubmoduleName,
-                tc.Description, tc.Precondition, tc.IsAutomated, 
+                tc.Description, tc.Precondition, tc.IsAutomated, tc.Source,
                 GROUP_CONCAT(CONCAT(tg.CategoryName, ':', t.TagName) SEPARATOR ', ') as Tags, 
                 tc.ModifiedBy, tc.CreatedTime, tc.UpdatedTime
             FROM 
@@ -183,8 +198,7 @@ class TestCaseRepository(BaseRepository):
             LEFT JOIN 
                 TagCategories tg ON t.CategoryId = tg.CategoryId
             WHERE 
-                1=1
-        """
+                tc.Status = 1"""
         params = []
         if is_automated is not None:
             query += " AND tc.IsAutomated = %s"
@@ -192,9 +206,10 @@ class TestCaseRepository(BaseRepository):
         query += """
             GROUP BY 
                 tc.TestCaseID, m.ModuleID, m.ModuleName, sm.SubmoduleID, sm.SubmoduleName,
-                tc.Description, tc.Precondition, tc.IsAutomated, 
-                tc.ModifiedBy, tc.CreatedTime, tc.UpdatedTime
-        """
+                tc.Description, tc.Precondition, tc.IsAutomated, tc.ModifiedBy, tc.Source,
+                tc.CreatedTime, tc.UpdatedTime
+                """
+        print(query)
         rows = self.execute_query(query, tuple(params))
         result = []
         if rows:
@@ -213,7 +228,7 @@ class TestCaseRepository(BaseRepository):
         query = """
             SELECT 
                 tc.TestCaseID, tc.Title, m.ModuleID, m.ModuleName, sm.SubmoduleID, sm.SubmoduleName,
-                tc.Description, tc.Precondition, tc.IsAutomated, 
+                tc.Description, tc.Precondition, tc.IsAutomated, tc.Source, tc.ExcelCaseID,
                 GROUP_CONCAT(CONCAT(tg.CategoryName, ':', t.TagName) SEPARATOR ', ') as Tags, 
                 tc.ModifiedBy, tc.CreatedTime, tc.UpdatedTime
             FROM 
@@ -229,10 +244,10 @@ class TestCaseRepository(BaseRepository):
             LEFT JOIN 
                 TagCategories tg ON t.CategoryId = tg.CategoryId
             WHERE 
-                tc.TestCaseID = %s
+                tc.TestCaseID = %s and tc.Status = 1
             GROUP BY 
                 tc.TestCaseID, m.ModuleID, m.ModuleName, sm.SubmoduleID, sm.SubmoduleName,
-                tc.Description, tc.Precondition, tc.IsAutomated, 
+                tc.Description, tc.Precondition, tc.IsAutomated, tc.Source, tc.ExcelCaseID,
                 tc.ModifiedBy, tc.CreatedTime, tc.UpdatedTime
         """
         rows = self.execute_query(query, (test_case_id,))
@@ -243,16 +258,16 @@ class TestCaseRepository(BaseRepository):
             return TestCaseFull(**row, Tags=tags)
         return None
 
-    def insert_test_case(self, test_case: TestCase) -> int:
+    def insert_test_case(self, test_case: Case) -> int:
         query, values = self.generate_insert_query(test_case, "TestCases")
         return self.execute_insert(query, tuple(values))
 
-    def update_test_case(self, case_update: TestCaseUpdate) -> int:
+    def update_test_case(self, case_update: CaseUpdate) -> int:
         query, values = self.generate_update_query(case_update, "TestCases",
                                                    "TestCaseID")
         return self.execute_update(query, tuple(values))
 
-    def insert_test_case_as_transaction(self, test_case: TestCase,
+    def insert_test_case_as_transaction(self, test_case: Case,
                                         connection: Optional[Connection] = None,
                                         last_trans: bool = False):
         """

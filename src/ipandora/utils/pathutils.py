@@ -32,15 +32,15 @@ class PathUtils(object):
     @staticmethod
     def get_pandora_path():
         """
-        return the abs path of ipandora lib, not the code repo
+        return the abs path of pandoragt lib, not the code repo
         :return:
         """
         here = PathUtils.file_path()
         here_list = here.split('/')
-        if 'ipandora' not in here_list:
+        if 'pandoragt' not in here_list:
             index = -1
         else:
-            index = here_list.index('ipandora')
+            index = here_list.index('pandoragt')
         return '/'.join(here_list[:index+1])
 
     @staticmethod
@@ -100,6 +100,25 @@ class PathUtils(object):
                         (extension_pattern is None or extension_pattern == ext)):
                     filtered_files.append(filename)
         return filtered_files
+
+    @staticmethod
+    def join_paths_ignore_duplicates(base_path, relative_path):
+        """
+        Join paths ignore the duplicate
+        :param base_path:
+        :param relative_path:
+        :return:
+        """
+        # 去除基础路径的尾部斜杠
+        base_path = base_path.rstrip('/')
+        # 去除相对路径的头部斜杠
+        relative_path = relative_path.lstrip('/')
+        # 检查相对路径是否以基础路径的末尾部分开头
+        if relative_path.startswith(os.path.basename(base_path) + '/'):
+            # 如果是，则去除相对路径的重复部分
+            relative_path = relative_path[len(os.path.basename(base_path) + '/'):]
+        # 拼接路径
+        return os.path.join(base_path, relative_path)
 
 
 if __name__ == '__main__':

@@ -1,6 +1,7 @@
 v1.1.0
 ==============
-* add TestAttachmentRepository
+* add service for case and robot
+* add AttachmentRepository
 
 v1.0.9
 ==============

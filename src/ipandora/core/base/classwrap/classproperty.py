@@ -39,7 +39,7 @@ class ClassProperty:
             raise AttributeError("can't set attribute")
         self.f_set.__func__(obj, value)
 
-    def setter(self, func):
+    def set(self, func):
         if not isinstance(func, (classmethod, staticmethod)):
             func = classmethod(func)
         self.f_set = func

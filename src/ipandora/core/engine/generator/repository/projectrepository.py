@@ -17,7 +17,7 @@ class ProjectRepository(BaseRepository):
     def get_projects(self) -> List[Project]:
         query = "SELECT * FROM Projects"
         rows = self.execute_query(query)
-        return [Project(**row) for row in rows] if rows else []
+        return self.filter_fields(rows, Project)
 
     def insert_project(self, project: Project) -> int:
         query, values = self.generate_insert_query(project, "Projects")
