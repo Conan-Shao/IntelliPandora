@@ -6,7 +6,7 @@
 """
 import os
 import socket
-from typing import Union
+from typing import Union, List
 from ipandora.common.dictutils import DictUtils
 from ipandora.common.stringaction import StringAction
 from ipandora.common.systeminfo import SystemInfo
@@ -196,7 +196,7 @@ class Runtime(object):
 			self._cur_case_name = case_name
 
 		@classproperty
-		def steps(self) -> list:
+		def steps(self) -> List:
 			return self._case_steps.pop(self.cur_case_name, [])
 
 		@steps.set

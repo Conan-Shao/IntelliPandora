@@ -32,15 +32,15 @@ class PathUtils(object):
     @staticmethod
     def get_pandora_path():
         """
-        return the abs path of pandoragt lib, not the code repo
+        return the abs path of ipandora lib, not the code repo
         :return:
         """
         here = PathUtils.file_path()
         here_list = here.split('/')
-        if 'pandoragt' not in here_list:
+        if 'ipandora' not in here_list:
             index = -1
         else:
-            index = here_list.index('pandoragt')
+            index = here_list.index('ipandora')
         return '/'.join(here_list[:index+1])
 
     @staticmethod

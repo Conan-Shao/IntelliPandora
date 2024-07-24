@@ -222,7 +222,7 @@ class BaseRepository(object):
 
 
 if __name__ == '__main__':
-    from pandoragt.core.engine.generator.model.data.case import AttachmentGetter
+    from ipandora.core.engine.generator.model.data.case import AttachmentGetter
     resp = BaseRepository().generate_select_query(AttachmentGetter,
                                                   'TestCaseAttachments')
     print(resp)
