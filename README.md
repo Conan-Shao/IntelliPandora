@@ -10,7 +10,7 @@
 > 
 > 可适配Pytest、RobotFramework等执行框架
 >
-> 长远规划提供测试智能化的能力
+> 提供测试智能化的能力：可插拔AI Provider、MCP能力暴露、语义智能断言，详见 [AI化路线图](docs/dev/AI_Framework_Design.md)
 
 ## 二、使用
 

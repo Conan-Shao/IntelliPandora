@@ -66,6 +66,10 @@ setup(
     zip_safe=False,
     classifiers=CLASSIFIERS,
     scripts=['src/ipandora/run/runner.py'],
+    extras_require={
+        'ai': ['anthropic'],
+        'mcp': ['mcp'],
+    },
     entry_points={
         'console_scripts': [
             'ipandora = ipandora.run:command_line',

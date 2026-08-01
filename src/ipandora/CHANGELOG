@@ -1,3 +1,11 @@
+v1.2.0
+==============
+* add pluggable AI provider abstraction (core.engine.ai): AIProviderABC, AnthropicProvider, MockProvider, AIProviderFactory
+* add ai/mcp config sections and Runtime.Ai/Runtime.Mcp
+* add semantic assertion (Compare.cmp_semantic) backed by the AI provider
+* add MCP server (core.mcp) exposing list_test_cases/create_test_case/run_test_suite/get_test_report, plus `ipandora mcp` command
+* add docs/dev/AI_Framework_Design.md roadmap for test intelligence
+
 v1.1.0
 ==============
 * add service for case and robot

@@ -7,7 +7,7 @@
 from typing import List, Optional
 from pymysql.connections import Connection
 from ipandora.core.base.classwrap.attrvaluesplit import AttrValueSplit
-from ipandora.core.engine.generator.model.data.testcase import TestCaseTag, TestCaseTagUpdate
+from ipandora.core.engine.generator.model.data.case import CaseTag, CaseTagUpdate
 from ipandora.core.base.repository.baserepository import BaseRepository
 from ipandora.utils.log import logger
 

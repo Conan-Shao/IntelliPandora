@@ -39,6 +39,25 @@ class Compare(object):
         else:
             return type(self._b)(self._a) == self._b
 
+    def cmp_semantic(self):
+        """
+        AI-assisted semantic match: self._b is a natural-language expectation
+        (e.g. "looks like a valid UUID"), self._a is the actual value. Lets
+        assertions survive field/format drift that a syntactic comparator
+        would break on.
+        """
+        from ipandora.core.engine.ai.aifactory import AIProviderFactory
+        _prompt = (
+            'You are a strict test assertion judge. '
+            'Actual value: {}\n'
+            'Expected (natural language): {}\n'
+            'Does the actual value satisfy the expectation? '
+            'Answer with exactly one word: yes or no.'
+        ).format(self._a, self._b)
+        _answer = AIProviderFactory().default.chat(
+            messages=[{'role': 'user', 'content': _prompt}])
+        return str(_answer).strip().lower().startswith('yes')
+
 
 class Matcher(metaclass=ABCMeta):
     def __init__(self, superset: dict = None):

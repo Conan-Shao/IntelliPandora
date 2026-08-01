@@ -154,6 +154,111 @@ class Runtime(object):
 		def recipients(self, value):
 			self._recipients = value
 
+	class Ai(metaclass=ClassPropertyMeta):
+		_provider = ''
+		_api_key = ''
+		_model = ''
+		_base_url = ''
+		_timeout = 0
+		_max_tokens = 0
+
+		@classproperty
+		def provider(self):
+			if not self._provider:
+				self._provider = DictUtils.safe_get(Runtime.settings, 'ai', 'provider') or 'mock'
+			return self._provider
+
+		@provider.set
+		def provider(self, value):
+			self._provider = value
+
+		@classproperty
+		def api_key(self):
+			if not self._api_key:
+				self._api_key = DictUtils.safe_get(Runtime.settings, 'ai', 'api_key')
+				if self._api_key and StringAction.is_base64_encoded(self._api_key):
+					self._api_key = CryptoFactory().aes.decrypt(self._api_key)
+			return self._api_key
+
+		@api_key.set
+		def api_key(self, value):
+			self._api_key = value
+
+		@classproperty
+		def model(self):
+			if not self._model:
+				self._model = DictUtils.safe_get(Runtime.settings, 'ai', 'model')
+			return self._model
+
+		@model.set
+		def model(self, value):
+			self._model = value
+
+		@classproperty
+		def base_url(self):
+			if not self._base_url:
+				self._base_url = DictUtils.safe_get(Runtime.settings, 'ai', 'base_url')
+			return self._base_url
+
+		@base_url.set
+		def base_url(self, value):
+			self._base_url = value
+
+		@classproperty
+		def timeout(self):
+			if not self._timeout:
+				self._timeout = DictUtils.safe_get(Runtime.settings, 'ai', 'timeout') or 30
+			return self._timeout
+
+		@timeout.set
+		def timeout(self, value):
+			self._timeout = value
+
+		@classproperty
+		def max_tokens(self):
+			if not self._max_tokens:
+				self._max_tokens = DictUtils.safe_get(Runtime.settings, 'ai', 'max_tokens') or 1024
+			return self._max_tokens
+
+		@max_tokens.set
+		def max_tokens(self, value):
+			self._max_tokens = value
+
+	class Mcp(metaclass=ClassPropertyMeta):
+		_enabled = None
+		_name = ''
+		_transport = ''
+
+		@classproperty
+		def enabled(self):
+			if self._enabled is None:
+				self._enabled = DictUtils.safe_get(Runtime.settings, 'mcp', 'enabled')
+			return bool(self._enabled)
+
+		@enabled.set
+		def enabled(self, value):
+			self._enabled = value
+
+		@classproperty
+		def name(self):
+			if not self._name:
+				self._name = DictUtils.safe_get(Runtime.settings, 'mcp', 'name') or 'intellipandora'
+			return self._name
+
+		@name.set
+		def name(self, value):
+			self._name = value
+
+		@classproperty
+		def transport(self):
+			if not self._transport:
+				self._transport = DictUtils.safe_get(Runtime.settings, 'mcp', 'transport') or 'stdio'
+			return self._transport
+
+		@transport.set
+		def transport(self, value):
+			self._transport = value
+
 	class Path(metaclass=ClassPropertyMeta):
 		_pandora_path = ''
 
