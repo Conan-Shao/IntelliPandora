@@ -6,6 +6,7 @@ import os
 import sys
 from ipandora.core.schedule.runtime import Runtime
 from ipandora.core.protocol import Api
+from ipandora.utils.log import logger
 api = Api()
 
 
@@ -15,4 +16,4 @@ def init(product=''):
     Runtime.product = product
 
 
-__all__ = ['api', 'init']
+__all__ = ['api', 'init', 'logger']

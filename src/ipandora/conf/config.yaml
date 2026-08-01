@@ -16,3 +16,14 @@ email:
 addressesTo:
   recipients:
     - xxx@gmail.com
+ai:
+  provider: mock
+  api_key:
+  model: claude-sonnet-5
+  base_url:
+  timeout: 30
+  max_tokens: 1024
+mcp:
+  enabled: true
+  name: intellipandora
+  transport: stdio

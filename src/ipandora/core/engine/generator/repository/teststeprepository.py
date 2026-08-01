@@ -6,8 +6,8 @@
 """
 from typing import List, Optional
 from pymysql.connections import Connection
-from ipandora.core.engine.generator.model.data.testcase import (TestStep, TestStepUpdate,
-                                                                TestStepGetter)
+from ipandora.core.engine.generator.model.data.case import (Step, StepUpdate,
+                                                             StepGetter)
 from ipandora.core.base.repository.baserepository import BaseRepository
 from ipandora.utils.log import logger
 

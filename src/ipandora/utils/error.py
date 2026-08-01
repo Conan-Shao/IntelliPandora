@@ -58,3 +58,22 @@ class CryptoError(PandoraError):
     """
     Used when exception occurred while Encryption and decryption.
     """
+
+
+class AIError(PandoraError):
+    """
+    Base class for AI/LLM related errors.
+    """
+
+
+class AIProviderError(AIError):
+    """
+    Used when an AI provider fails to respond, is misconfigured, or its
+    SDK dependency is missing.
+    """
+
+
+class MCPError(PandoraError):
+    """
+    Used when exception occurred while serving or calling MCP tools.
+    """
