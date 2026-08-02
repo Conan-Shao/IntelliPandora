@@ -60,6 +60,14 @@ class CryptoError(PandoraError):
     """
 
 
+class PreconditionNotMet(PandoraError):
+    """
+    A test could not run because its setup was unsatisfied -- not because the
+    system under test is wrong. Raised by `require` when pytest is unavailable
+    to skip with; under pytest the test is skipped instead.
+    """
+
+
 class AIError(PandoraError):
     """
     Base class for AI/LLM related errors.

@@ -19,6 +19,7 @@ robotframework
 psutil
 Jinja2
 pymysql
+jsonschema
 
 # Optional AI-framework extras, see setup.py extras_require ([ai], [mcp])
 # anthropic

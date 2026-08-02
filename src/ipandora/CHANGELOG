@@ -1,3 +1,14 @@
+v1.4.0
+==============
+* add core/assertion -- the framework previously had no assertion layer at all, so a 500 response passed silently
+* Check is a value, not an exception: assert_all evaluates every judgement and reports all failures in one run
+* require() skips instead of failing, so unmet preconditions stay distinguishable from real defects
+* http checks: status_ok, status_is, header_is, json_has, json_equals, json_matches, schema_conforms
+* jsonpath accessor reads the raw body, sidestepping ResponseHandler.fetch_all() (returns key names for single-object payloads, raises on null/scalar)
+* json_matches reuses the existing Compare operators; all comparators stay deterministic and offline
+* declare jsonschema explicitly (was only a transitive dependency of mcp)
+* test_http_get now asserts status, which it never did before
+
 v1.3.0
 ==============
 * archive core/engine/generator stack (2737 LOC) -- removes the duplicate case/testcase data models, the unwired v2 robot render path, and the orphan repository modules; preserved at tag v1.1.0-archive
