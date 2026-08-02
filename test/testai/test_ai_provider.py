@@ -7,9 +7,9 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from ipandora.core.engine.ai.aifactory import AIProviderFactory
-from ipandora.core.engine.ai.anthropicprovider import AnthropicProvider
-from ipandora.core.engine.ai.mockprovider import MockProvider
+from ipandora.ai.aifactory import AIProviderFactory
+from ipandora.ai.anthropicprovider import AnthropicProvider
+from ipandora.ai.mockprovider import MockProvider
 from ipandora.utils.error import AIProviderError
 
 

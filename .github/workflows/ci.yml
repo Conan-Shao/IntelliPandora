@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install
+        run: pip install -e ".[ai,mcp]"
+
+      # Guards against the v1.1.0 class of bug: modules that raise at import
+      # time. No test touched them, so nothing caught it.
+      - name: Import smoke test
+        run: python scripts/smoke_import.py
+
+      - name: Tests
+        run: pytest test/ -v
+
+  # LLM support must stay optional. If deleting ai/ breaks the suite, then
+  # something in core/ grew a dependency on it.
+  # See docs/design/03-LLM接入边界.md
+  test-without-ai:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install without AI extra
+        run: pip install -e ".[mcp]"
+
+      - name: Remove ai/ and run the suite
+        run: |
+          rm -rf src/ipandora/ai test/testai
+          pytest test/ -v
+
+  layering:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # AST-based, so documentation that mentions ipandora.ai does not trip it
+      - name: core/ must not import ai/
+        run: python scripts/check_layering.py
+
+      - name: No hardcoded secrets
+        run: |
+          if grep -rnE --include='*.py' --include='*.yaml' \
+               "(password|passwd|api_key|token|secret)[[:space:]]*=[[:space:]]*['\"][^'\"]{6,}['\"]" \
+               src/ | grep -v 'os.environ\|getenv\|safe_get\|= *$'; then
+            echo "::error::hardcoded credential detected"
+            exit 1
+          fi
+          echo "OK: no hardcoded credentials"

@@ -74,22 +74,36 @@ class SessionManager(object):
 
     @classmethod
     def _get_session_obj(cls) -> Session:
-        if cls.name() not in cls._session_map:
-            cls.newSession()
-        return cls._session_map.get(cls.name())
+        # Check-then-act under the lock: two threads racing here would each
+        # build a session and one would be discarded along with its cookies.
+        _name = cls.name()
+        with cls._lock:
+            if _name not in cls._session_map:
+                cls._session_map[_name] = cls._build_session()
+            return cls._session_map.get(_name)
+
+    @classmethod
+    def _build_session(cls) -> Session:
+        """A session carrying the transport policy (retries, pool sizing)."""
+        from ipandora.core.protocol.http.transport import mount
+        _session = Session()
+        mount(_session.session)
+        return _session
 
     @classmethod
     def newSession(cls):
-        cls._lock.acquire()
-        _new_session = Session()
-        cls._session_map[cls.name()] = _new_session
-        cls._lock.release()
+        # `with` rather than acquire/release: the old form had no try/finally,
+        # so any exception in between left the RLock held forever.
+        with cls._lock:
+            _new_session = cls._build_session()
+            cls._session_map[cls.name()] = _new_session
         return _new_session.session
 
     @classmethod
     def name(cls):
         _c = current_thread()
-        return "{}_{}".format(_c.getName(), _c.ident)
+        # .name, not .getName() -- deprecated since 3.10
+        return "{}_{}".format(_c.name, _c.ident)
 
     @classmethod
     def setHeaders(cls, headers: dict = None):

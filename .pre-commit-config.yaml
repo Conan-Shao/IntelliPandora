@@ -1,0 +1,29 @@
+# Install once:  pip install pre-commit && pre-commit install
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: detect-private-key
+      - id: check-yaml
+      - id: check-merge-conflict
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: mixed-line-ending
+
+  - repo: local
+    hooks:
+      # A credential lived in runtime.py from the first public commit onward,
+      # shipped in every release and every PyPI sdist. This is here so that
+      # cannot happen again.
+      - id: no-hardcoded-secrets
+        name: no hardcoded secrets
+        entry: scripts/check_secrets.py
+        language: script
+        types: [text]
+        exclude: ^docs/
+
+      - id: core-must-not-import-ai
+        name: core/ must not import ai/
+        entry: scripts/check_layering.py
+        language: script
+        pass_filenames: false

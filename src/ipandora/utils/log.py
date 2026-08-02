@@ -72,6 +72,24 @@ def setup_logger():
 logger = setup_logger()
 
 
+def log_to_stderr():
+    """
+    Send console logging to stderr instead of stdout.
+
+    Required by anything that speaks a protocol over stdout -- an MCP stdio
+    server, for instance, where a stray log line lands in the middle of the
+    JSON-RPC stream and drops the connection. stderr is free for logs there by
+    convention.
+    """
+    _switched = 0
+    for _handler in logger.handlers:
+        if isinstance(_handler, logging.StreamHandler) and \
+                getattr(_handler, 'stream', None) is sys.stdout:
+            _handler.setStream(sys.stderr)
+            _switched += 1
+    return _switched
+
+
 class Log(object):
     name = 'default'
     END = '\033[0m'

@@ -1,3 +1,97 @@
+v1.10.0
+==============
+* add core/report: build report data from a run, then render it -- HTML and JSON come from the same model
+* strip secrets when the data is built, not when it is rendered; masking in a template would protect one view and leave the JSON behind it readable
+* redaction masks on two independent signals, field name and value shape, so a key pasted into a free-text error message is caught even though it has no field name
+* pass rate counts conclusive cases only -- a suite that skips half its cases is not 100% healthy
+* report separates cases that told us nothing (skipped/blocked/gap/error) from real results, and shows how many failures actually implicate the system under test
+* Status carries BLOCKED and GAP; neither is inferred from a run, since a run cannot report an assertion nobody wrote
+* HTML autoescapes: failure messages contain whatever the system under test returned
+* add build_report MCP tool
+* an unrecognised outcome maps to ERROR rather than PASS
+
+v1.9.0
+==============
+* add core/triage: rule-based failure classification -- defect, contract, environment, data, harness -- always on, deterministic, free
+* separate failures that implicate the system under test from those that implicate our harness, data or network; conflating them is what teaches people to ignore red builds
+* classification reuses Check.src recorded at assertion time: all-schema failures mean contract drift, derived means business logic
+* run_tests and explain_failure now carry the classification and a next step per failure
+* add optional LLM root-cause analysis in ai/triage.py, registered through a hook so core/ never imports ai/; it adds prose only and never decides a category
+* add ipandora.ai.enable()/disable(); importing the package is not enough to start spending
+* fix Runtime.Ai.max_calls_per_run being impossible to set to 0 -- the falsy check treated a configured 0 as unset and restored the default, disabling the strictest budget setting
+* rewrite scripts/check_layering.py to parse imports with AST; the previous text grep flagged documentation that merely mentions ipandora.ai, which core/triage necessarily does
+* strip pytest's (file, lineno, ...) wrapper from skip messages, which pointed at the assertion collector rather than anything useful
+
+v1.8.0
+==============
+* add core/runner: run(selector, env) -> RunResult, callable as a library
+* MCP run_tests/explain_failure/list_runs go through it; run_tests no longer shells out to pytest and parses stdout
+* output forks by audience: summary() carries failure names and assertion messages for an agent, full tracebacks stay in the run store behind explain_failure(run_id)
+* runs are archived by run_id under ~/.ipandora/runs (override with IPANDORA_RUNS_DIR), pruned to the last 50
+* use --import-mode=importlib so run() can be called repeatedly in one process; the default mode aborts on a second run over same-named test files
+* a selector that matches nothing, or any pytest exit code meaning the run did not happen, now reports ok=False instead of reading as "everything passed"
+* run(quiet=True) suppresses pytest output, and the MCP server routes logging to stderr under stdio transport -- both would otherwise corrupt the JSON-RPC stream
+* add log_to_stderr() for callers that own stdout
+
+v1.7.0
+==============
+* Runtime.Case is now thread-local: steps used to live in a process-global dict keyed by a single process-global case name, so under any concurrency every thread's steps landed under whichever name was set last
+* reading Runtime.Case.steps no longer pops -- the first reader used to empty it and a second read silently returned []; use drain_steps() to take them, clear() to reset
+* MultiHandle buffers per instance under a lock; the buffer used to be a class attribute shared by every instance and mutated unsynchronised from both the producer and the background thread
+* MultiHandle's background thread waits on an Event instead of busy-looping on sleep, so stop() takes effect immediately
+* deduplicate the atexit flush registration, which two package __init__ modules were each registering
+* add Runtime.reset() to drop memoised config, restoring defaults snapshotted at import; config overrides used to leak process-wide with no way to undo them
+
+v1.6.0
+==============
+* fix response parsing: a single-object payload was torn into its field values, null and scalar data raised TypeError, and a string body was shredded into characters
+* replace the namedtuple conversion with JsonObject, a dict that also supports attribute access -- resp.data.origin still works and resp.data['x-req-id'] now does too
+* remove the silent degradation where a Python-keyword or dashed JSON key made json_to_obj fall back to a plain dict, so the parsed type depended on the payload's key names and filter() then raised AttributeError
+* non-JSON bodies are returned as-is (str for text, bytes for binary) instead of being wrapped in a fake object
+* filter() skips fieldless items instead of raising, and accepts dicts, JsonObject and namedtuples alike
+* fetch_one() returns None rather than [] when there is no data
+* __len__ no longer calls the consuming fetch_all(), so len() has no side effects and does not clear an applied filter
+* AttributeError on a missing field now lists the fields that are present
+
+v1.5.0
+==============
+* add core/protocol/http/transport.py -- TransportPolicy, retry adapter, error translation
+* TLS verification now defaults to on; it was forced off for every https request, hiding certificate problems the suite should catch
+* every request now carries a timeout (10s connect / 30s read by default); previously ApiOption defaulted to 0 and nothing applied it, so a hung endpoint hung the suite forever
+* add retry with exponential backoff, restricted to idempotent methods and transient statuses (429/502/503/504); 500 is not retried
+* transport failures raise HttpTimeoutError / HttpConnectionError carrying url, method and elapsed, and also inherit the matching requests exception
+* mount an HTTPAdapter with configurable pool sizing on every session
+* add http section to config.yaml and Runtime.Http
+* fix SessionManager check-then-act happening outside the lock
+* fix SessionManager acquire/release without try/finally, which deadlocked the RLock permanently on any exception
+* fix deprecated current_thread().getName()
+
+v1.4.0
+==============
+* add core/assertion -- the framework previously had no assertion layer at all, so a 500 response passed silently
+* Check is a value, not an exception: assert_all evaluates every judgement and reports all failures in one run
+* require() skips instead of failing, so unmet preconditions stay distinguishable from real defects
+* http checks: status_ok, status_is, header_is, json_has, json_equals, json_matches, schema_conforms
+* jsonpath accessor reads the raw body, sidestepping ResponseHandler.fetch_all() (returns key names for single-object payloads, raises on null/scalar)
+* json_matches reuses the existing Compare operators; all comparators stay deterministic and offline
+* declare jsonschema explicitly (was only a transitive dependency of mcp)
+* test_http_get now asserts status, which it never did before
+
+v1.3.0
+==============
+* archive core/engine/generator stack (2737 LOC) -- removes the duplicate case/testcase data models, the unwired v2 robot render path, and the orphan repository modules; preserved at tag v1.1.0-archive
+* archive run/ scaffold subcommands (ipandoracommand, commands/project) and the duplicate runner.py script
+* remove hardcoded credentials from Runtime.Host; report host now comes from conf/config.yaml
+* remove Compare.cmp_semantic -- assertions must stay deterministic and offline
+* move ai/ out of core/ and default ai.enabled to false; add max_calls_per_run budget cap
+* trim MCP server to get_test_report; run_tests/explain_failure deferred until core/runner and core/triage exist
+* add CI (import smoke, test matrix, removable-ai gate, layering and secret checks)
+* add pre-commit config with secret scanning
+* fix Log.redInfo typo that crashed the CLI when no subcommand was given
+* fix UploadApiInfo building its URL at class-definition time
+* correct python_requires to >=3.10 (code already used PEP 604 unions)
+* normalize runtime.py indentation to 4 spaces
+
 v1.2.0
 ==============
 * add pluggable AI provider abstraction (core.engine.ai): AIProviderABC, AnthropicProvider, MockProvider, AIProviderFactory

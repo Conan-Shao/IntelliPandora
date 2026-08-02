@@ -2,6 +2,7 @@
 # @Author: Shao Feng
 # @File  : error.py
 # @Time  : 2024-04-17
+from requests import exceptions as _requests_exceptions
 class PandoraError(Exception):
     """Base class for FusionPandora Framework errors.
 
@@ -57,6 +58,50 @@ class CommandError(Exception):
 class CryptoError(PandoraError):
     """
     Used when exception occurred while Encryption and decryption.
+    """
+
+
+class TransportError(PandoraError):
+    """
+    A request never produced a response.
+
+    Distinct from a response the test dislikes: there is nothing to assert on.
+    Subclasses also inherit from the matching requests exception, so existing
+    `except requests.exceptions.Timeout` handlers keep working.
+    """
+
+    def __init__(self, message='', details='', url='', method='', elapsed=None):
+        super().__init__(message, details)
+        self.url = url
+        self.method = method
+        self.elapsed = elapsed
+
+
+class HttpTimeoutError(TransportError, _requests_exceptions.Timeout):
+    """
+    The peer did not answer within the configured timeout.
+
+    Also a requests.exceptions.Timeout: before timeouts were enforced this
+    could never fire, but keeping the dual identity means no caller has to
+    learn a new exception to keep working.
+    """
+
+
+class HttpConnectionError(TransportError, _requests_exceptions.ConnectionError):
+    """
+    The connection could not be established, or was dropped mid-flight.
+
+    Also a requests.exceptions.ConnectionError -- this one *did* surface
+    before, so existing `except requests.exceptions.ConnectionError` handlers
+    must keep catching it.
+    """
+
+
+class PreconditionNotMet(PandoraError):
+    """
+    A test could not run because its setup was unsatisfied -- not because the
+    system under test is wrong. Raised by `require` when pytest is unavailable
+    to skip with; under pytest the test is skipped instead.
     """
 
 

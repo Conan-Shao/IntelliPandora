@@ -16,13 +16,30 @@ email:
 addressesTo:
   recipients:
     - xxx@gmail.com
+report:
+  host:
+# Transport reliability. verify defaults to true -- only turn it off for a
+# specific throwaway environment, and never repo-wide.
+http:
+  connect_timeout: 10
+  read_timeout: 30
+  verify: true
+  max_retries: 2        # idempotent methods only (GET/HEAD/PUT/DELETE/OPTIONS/TRACE)
+  backoff_factor: 0.3
+  pool_maxsize: 10
+# LLM access is OFF by default and stays that way unless explicitly enabled.
+# It is never used at test-execution time -- only post-run (triage, report
+# summaries). See docs/design/03-LLM接入边界.md.
+# Requires the optional extra: pip install intellipandora[ai]
 ai:
+  enabled: false
   provider: mock
   api_key:
   model: claude-sonnet-5
   base_url:
   timeout: 30
   max_tokens: 1024
+  max_calls_per_run: 20
 mcp:
   enabled: true
   name: intellipandora

@@ -6,11 +6,10 @@
 """
 import atexit
 import logging
-import time
 from abc import ABCMeta, abstractmethod
-from threading import Thread
-from typing import TypeVar, List, Generic, Union
-# from pandora.core.runtime.User import pandora_user
+from threading import Event, Lock, Thread
+from typing import Generic, List, TypeVar, Union
+
 from ipandora.core.schedule.runtime import Runtime
 
 logger = logging.getLogger(__name__)
@@ -18,76 +17,120 @@ logger = logging.getLogger(__name__)
 IV = TypeVar('IV')
 RV = TypeVar('RV')
 
+_instances = []
+_instances_lock = Lock()
+_atexit_registered = False
+
 
 def init():
+    """
+    Flush every batcher at interpreter exit.
+
+    Guarded because this is called from two package __init__ modules, which
+    previously registered the same handler twice.
+    """
+    global _atexit_registered
+    with _instances_lock:
+        if _atexit_registered:
+            return
+        _atexit_registered = True
+
     def inner():
-        for _e_i in getattr(MultiHandle, '_instance_list', []):
-            _e_i.uploadItem(force=True)
+        for _instance in list(_instances):
+            try:
+                _instance.uploadItem(force=True)
+            except Exception as exc:  # noqa: BLE001 - never break interpreter shutdown
+                logger.debug('flush at exit failed: %s', exc)
 
     atexit.register(inner)
 
 
 class MultiHandle(Generic[IV], Thread, metaclass=ABCMeta):
-    __data_list = []  # type:List[IV]
+    """
+    Batches items on a background thread.
+
+    The buffer is per-instance and guarded by a lock. It used to be a
+    class-level list shared by every instance and mutated from both the
+    producer and the background thread with no synchronisation, so concurrent
+    put/flush could drop items.
+
+    NOTE: the actual upload is commented out below, so today this only
+    batches and discards. The concurrency is fixed regardless -- broken
+    threading that happens to be dormant is still broken.
+    """
 
     report_item_path = ''
 
     timeout = 5
     max_items_upload = 20
-
-    __need_upload_item_on_run = True
-
-    _instance_list = []
-
-    def __new__(cls, *args, **kwargs):
-        _instance = super(MultiHandle, cls).__new__(cls, *args, **kwargs)
-        cls._instance_list.append(_instance)
-        return _instance
+    flush_interval = 1.0
 
     def __init__(self):
         _name = 'multi-upload-{}'.format(id(self))
         super(MultiHandle, self).__init__(name=_name)
+        self._data_list = []  # type:List[IV]
+        self._lock = Lock()
+        self._stopped = Event()
+        self._need_upload_item_on_run = True
         self.daemon = True
+        with _instances_lock:
+            _instances.append(self)
         self.start()
 
     def run(self) -> None:
-        while True:
-            self.uploadItem()
-            time.sleep(1)
+        # Event.wait rather than sleep in a `while True`: this thread is now
+        # stoppable, and stop() takes effect immediately instead of after the
+        # current sleep expires.
+        while not self._stopped.wait(self.flush_interval):
+            try:
+                self.uploadItem()
+            except Exception as exc:  # noqa: BLE001 - a batcher must not kill its thread
+                logger.debug('background flush failed: %s', exc)
+
+    def stop(self):
+        """Stop the background thread and flush what is buffered."""
+        self._stopped.set()
+        self.uploadItem(force=True)
 
     @property
     def current_item(self) -> IV:
-        return self.__data_list[-1] if self.__data_list else None
+        with self._lock:
+            return self._data_list[-1] if self._data_list else None
 
     @abstractmethod
     def handleItem(self):
         pass
 
     def put(self, item: IV = None):
-        self.__data_list.append(item)
+        with self._lock:
+            self._data_list.append(item)
         self.handleItem()
         self.uploadItem()
 
     def uploadItem(self, force=False) -> Union[RV]:
         """
-        upload test case result
-        :param force:
-        :return:
-        """
+        Upload a batch of results.
 
-        if not self.__need_upload_item_on_run and not force:
+        :param force: flush everything buffered rather than waiting for a
+                      full batch.
+        """
+        if not self._need_upload_item_on_run and not force:
             return False
-        _items = []
+
+        # Take the batch under the lock, then do the (slow) upload outside it.
+        with self._lock:
+            if force:
+                _items, self._data_list = self._data_list, []
+            elif len(self._data_list) >= self.max_items_upload:
+                _items = self._data_list[:self.max_items_upload]
+                self._data_list = self._data_list[self.max_items_upload:]
+            else:
+                return False
+
+        if not _items:
+            return False
 
         try:
-            if force:
-                _items = self.__data_list
-                self.__data_list = []
-            elif len(self.__data_list) >= self.max_items_upload:
-                _items = self.__data_list[:self.max_items_upload]
-
-                self.__data_list = self.__data_list[self.max_items_upload:]
-
             # if _items:
             #     _re = pandora_user.model.post(
             #         self.report_item_path, json=_items)
@@ -95,17 +138,22 @@ class MultiHandle(Generic[IV], Thread, metaclass=ABCMeta):
             #     if _re and 200 <= _re.response.status_code < 400:
             #         return _re
             #     else:
-            #         self.__need_upload_item_on_run = False
-
-        except Exception as e:
-            self.__need_upload_item_on_run = False
+            #         self._need_upload_item_on_run = False
+            pass
+        except Exception as e:  # noqa: BLE001 - reporting must not fail a test run
+            self._need_upload_item_on_run = False
             logger.info(e)
 
         return False
 
 
 class UploadApiInfo(MultiHandle):
-    report_item_path = Runtime.Host.report_host + '/api/data/upload'
+
+    @property
+    def report_item_path(self):
+        # Resolved per access, not at class-definition time: the report host
+        # comes from config and may be unset or overridden after import.
+        return (Runtime.Host.report_host or '') + '/api/data/upload'
 
     def handleItem(self):
         pass

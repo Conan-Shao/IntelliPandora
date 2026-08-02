@@ -17,9 +17,21 @@ class Command(CommandBase):
                 "The 'mcp' package is required to run this command. "
                 "Install it with: pip install intellipandora[mcp] ({})".format(e))
             return
+        from ipandora.core.schedule.runtime import Runtime
         if options.transport:
-            from ipandora.core.schedule.runtime import Runtime
             Runtime.Mcp.transport = options.transport
+
+        # Opt-in LLM triage. Deliberately wired here in run/ rather than in
+        # core/: core must not know ai/ exists. Off unless ai.enabled is set.
+        if Runtime.Ai.enabled:
+            try:
+                import ipandora.ai
+                ipandora.ai.enable()
+            except ImportError as e:
+                options.logger.warn(
+                    'ai.enabled is true but the AI extra is missing; '
+                    'continuing with rule-based triage only ({})'.format(e))
+
         serve()
 
     @property

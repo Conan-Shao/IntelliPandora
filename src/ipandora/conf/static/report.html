@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>{{ title }}</title>
+<style>
+  :root { --pass:#2e7d32; --fail:#c62828; --error:#ad1457; --skip:#ef6c00;
+          --blocked:#6a1b9a; --gap:#546e7a; --line:#e0e0e0; --muted:#666; }
+  body { font-family: -apple-system, "Segoe UI", "PingFang SC", Roboto, sans-serif;
+         margin: 0; padding: 24px; color: #222; background: #fafafa; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .meta { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+  .meta code { background:#eee; padding:1px 5px; border-radius:3px; }
+  .cards { display:flex; flex-wrap:wrap; gap:12px; margin-bottom:8px; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:6px;
+          padding:10px 16px; min-width:78px; }
+  .card .n { font-size:22px; font-weight:600; }
+  .card .l { font-size:11px; color:var(--muted); text-transform:uppercase;
+             letter-spacing:.04em; }
+  .banner { padding:10px 14px; border-radius:6px; margin:16px 0; font-size:14px; }
+  .banner.bad { background:#ffebee; border:1px solid #ffcdd2; }
+  .banner.good { background:#e8f5e9; border:1px solid #c8e6c9; }
+  .banner.warn { background:#fff8e1; border:1px solid #ffe082; }
+  table { width:100%; border-collapse:collapse; background:#fff;
+          border:1px solid var(--line); border-radius:6px; overflow:hidden; }
+  th, td { text-align:left; padding:8px 12px; border-bottom:1px solid var(--line);
+           font-size:13px; vertical-align:top; }
+  th { background:#f5f5f5; font-weight:600; font-size:12px; }
+  tr:last-child td { border-bottom:none; }
+  .st { font-weight:600; font-size:11px; letter-spacing:.03em; }
+  .PASS{color:var(--pass)} .FAIL{color:var(--fail)} .ERROR{color:var(--error)}
+  .SKIPPED{color:var(--skip)} .BLOCKED{color:var(--blocked)} .GAP{color:var(--gap)}
+  .cat { display:inline-block; font-size:11px; padding:1px 7px; border-radius:10px;
+         background:#eceff1; color:#37474f; }
+  .cat.defect,.cat.contract { background:#ffebee; color:#b71c1c; }
+  .cat.environment { background:#e3f2fd; color:#0d47a1; }
+  .cat.data { background:#fff3e0; color:#e65100; }
+  .cat.harness { background:#f3e5f5; color:#4a148c; }
+  details { margin-top:5px; }
+  summary { cursor:pointer; color:var(--muted); font-size:12px; }
+  pre { background:#fafafa; border:1px solid var(--line); border-radius:4px;
+        padding:8px; overflow-x:auto; font-size:12px; margin:6px 0 0;
+        white-space:pre-wrap; word-break:break-word; }
+  .next { color:var(--muted); font-size:12px; margin-top:4px; }
+  h2 { font-size:14px; margin:22px 0 8px; }
+  .foot { color:var(--muted); font-size:11px; margin-top:24px; }
+</style>
+</head>
+<body>
+
+<h1>{{ title }}</h1>
+<div class="meta">
+  {{ generated }} &middot; {{ '%.2f'|format(duration) }}s
+  {%- if run_id %} &middot; <code>{{ run_id }}</code>{% endif %}
+  {%- if env %} &middot; env: <code>{{ env }}</code>{% endif %}
+  {%- if selector %} &middot; selector: <code>{{ selector }}</code>{% endif %}
+</div>
+
+<div class="cards">
+  <div class="card"><div class="n">{{ totals.total }}</div><div class="l">total</div></div>
+  <div class="card"><div class="n PASS">{{ totals.passed }}</div><div class="l">passed</div></div>
+  <div class="card"><div class="n FAIL">{{ totals.failed }}</div><div class="l">failed</div></div>
+  <div class="card"><div class="n ERROR">{{ totals.error }}</div><div class="l">error</div></div>
+  <div class="card"><div class="n SKIPPED">{{ totals.skipped }}</div><div class="l">skipped</div></div>
+  {%- if totals.blocked %}
+  <div class="card"><div class="n BLOCKED">{{ totals.blocked }}</div><div class="l">blocked</div></div>
+  {%- endif %}
+  {%- if totals.gap %}
+  <div class="card"><div class="n GAP">{{ totals.gap }}</div><div class="l">gap</div></div>
+  {%- endif %}
+  <div class="card"><div class="n">{{ pass_rate }}</div><div class="l">pass rate</div></div>
+</div>
+
+{% if collect_error %}
+<div class="banner bad"><b>Nothing ran.</b> {{ collect_error }}</div>
+{% elif triage and triage.blames_system_under_test %}
+<div class="banner bad">
+  <b>{{ triage.blames_system_under_test }} failure(s) point at the system under test.</b>
+  {{ triage.headline }}
+</div>
+{% elif not ok %}
+<div class="banner warn">
+  <b>Failures are all on our side</b> &mdash; environment, data or the tests
+  themselves. {{ triage.headline if triage else '' }}
+</div>
+{% else %}
+<div class="banner good"><b>All conclusive cases passed.</b>
+  {%- if inconclusive %} {{ inconclusive|length }} case(s) told us nothing &mdash; see below.{% endif %}
+</div>
+{% endif %}
+
+{% if triage and triage.analysis %}
+<h2>Root cause</h2>
+<div class="banner warn">{{ triage.analysis }}</div>
+{% endif %}
+
+{% if inconclusive %}
+<h2>Told us nothing ({{ inconclusive|length }})</h2>
+<table>
+  <tr><th style="width:22%">Case</th><th style="width:10%">Status</th><th>Why</th></tr>
+  {% for case in inconclusive %}
+  <tr>
+    <td>{{ case.name }}</td>
+    <td class="st {{ case.status }}">{{ case.status }}</td>
+    <td>{{ case.reason or case.message or '&mdash;' }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+<h2>All cases</h2>
+{% for suite, suite_cases in by_suite.items() %}
+<h2 style="font-weight:500;color:#555">{{ suite }}</h2>
+<table>
+  <tr>
+    <th style="width:26%">Case</th><th style="width:8%">Status</th>
+    <th style="width:12%">Category</th><th style="width:7%">Time</th><th>Detail</th>
+  </tr>
+  {% for case in suite_cases %}
+  <tr>
+    <td>{{ case.name }}</td>
+    <td class="st {{ case.status }}">{{ case.status }}</td>
+    <td>{% if case.category %}<span class="cat {{ case.category }}">{{ case.category }}</span>{% endif %}</td>
+    <td>{{ '%.3f'|format(case.duration) }}s</td>
+    <td>
+      {%- if case.reason %}{{ case.reason }}{% endif %}
+      {%- if case.message %}
+      <details><summary>evidence</summary><pre>{{ case.message }}</pre></details>
+      {%- endif %}
+      {%- if case.next_step %}<div class="next">&rarr; {{ case.next_step }}</div>{% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% endfor %}
+
+<div class="foot">
+  Secrets are stripped when this data is built, not when it is rendered.
+  Pass rate counts conclusive cases only.
+</div>
+
+</body>
+</html>

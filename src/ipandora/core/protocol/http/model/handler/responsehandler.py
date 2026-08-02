@@ -7,12 +7,41 @@
 import copy
 import json
 import logging
-from collections import namedtuple
 from requests.models import Response
 from ipandora.core.protocol.http.model.interface.responseinterface import HttpResponseInterface
 from ipandora.utils.match import DictMatcher
 
 logger = logging.getLogger(__name__)
+
+
+class JsonObject(dict):
+    """
+    A JSON object that supports both attribute and key access.
+
+    This replaces the previous namedtuple conversion, which had to fall back
+    to a plain dict whenever a JSON key was a Python keyword or contained a
+    dash -- so the *type* of a parsed response depended on the payload's key
+    names, and any downstream code doing `._asdict()` blew up on exactly those
+    responses. One type for every object removes that whole class of bug.
+
+        resp.data.origin        # attribute access, as before
+        resp.data['x-req-id']   # keys a namedtuple could never hold
+    """
+
+    def __getattr__(self, name):
+        try:
+            return self[name]
+        except KeyError:
+            _available = ', '.join(sorted(map(str, self.keys()))[:8]) or '<empty>'
+            raise AttributeError(
+                'response object has no field {!r} (present: {})'.format(name, _available))
+
+    def __setattr__(self, name, value):
+        self[name] = value
+
+    def _asdict(self):
+        """namedtuple-compatible, so existing callers keep working."""
+        return dict(self)
 
 
 def is_json(string):
@@ -24,38 +53,63 @@ def is_json(string):
 
 
 def json_to_obj(j):
-    def handle(data):
-        if isinstance(data, dict):
-            # if any(str(e).isdigit() or '/' in str(e) for e in data.keys()):
-            #     return data
-            try:
-                return namedtuple('Data', data.keys())(*data.values())
-            except Exception as e:
-                logger.debug(e)
-                return data
-        else:
-            return data
+    """
+    Parse a response body into JsonObject/list/scalar.
 
-    # todo need to optimize response handle
+    Non-JSON bodies are returned as-is (str for text, bytes for binary) rather
+    than being wrapped in a fake object -- the caller can tell what it got.
+    """
+    if isinstance(j, bytes):
+        try:
+            j = j.decode('utf-8')
+        except UnicodeDecodeError as e:
+            # binary payload (an image, a download); hand it back untouched
+            logger.debug('response body is not utf-8, returning raw bytes: %s', e)
+            return j
 
-    # make sure response json can be decode to utf-8
-    # maybe a png stream
-    try:
-        j = j.decode('utf-8') if isinstance(j, bytes) else j
-    except Exception as e:
-        logger.debug(e)
-        return namedtuple('Data', 'data')(data=j)
-
-    # handle json response, make sure the response stream is json
-    if not is_json(j):
+    if not isinstance(j, str):
+        # already-parsed data
         return j
 
-    # the response stream maybe json
     try:
-        return json.loads(j, object_hook=handle)
-    except Exception as e:
-        logger.debug(e)
-        return json.loads(j)
+        return json.loads(j, object_hook=JsonObject)
+    except (ValueError, TypeError):
+        # not JSON: HTML error page, plain text, empty body
+        return j
+
+
+def as_item_list(value):
+    """
+    Normalise parsed data into a list of items.
+
+    The old code iterated whatever it got, which meant a single object was
+    torn into its field values ({'id':1,'name':'a'} became [1,'a']), a string
+    shredded into characters, and null or a scalar raised TypeError. Only a
+    list is already a list of items; everything else is one item -- except
+    null, which is no items.
+    """
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return list(value)
+    if isinstance(value, tuple) and not hasattr(value, '_fields'):
+        # a plain tuple is a sequence; a namedtuple is a single record
+        return list(value)
+    return [value]
+
+
+def as_mapping(item):
+    """
+    Field mapping for an item, or None when it has no fields.
+
+    Accepts JsonObject, plain dicts and namedtuples so filtering behaves the
+    same whatever the payload looked like.
+    """
+    if isinstance(item, dict):
+        return dict(item)
+    if hasattr(item, '_asdict'):
+        return item._asdict()
+    return None
 
 
 def contain_dict(subset: dict = None, superset: dict = None) -> bool:
@@ -84,8 +138,9 @@ def get_item_by_index(ori_list=None, index=0):
         else:
             return ori_list
     except IndexError:
-        # logger.warning(u'get item from list indexError index {}/list {}'.format(index, ori_list))
-        return []
+        # None, not []: asking for one item and getting an empty list back
+        # reads as "here is your item, it is a list", which it is not.
+        return None
 
 
 class Tag(object):
@@ -159,12 +214,8 @@ class ResponseHandler(HttpResponseInterface):
     def target(self):
         # get target data
         if self._target is None:
-            # get all data from origin data
             if self.origin_fetched is None:
-                _all = []
-                for _data in self._valid_data():
-                    _all.append(_data)
-                self.origin_fetched = _all
+                self.origin_fetched = as_item_list(self._valid_data())
             self._target = copy.deepcopy(self.origin_fetched)
         return self._target
 
@@ -234,12 +285,17 @@ class ResponseHandler(HttpResponseInterface):
         :param kwargs:
         :return:
         """
-        _f = self.target or self.origin_fetched
+        _f = self.target or self.origin_fetched or []
         _n = []
         for item in _f:
-            # check item valid
-            if DictMatcher(superset=getattr(item, '_asdict')()) \
-                    .condition(condition=kwargs).match():
+            _mapping = as_mapping(item)
+            if _mapping is None:
+                # scalars and strings carry no fields to filter on. Skipping
+                # beats the previous AttributeError, which fired on exactly
+                # the payloads json_to_obj used to degrade to plain dicts.
+                logger.debug('filter skipped non-object item: %r', item)
+                continue
+            if DictMatcher(superset=_mapping).condition(condition=kwargs).match():
                 _n.append(item)
         self._update_target_data(data=_n)
         return self
@@ -259,38 +315,44 @@ class ResponseHandler(HttpResponseInterface):
             self.target = data
         return self
 
-    def fetch_all(self):
-        # get all data from origin data
-        _target = self.target
+    def _current_items(self) -> list:
+        """Items currently selected, without consuming the filter."""
+        return as_item_list(self.target)
+
+    def fetch_all(self) -> list:
+        # Consuming: clears any applied filter so the next query starts from
+        # the full response again.
+        _target = self._current_items()
         self.target = None
-        if not isinstance(_target, list):
-            _target = [_target]
         return _target
 
-    def fetch_one(self) -> namedtuple or list:
+    def fetch_one(self):
         return get_item_by_index(ori_list=self.fetch_all(), index=0)
 
     def fetch_last(self):
         return get_item_by_index(ori_list=self.fetch_all(), index=-1)
 
     def fetch(self, index=0):
-        _valid_data = self._valid_data()
+        _items = as_item_list(self._valid_data())
 
-        if not _valid_data:
-            return []
+        if not _items:
+            return None
 
-        return _valid_data[nice_index(index=index, length=len(_valid_data))]
+        return _items[nice_index(index=index, length=len(_items))]
 
     def __iter__(self):
         return self
 
     def __len__(self):
-        return len(self.fetch_all())
+        # Non-consuming: len() must not have side effects, and the old version
+        # called fetch_all(), which cleared the filter every time it ran.
+        return len(self._current_items())
 
     def __next__(self):
-        if self._index >= len(self.fetch_all()):
+        _items = self._current_items()
+        if self._index >= len(_items):
             # reset index
             self._index = 0
             raise StopIteration(u'stop iter test')
         self._index += 1
-        return self.fetch_all()[self._index - 1]
+        return _items[self._index - 1]

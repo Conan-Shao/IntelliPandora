@@ -8,6 +8,7 @@ import json
 import unittest
 from httpretty import httprettified, register_uri, GET
 from ipandora.core import api
+from ipandora.core.assertion import assert_all, json_equals, status_ok
 from ipandora.core.base.data.markdata import MarkData
 from ipandora.core.plugin.pluginmanager import PluginManager
 from ipandora.core.plugin.interface.endpointsinterface import EndPointsInterface
@@ -33,7 +34,12 @@ class TestHttp(unittest.TestCase):
         response = GetIP().get_ip_info()
         logger.info('\n')
         logger.info(response.data)
-        assert response.data.origin == '10.0.0.1'
+        # Goes through the real decorator -> transport -> ResponseHandler path.
+        # status_ok matters: without it this test passed on a 500.
+        assert_all(
+            status_ok(response),
+            json_equals(response, 'origin', '10.0.0.1'),
+        )
 
 
 class GetIP:
