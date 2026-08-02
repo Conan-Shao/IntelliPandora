@@ -11,7 +11,19 @@ install:
 
 # 运行测试
 test:
-	pytest tests/
+	pytest test/
+
+# 冒烟：确认每个模块都能被 import
+# v1.1.0 曾发布过 import 即崩溃的模块，这一步就是防它重演
+smoke:
+	$(PYTHON) scripts/smoke_import.py
+
+# LLM 必须是可拆卸的：删掉 ai/ 之后测试仍须全绿
+# 见 docs/design/03-LLM接入边界.md
+test-without-ai:
+	rm -rf /tmp/ipandora-noai && cp -r . /tmp/ipandora-noai
+	rm -rf /tmp/ipandora-noai/src/ipandora/ai
+	cd /tmp/ipandora-noai && pytest test/
 
 # 打包项目
 package:

@@ -5,7 +5,6 @@
 from argparse import ArgumentParser
 from ipandora.version import get_latest_version
 from ipandora.run.cmd import Cmd
-from ipandora.run.ipandoracommand import IPandoraCommand
 from ipandora.utils.log import Log
 version = get_latest_version()
 
@@ -51,9 +50,7 @@ class CommandManager(object):
     def execute(self):
         self.args.logger = self
         # handle
-        if self.args.subcommand is not None and self.args.verbosity:
-            IPandoraCommand().execute(self.args)
-        elif self.args.subcommand is None:
+        if self.args.subcommand is None:
             self.warn('command [ipandora] need a subcommand,'
                       ' please read the help info.')
         else:
@@ -66,6 +63,6 @@ class CommandManager(object):
 
     @classmethod
     def warn(cls, msg, sub_command=None):
-        print(Log.redInfo(msg))
+        print(Log.red_info(msg))
         print(cls.ap.format_help())
         exit(0)

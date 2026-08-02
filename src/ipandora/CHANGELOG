@@ -1,3 +1,18 @@
+v1.3.0
+==============
+* archive core/engine/generator stack (2737 LOC) -- removes the duplicate case/testcase data models, the unwired v2 robot render path, and the orphan repository modules; preserved at tag v1.1.0-archive
+* archive run/ scaffold subcommands (ipandoracommand, commands/project) and the duplicate runner.py script
+* remove hardcoded credentials from Runtime.Host; report host now comes from conf/config.yaml
+* remove Compare.cmp_semantic -- assertions must stay deterministic and offline
+* move ai/ out of core/ and default ai.enabled to false; add max_calls_per_run budget cap
+* trim MCP server to get_test_report; run_tests/explain_failure deferred until core/runner and core/triage exist
+* add CI (import smoke, test matrix, removable-ai gate, layering and secret checks)
+* add pre-commit config with secret scanning
+* fix Log.redInfo typo that crashed the CLI when no subcommand was given
+* fix UploadApiInfo building its URL at class-definition time
+* correct python_requires to >=3.10 (code already used PEP 604 unions)
+* normalize runtime.py indentation to 4 spaces
+
 v1.2.0
 ==============
 * add pluggable AI provider abstraction (core.engine.ai): AIProviderABC, AnthropicProvider, MockProvider, AIProviderFactory

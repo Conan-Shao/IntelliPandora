@@ -221,12 +221,5 @@ class BaseRepository(object):
         return dataclass_type(**filtered_row) if filtered_row else None
 
 
-if __name__ == '__main__':
-    from ipandora.core.engine.generator.model.data.case import AttachmentGetter
-    resp = BaseRepository().generate_select_query(AttachmentGetter,
-                                                  'TestCaseAttachments')
-    print(resp)
-
-
 
 

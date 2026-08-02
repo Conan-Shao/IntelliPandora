@@ -4,9 +4,9 @@
 @File  : aifactory.py
 @Time  : 2026-08-01
 """
-from ipandora.core.engine.ai.anthropicprovider import AnthropicProvider
-from ipandora.core.engine.ai.mockprovider import MockProvider
-from ipandora.core.engine.ai.providerabc import AIProviderABC
+from ipandora.ai.anthropicprovider import AnthropicProvider
+from ipandora.ai.mockprovider import MockProvider
+from ipandora.ai.providerabc import AIProviderABC
 
 
 class AIProviderFactory:

@@ -105,7 +105,12 @@ class MultiHandle(Generic[IV], Thread, metaclass=ABCMeta):
 
 
 class UploadApiInfo(MultiHandle):
-    report_item_path = Runtime.Host.report_host + '/api/data/upload'
+
+    @property
+    def report_item_path(self):
+        # Resolved per access, not at class-definition time: the report host
+        # comes from config and may be unset or overridden after import.
+        return (Runtime.Host.report_host or '') + '/api/data/upload'
 
     def handleItem(self):
         pass

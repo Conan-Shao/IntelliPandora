@@ -6,7 +6,7 @@
 """
 from typing import Dict, List
 
-from ipandora.core.engine.ai.providerabc import AIProviderABC
+from ipandora.ai.providerabc import AIProviderABC
 
 
 class MockProvider(AIProviderABC):
