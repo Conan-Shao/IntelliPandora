@@ -101,7 +101,7 @@ def duration(ms) -> str:
     return '{:.2f} s'.format(_ms / 1000.0)
 
 
-def _environment() -> Environment:
+def environment() -> Environment:
     # autoescape matters here: failure messages contain whatever the system
     # under test returned, and an unescaped payload would both break the page
     # and let a response inject markup into it.
@@ -128,7 +128,7 @@ def to_html(report: ReportData, template: str = TEMPLATE) -> str:
         'check_totals': report.check_totals,
         'by_source': report.by_source,
     })
-    return _environment().get_template(template).render(**_context)
+    return environment().get_template(template).render(**_context)
 
 
 def to_json(report: ReportData, indent: int = 2) -> str:

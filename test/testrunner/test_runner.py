@@ -318,3 +318,15 @@ class TestEvidenceReachesTheResult:
         assert report.coverage_matrix[0]['filled'] == 2
         assert [g['name'] for g in report.gaps] == ['余额实际增加']
         assert '余额实际增加' in to_html(report)
+
+
+class TestArgumentAssembly:
+    def test_no_extra_args_is_accepted_as_none(self, passing_suite):
+        # the obvious way to say "no extras"; it used to raise from inside
+        # pytest argument assembly
+        assert run(passing_suite, extra_args=None, persist=False, quiet=True).ok
+
+    def test_extra_args_reach_pytest(self, sample_suite):
+        result = run(sample_suite, extra_args=['-k', 'that_passes'],
+                     persist=False, quiet=True)
+        assert result.total == 1

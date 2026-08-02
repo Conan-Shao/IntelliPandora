@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IntelliPandora · 运行历史</title>
+<style>
+:root{
+  --ink:#0D1420; --panel:#131C2C; --panel-2:#182337;
+  --line:rgba(228,234,242,.10); --line-strong:rgba(228,234,242,.20);
+  --text:#E4EAF2; --dim:#8C9AB0; --faint:#5C6A80;
+  --pass:#5FD3A6; --fail:#FF7060; --warn:#F0B152; --meta:#A78BFA; --none:#3E4A5E;
+  --sans:'IBM Plex Sans','PingFang SC','Microsoft YaHei',system-ui,-apple-system,sans-serif;
+  --mono:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;
+}
+@media (prefers-color-scheme:light){
+  :root{
+    --ink:#F4F7FA; --panel:#FFFFFF; --panel-2:#EEF2F7;
+    --line:rgba(13,20,32,.10); --line-strong:rgba(13,20,32,.20);
+    --text:#16202F; --dim:#5A6779; --faint:#8793A5;
+    --pass:#12855F; --fail:#C8372A; --warn:#8A5A0B; --meta:#6D45D4; --none:#C3CCDA;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;padding:40px 24px 80px;background:var(--ink);color:var(--text);
+  font-family:var(--sans);font-size:14px;line-height:1.55}
+.wrap{max-width:1140px;margin:0 auto}
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--faint)}
+h1{font-weight:600;font-size:clamp(22px,4vw,31px);letter-spacing:-.015em;margin:12px 0 4px}
+.lede{color:var(--dim);font-size:13px;margin:0}
+
+.trend{margin:30px 0 40px;border:1px solid var(--line);border-radius:14px;
+  background:var(--panel);padding:20px 22px}
+.trend h3{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--dim);margin:0 0 16px;font-weight:600}
+.spark{display:flex;align-items:flex-end;gap:4px;height:88px}
+/* capped, not stretched: with three runs a full-width bar reads as a bar
+   chart of two values instead of a line going somewhere */
+.spark a{flex:1 1 0;max-width:26px;min-width:5px;display:flex;flex-direction:column;
+  justify-content:flex-end;height:100%;border:0;text-decoration:none}
+.spark i{display:block;background:var(--pass);border-radius:2px 2px 0 0;min-height:2px}
+.spark a.bad i{background:var(--fail)}
+.spark a.none i{background:var(--none)}
+.spark a:hover i{outline:1px solid var(--meta);outline-offset:1px}
+.axis{display:flex;justify-content:space-between;font-family:var(--mono);
+  font-size:10.5px;color:var(--faint);margin-top:8px}
+
+.rows{display:grid;gap:1px;background:var(--line);border:1px solid var(--line);
+  border-radius:12px;overflow:hidden}
+.row{background:var(--panel);display:grid;
+  grid-template-columns:14px 1fr 150px 128px 96px 76px;gap:16px;
+  padding:14px 18px;align-items:center}
+/* only rows that have something to expand get an affordance */
+details.run.has-changes>summary .when::after{content:' ▸';color:var(--faint);font-size:11px}
+details.run.has-changes[open]>summary .when::after{content:' ▾'}
+details.run:not(.has-changes)>summary{cursor:default}
+.row:hover{background:var(--panel-2)}
+.tick{width:8px;height:8px;border-radius:50%;background:var(--pass)}
+.row.bad .tick{background:var(--fail)}
+.when{font-family:var(--mono);font-size:13px}
+.when a{color:inherit;border:0;text-decoration:none}
+.when a:hover{color:var(--meta)}
+.sub{font-family:var(--mono);font-size:11px;color:var(--faint);margin-top:3px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.counts{font-family:var(--mono);font-size:12px;color:var(--dim)}
+.counts b{color:var(--text);font-weight:600}
+.counts .f{color:var(--fail)}
+.counts .s{color:var(--warn)}
+.rate{font-family:var(--mono);font-size:16px;font-weight:600;text-align:right}
+.rate.bad{color:var(--fail)} .rate.good{color:var(--pass)}
+.dur{font-family:var(--mono);font-size:11.5px;color:var(--faint);text-align:right}
+.delta{font-family:var(--mono);font-size:11px;text-align:right;white-space:nowrap}
+.delta .new{color:var(--fail)} .delta .fix{color:var(--pass)}
+
+.changed{background:var(--panel-2);padding:0 18px 14px;
+  grid-column:1/-1;font-family:var(--mono);font-size:11.5px}
+details.run{background:var(--panel)}
+details.run>summary{list-style:none;cursor:pointer}
+details.run>summary::-webkit-details-marker{display:none}
+.nodeid{color:var(--dim);word-break:break-all;padding:2px 0}
+.nodeid.new::before{content:'+ ';color:var(--fail)}
+.nodeid.fix::before{content:'− ';color:var(--pass)}
+.empty{border:1px dashed var(--line-strong);border-radius:12px;padding:34px;
+  text-align:center;color:var(--faint)}
+footer{margin-top:46px;padding-top:16px;border-top:1px solid var(--line);
+  font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--faint)}
+@media (max-width:820px){
+  body{padding:26px 14px 60px}
+  .row{grid-template-columns:14px 1fr 74px;gap:10px}
+  .counts,.dur,.delta{display:none}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="eyebrow">IntelliPandora</div>
+<h1>运行历史</h1>
+<p class="lede">保留最近 {{ count }} 次运行。点任意一次进入该次的完整报告。</p>
+
+{% if not entries %}
+<div class="empty">还没有归档的运行。跑一次 <code>ipandora run &lt;selector&gt;</code> 就会出现在这里。</div>
+{% else %}
+
+<div class="trend">
+  <h3>通过率趋势 · 左旧右新</h3>
+  <div class="spark">
+    {%- for entry in entries|reverse %}
+    {%- set rate = rates[loop.length - loop.index] %}
+    <a href="{{ entry.path }}" class="{{ 'none' if rate is none else ('bad' if not entry.ok else '') }}"
+       title="{{ entry.generated }} · {{ entry.pass_rate }} · {{ entry.totals.passed }}/{{ entry.totals.total }}">
+      <i style="height:{{ '%.1f'|format(rate if rate is not none else 4) }}%"></i>
+    </a>
+    {%- endfor %}
+  </div>
+  <div class="axis">
+    <span>{{ entries[-1].generated }}</span>
+    <span>{{ entries[0].generated }}</span>
+  </div>
+</div>
+
+<div class="rows">
+  {%- for entry in entries %}
+  {%- set changed = entry.new_failures or entry.fixed %}
+  <details class="run {{ 'has-changes' if changed else '' }}"
+           {% if loop.first and entry.new_failures %}open{% endif %}>
+    <summary>
+      <div class="row {{ '' if entry.ok else 'bad' }}">
+        <span class="tick"></span>
+        <span>
+          <span class="when"><a href="{{ entry.path }}">{{ entry.generated or entry.run_id }}</a></span>
+          <span class="sub">{{ entry.run_id }}{% if entry.env %} · {{ entry.env }}{% endif %}{% if entry.selector %} · {{ entry.selector }}{% endif %}</span>
+        </span>
+        <span class="counts">
+          <b>{{ entry.totals.passed }}</b>/{{ entry.totals.total }}
+          {%- if entry.totals.failed or entry.totals.error %}
+          · <span class="f">{{ entry.totals.failed + entry.totals.error }} 失败</span>{% endif %}
+          {%- if entry.totals.skipped %} · <span class="s">{{ entry.totals.skipped }} 跳过</span>{% endif %}
+        </span>
+        <span class="delta">
+          {%- if entry.new_failures %}<span class="new">+{{ entry.new_failures|length }} 新失败</span>{% endif %}
+          {%- if entry.fixed %} <span class="fix">−{{ entry.fixed|length }} 已修</span>{% endif %}
+        </span>
+        <span class="rate {{ 'good' if entry.ok else 'bad' }}">{{ entry.pass_rate }}</span>
+        <span class="dur">{{ '%.2f'|format(entry.duration) }}s</span>
+      </div>
+    </summary>
+    {%- if changed %}
+    <div class="changed">
+      {%- for nodeid in entry.new_failures %}
+      <div class="nodeid new">{{ nodeid }}</div>
+      {%- endfor %}
+      {%- for nodeid in entry.fixed %}
+      <div class="nodeid fix">{{ nodeid }}</div>
+      {%- endfor %}
+    </div>
+    {%- endif %}
+  </details>
+  {%- endfor %}
+</div>
+{% endif %}
+
+<footer>共 {{ count }} 次运行 · 相对上一次的新增失败与修复由归档时计算</footer>
+</div>
+</body>
+</html>
