@@ -133,6 +133,117 @@ class TestJsonPath:
         assert json_equals(resp, 'data', None).ok
 
 
+class TestPathFormsRealApisRequire:
+    """
+    Both of these came out of driving the layer at pypi.org and
+    registry.npmjs.org -- neither is hypothetical.
+    """
+
+    def test_bare_number_indexes_a_list(self, make_response):
+        # `items.0.id` is how most people write it, and it used to be read as
+        # the string key '0', failing with "expected an object, found list" --
+        # a message that points away from the actual mistake.
+        resp = make_response(body={'items': [{'id': 1}, {'id': 2}]})
+        assert json_equals(resp, 'items.0.id', 1).ok
+        assert json_equals(resp, 'items.-1.id', 2).ok
+
+    def test_bare_number_still_reads_as_a_key_on_an_object(self, make_response):
+        # Numeric-looking keys are ordinary in real documents, so the bare form
+        # has to mean whichever the node actually supports.
+        resp = make_response(body={'counts': {'0': 'zero', '1': 'one'}})
+        assert json_equals(resp, 'counts.0', 'zero').ok
+
+    def test_quoted_key_reaches_a_key_containing_dots(self, make_response):
+        # PyPI keys its releases by version string, so `releases.2.32.0` cannot
+        # work -- without a quoted form the field is unreachable at all.
+        resp = make_response(body={'releases': {'2.32.0': [{'filename': 'x.whl'}]}})
+        assert json_equals(resp, "releases['2.32.0'][0].filename", 'x.whl').ok
+        assert json_equals(resp, 'releases["2.32.0"].0.filename', 'x.whl').ok
+
+    def test_quoted_key_is_not_split_on_its_dots(self, make_response):
+        resp = make_response(body={'a.b': {'c': 1}, 'a': {'b': {'c': 2}}})
+        assert json_equals(resp, "['a.b'].c", 1).ok
+        assert json_equals(resp, 'a.b.c', 2).ok
+
+    def test_entering_a_list_by_name_says_what_would_work(self, make_response):
+        resp = make_response(body={'items': [{'id': 1}]})
+        check = json_has(resp, 'items.name')
+        assert not check.ok
+        assert '[0]' in check.expr, check.expr
+
+    def test_key_listing_stays_bounded_on_a_wide_object(self, make_response):
+        # PyPI's releases map has 163 keys; naming all of them helps nobody.
+        resp = make_response(body={'m': {'k{:03d}'.format(i): i for i in range(200)}})
+        check = json_has(resp, 'm.nope')
+        assert not check.ok
+        assert '200 keys' in check.expr
+        assert len(check.expr) < 300, 'key listing is unbounded: {}'.format(len(check.expr))
+
+
+class TestEvidenceStaysReadable:
+    """
+    Asserting against a field that holds a large object produced a 195,000-char
+    failure message at pypi.org. That message is not only printed -- it is
+    stored in the report and sent to the failure-triage model, which is billed
+    per token.
+    """
+
+    @staticmethod
+    def _big_body():
+        return {'releases': {'v{}'.format(i): {'files': list(range(50))}
+                             for i in range(200)}}
+
+    def test_a_large_actual_value_is_truncated(self, make_response):
+        check = json_equals(make_response(body=self._big_body()), 'releases', 'nope')
+        assert not check.ok
+        assert len(check.expr) < 600, 'evidence is {} chars'.format(len(check.expr))
+
+    def test_truncation_says_what_was_cut(self, make_response):
+        check = json_equals(make_response(body=self._big_body()), 'releases', 'nope')
+        # "was the field empty or huge?" must still be answerable
+        assert 'truncated' in check.expr
+        assert 'dict of 200' in check.expr
+
+    def test_a_large_expected_value_is_truncated_too(self, make_response):
+        resp = make_response(body={'x': 1})
+        check = json_equals(resp, 'x', list(range(5000)))
+        assert not check.ok and len(check.expr) < 800
+
+    def test_small_values_are_shown_in_full(self, make_response):
+        resp = make_response(body={'name': 'alice'})
+        check = json_equals(resp, 'name', 'bob')
+        assert "'alice'" in check.expr and "'bob'" in check.expr
+        assert 'truncated' not in check.expr
+
+    def test_truncation_cannot_undo_redaction(self, make_response):
+        """
+        Report redaction matches whole credential shapes. Cutting a value in
+        half stops it matching, so a naive truncation publishes the surviving
+        prefix of a key that used to come out as ***REDACTED***.
+
+        Every cut offset is swept, because the bug only appears when the
+        boundary happens to land inside the secret.
+        """
+        from ipandora.core.assertion.check import brief
+        from ipandora.core.report.redact import redact_text
+
+        secret = '0x' + 'a1b2c3d4' * 8  # 32-byte hex key, 66 chars
+        for pad in range(0, 300):
+            evidence = 'field = ' + brief({'pad': 'x' * pad, 'key': secret})
+            published = redact_text(evidence)
+            for length in range(len(secret), 7, -1):
+                assert secret[:length] not in published, (
+                    'pad={}: {} chars of the key survived redaction'.format(pad, length))
+
+    def test_the_whole_assert_all_message_stays_bounded(self, make_response):
+        resp = make_response(body=self._big_body())
+        with pytest.raises(AssertionError) as exc:
+            assert_all(json_equals(resp, 'releases', 'a'),
+                       json_equals(resp, 'releases', 'b'),
+                       json_matches(resp, 'releases', {'$eq': 'c'}))
+        assert len(str(exc.value)) < 2500, len(str(exc.value))
+
+
 class TestPayloadShapesThatBrokeTheOldHandler:
     """
     ResponseHandler.fetch_all() returns ['code','data'] -- the key names --
