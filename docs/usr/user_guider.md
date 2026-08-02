@@ -306,7 +306,49 @@ explain(result.run_id)   # 完整 traceback，按需取
 - 运行记录存在 `~/.ipandora/runs`（`IPANDORA_RUNS_DIR` 可改），保留最近 50 次
 - pytest 在**当前进程内**执行，测试模块会被导入且保持导入状态；需要完全干净的环境请用新进程
 
-#### 2.2.5 MCP 能力面
+#### 2.2.5 失败归因
+
+跑完之后可以问"这些失败是什么性质的"：
+
+```python
+from ipandora.core.runner import run
+from ipandora.core.triage import triage
+
+report = triage(run('test/testapi', quiet=True))
+report.headline()        # '2 defect, 1 environment'
+report.product_failures  # 只有真正归咎于被测系统的那些
+```
+
+| 类别 | 含义 | 该找谁 |
+|---|---|---|
+| `defect` | 断言失败，系统返回了错的值 | **被测系统** |
+| `contract` | 只有 schema 检查失败 | **被测系统**，接口变了 |
+| `environment` | 传输失败，没拿到响应 | 环境/网络，**什么都没测到** |
+| `data` | 前置不满足（`require` skip） | fixture / 账号状态 |
+| `harness` | setup 炸了 | 测试自身 |
+| `unknown` | 签名不认识 | 看完整 traceback |
+
+**为什么要区分**：把"连不上服务器"和"服务器答错了"混在一起报，是让人不再看红灯的最快方式。`report.product_failures` 只给你真正该查代码的那些。
+
+这一层是**纯规则、离线、零成本**，永远开着。
+
+**可选：让 LLM 补一句根因**
+
+```python
+# conf/config.yaml -> ai.enabled: true, ai.provider, ai.api_key
+import ipandora.ai
+ipandora.ai.enable()
+```
+
+开启后 `explain_failure(run_id)` 的返回里会多一个 `triage.analysis` 字段。
+
+- **默认关闭**，`pip install intellipandora` 连 LLM SDK 都不装（要装：`pip install intellipandora[ai]`）
+- **它不决定类别**，只在规则分类之上补一句自然语言
+- **成本随失败数增长，不随测试规模**：全绿的运行 0 次调用；一次运行最多调 1 次，不是每条失败一次
+- **预算闸**：`ai.max_calls_per_run`，设 0 就是完全禁止
+- **fail-open**：模型不可用只是少一段分析文字，**绝不改变测试结论**
+
+#### 2.2.6 MCP 能力面
 
 `ipandora mcp` 启动后暴露 4 个工具：
 
@@ -319,7 +361,7 @@ explain(result.run_id)   # 完整 traceback，按需取
 
 典型闭环：`run_tests` → 有失败 → `explain_failure(run_id)` → 改代码 → 再 `run_tests`。
 
-#### 2.2.6 命令行能力
+#### 2.2.7 命令行能力
 
 ```shell
  ~/Repos/intellipandora ⮀ ipandora -h

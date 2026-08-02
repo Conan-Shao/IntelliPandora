@@ -10,6 +10,24 @@ from typing import Dict, List
 from ipandora.core.runner.result import CaseResult, ERROR, FAILED, PASSED, SKIPPED
 
 
+def skip_reason(report) -> str:
+    """
+    The message from a skip.
+
+    pytest reports a skip as the tuple (file, lineno, 'Skipped: <message>').
+    The file and line point at whatever called skip() -- for require() that is
+    always the same line inside the assertion collector, which tells a reader
+    nothing. Only the message is worth keeping.
+    """
+    _raw = getattr(report, 'longrepr', None)
+    _message = ''
+    if isinstance(_raw, tuple) and len(_raw) == 3:
+        _message = str(_raw[2])
+    else:
+        _message = str(_raw or '')
+    return _message.split('Skipped: ', 1)[-1].strip()
+
+
 def short_reason(report) -> str:
     """
     A one-or-few-line reason from a pytest report.
@@ -75,7 +93,7 @@ class ResultCollector:
             _case.detail = getattr(report, 'longreprtext', '') or _case.detail
             _case.message = short_reason(report) or _case.message
         elif report.outcome == SKIPPED and not _case.message:
-            _case.message = short_reason(report)
+            _case.message = skip_reason(report)
 
     def pytest_collectreport(self, report):
         if report.outcome == FAILED:

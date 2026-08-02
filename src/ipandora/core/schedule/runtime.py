@@ -284,7 +284,10 @@ class Runtime(object):
         _base_url = ''
         _timeout = 0
         _max_tokens = 0
-        _max_calls_per_run = 0
+        # None, not 0: `if not self._x` would treat a configured 0 as "unset"
+        # and re-read the default, making the budget impossible to set to
+        # zero -- which is the strictest and most useful setting there is.
+        _max_calls_per_run = None
 
         @classproperty
         def enabled(self):
@@ -298,9 +301,9 @@ class Runtime(object):
 
         @classproperty
         def max_calls_per_run(self):
-            if not self._max_calls_per_run:
-                self._max_calls_per_run = DictUtils.safe_get(
-                    Runtime.settings, 'ai', 'max_calls_per_run') or 20
+            if self._max_calls_per_run is None:
+                _configured = DictUtils.safe_get(Runtime.settings, 'ai', 'max_calls_per_run')
+                self._max_calls_per_run = 20 if _configured in ('', None) else int(_configured)
             return self._max_calls_per_run
 
         @max_calls_per_run.set

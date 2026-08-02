@@ -11,6 +11,7 @@ from mcp.server.mcpserver import MCPServer
 from ipandora.core.runner import api as runner
 from ipandora.core.runner import store
 from ipandora.core.schedule.runtime import Runtime
+from ipandora.core.triage import triage
 from ipandora.utils.log import log_to_stderr, logger
 from ipandora.utils.robotlogparser import RobotLogParser
 
@@ -25,14 +26,32 @@ def run_tests(selector: str = '', env: str = '') -> dict:
     selector: a path, a pytest nodeid, or a -k expression. Empty runs everything.
     env: environment name, e.g. "dev" or "prod". Optional.
 
-    Returns totals plus, for each failure, the case name and the assertion
-    message. Full tracebacks are NOT included -- call explain_failure(run_id)
-    when you actually need them.
+    Returns totals plus, for each failure, the case name, the assertion
+    message, and a rule-based classification saying whether it looks like a
+    product defect, a contract change, an environment problem, missing test
+    data, or a broken test. Full tracebacks are NOT included -- call
+    explain_failure(run_id) when you actually need them.
     """
     # quiet=True is not optional here: on stdio transport, anything pytest
     # prints would land in the middle of this server's JSON-RPC stream.
     _result = runner.run(selector=selector, env=env, quiet=True)
-    return _result.summary()
+    _summary = _result.summary()
+
+    _report = triage(_result)
+    if _report.findings:
+        _by_node = {_f.nodeid: _f for _f in _report.findings}
+        for _failure in _summary.get('failures', []):
+            _finding = _by_node.get(_failure['nodeid'])
+            if _finding:
+                _failure['category'] = _finding.category
+                _failure['reason'] = _finding.reason
+                _failure['next_step'] = _finding.next_step
+        _summary['triage'] = {
+            'headline': _report.headline(),
+            'by_category': _report.by_category,
+            'blames_system_under_test': len(_report.product_failures),
+        }
+    return _summary
 
 
 @mcp.tool()

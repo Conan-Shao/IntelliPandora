@@ -15,6 +15,7 @@ from ipandora.core.runner.collector import ResultCollector
 from ipandora.core.runner.result import RunResult
 from ipandora.core.runner import store
 from ipandora.core.schedule.runtime import Runtime
+from ipandora.core.triage import hooks, triage
 from ipandora.utils.fileload import FileLoad
 from ipandora.utils.log import logger
 from ipandora.utils.pathutils import PathUtils
@@ -162,20 +163,30 @@ def _build_args(selector: str, extra_args: Sequence[str]) -> List[str]:
 
 def explain(run_id: str) -> Optional[dict]:
     """
-    Full context for a past run: every failure with its traceback.
+    Full context for a past run: every failure with its traceback, plus
+    triage.
 
     Deliberately a separate call. Summaries stay small so they can be read;
     this is where the detail lives when someone actually wants it.
+
+    Triage classification is rule-based and always present. A natural-language
+    root cause appears under `triage.analysis` only when LLM triage has been
+    enabled -- see ipandora.ai.enable().
     """
     _result = store.load(run_id)
     if _result is None:
         return None
+
+    _report = triage(_result)
+    _report.analysis = hooks.analyze(_report, _result)
+
     return {
         'run_id': _result.run_id,
         'selector': _result.selector,
         'env': _result.env,
         'summary': _result.headline(),
         'collect_error': _result.collect_error,
+        'triage': _report.to_dict(),
         'failures': [
             {'case': _c.name, 'nodeid': _c.nodeid, 'outcome': _c.outcome,
              'duration': round(_c.duration, 3),

@@ -1,3 +1,15 @@
+v1.9.0
+==============
+* add core/triage: rule-based failure classification -- defect, contract, environment, data, harness -- always on, deterministic, free
+* separate failures that implicate the system under test from those that implicate our harness, data or network; conflating them is what teaches people to ignore red builds
+* classification reuses Check.src recorded at assertion time: all-schema failures mean contract drift, derived means business logic
+* run_tests and explain_failure now carry the classification and a next step per failure
+* add optional LLM root-cause analysis in ai/triage.py, registered through a hook so core/ never imports ai/; it adds prose only and never decides a category
+* add ipandora.ai.enable()/disable(); importing the package is not enough to start spending
+* fix Runtime.Ai.max_calls_per_run being impossible to set to 0 -- the falsy check treated a configured 0 as unset and restored the default, disabling the strictest budget setting
+* rewrite scripts/check_layering.py to parse imports with AST; the previous text grep flagged documentation that merely mentions ipandora.ai, which core/triage necessarily does
+* strip pytest's (file, lineno, ...) wrapper from skip messages, which pointed at the assertion collector rather than anything useful
+
 v1.8.0
 ==============
 * add core/runner: run(selector, env) -> RunResult, callable as a library
