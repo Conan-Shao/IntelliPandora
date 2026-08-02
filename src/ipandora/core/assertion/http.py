@@ -7,7 +7,7 @@
 import json
 from typing import Any, Optional
 
-from ipandora.core.assertion.check import Check, Source
+from ipandora.core.assertion.check import Check, Source, brief
 from ipandora.core.assertion.jsonpath import MISSING, resolve
 from ipandora.utils.match import Compare
 
@@ -109,7 +109,7 @@ def header_is(response: Any, header: str, expected: str, name: str = None) -> Ch
     return Check(
         name=name or '响应头 {} 为 {}'.format(header, expected),
         ok=_actual == expected,
-        expr='{} = {!r} (expected {!r})'.format(header, _actual, expected),
+        expr='{} = {} (expected {})'.format(header, brief(_actual), brief(expected)),
         src=Source.API)
 
 
@@ -130,14 +130,14 @@ def json_has(response: Any, path: str, name: str = None) -> Check:
 
 def json_equals(response: Any, path: str, expected: Any, name: str = None) -> Check:
     """Assert a field equals an exact value."""
-    _label = name or '{} == {!r}'.format(path, expected)
+    _label = name or '{} == {}'.format(path, brief(expected, 60))
     _value, _reason = json_value(response, path)
     if _value is MISSING:
         return Check(name=_label, ok=False, expr=_reason, src=Source.API)
     return Check(
         name=_label,
         ok=_value == expected,
-        expr='{} = {!r} (expected {!r})'.format(path, _value, expected),
+        expr='{} = {} (expected {})'.format(path, brief(_value), brief(expected)),
         src=Source.API)
 
 
@@ -168,16 +168,17 @@ def json_matches(response: Any, path: str, condition: dict, name: str = None) ->
             _held = getattr(_comparator, _method)()
         except Exception as exc:  # noqa: BLE001 - comparator misuse is a failed check
             return Check(name=_label, ok=False,
-                         expr='{} {} {!r} raised {}: {}'.format(
-                             path, _op, _operand, type(exc).__name__, exc),
+                         expr='{} {} {} raised {}: {}'.format(
+                             path, _op, brief(_operand), type(exc).__name__, exc),
                          src=Source.API)
         if not _held:
             return Check(name=_label, ok=False,
-                         expr='{} = {!r}, failed {} {!r}'.format(path, _value, _op, _operand),
+                         expr='{} = {}, failed {} {}'.format(
+                             path, brief(_value), _op, brief(_operand)),
                          src=Source.API)
 
     return Check(name=_label, ok=True,
-                 expr='{} = {!r}'.format(path, _value), src=Source.API)
+                 expr='{} = {}'.format(path, brief(_value)), src=Source.API)
 
 
 def schema_conforms(response: Any, schema: dict, name: str = None) -> Check:

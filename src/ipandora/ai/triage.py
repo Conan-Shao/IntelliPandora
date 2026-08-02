@@ -20,8 +20,13 @@ from ipandora.ai.aifactory import AIProviderFactory
 from ipandora.core.schedule.runtime import Runtime
 from ipandora.utils.log import logger
 
-# Failure messages are already trimmed by the assertion layer, but a pathological
-# one should not be able to blow up a prompt.
+# The assertion layer caps each value it puts into a Check, so a failure message
+# is bounded per check -- but a test with many checks, or a failure that did not
+# come from assert_all at all, still has no ceiling. This is the one that is
+# billed, so it keeps its own.
+#
+# (That first clause was untrue when written: the assertion layer had no cap,
+# and one real response produced a 195,000-character message. It does now.)
 MAX_CHARS_PER_FAILURE = 600
 MAX_FAILURES_IN_PROMPT = 10
 
