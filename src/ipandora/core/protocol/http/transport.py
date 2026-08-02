@@ -16,6 +16,7 @@ from typing import FrozenSet, Tuple
 
 import requests
 from requests.adapters import HTTPAdapter
+from urllib3 import exceptions as urllib3_exceptions
 from urllib3.util.retry import Retry
 
 from ipandora.utils.error import HttpConnectionError, HttpTimeoutError
@@ -27,6 +28,17 @@ IDEMPOTENT_METHODS: FrozenSet[str] = frozenset(
 
 # Transient by nature: rate limiting and upstream unavailability.
 RETRY_STATUS: Tuple[int, ...] = (429, 502, 503, 504)
+
+# urllib3 errors that really mean "the clock ran out".
+#
+# The exclusion is not defensive padding: urllib3 declares
+# `NewConnectionError(ConnectTimeoutError, HTTPError)`, so a plain connection
+# refused -- which fails instantly, with no clock involved -- is an instance of
+# ConnectTimeoutError and therefore of urllib3's TimeoutError too. Matching the
+# base class alone would report every refused connection as a timeout.
+_TIMEOUT_CAUSES = (urllib3_exceptions.ReadTimeoutError,
+                   urllib3_exceptions.ConnectTimeoutError)
+_NOT_TIMEOUT_CAUSES = (urllib3_exceptions.NewConnectionError,)
 
 
 @dataclass(frozen=True)
@@ -86,6 +98,46 @@ def mount(session: requests.Session, policy: TransportPolicy = None) -> requests
     return session
 
 
+def _is_timeout(exc: Exception) -> bool:
+    """
+    Whether a failure was really a timeout, looking through the wrapping.
+
+    Mounting a Retry adapter changes the exception requests raises: urllib3
+    turns a read timeout into MaxRetryError(reason=ReadTimeoutError), and
+    requests maps that to ConnectionError rather than ReadTimeout. So the
+    obvious `isinstance(exc, Timeout)` check silently stops working the moment
+    an adapter is mounted -- which this module does for every session. The
+    urllib3 reason has to be unwrapped to get the truth back.
+    """
+    if isinstance(exc, requests.exceptions.Timeout):
+        return True
+
+    _seen = set()
+    _pending = [exc]
+    while _pending:
+        _current = _pending.pop()
+        if _current is None or id(_current) in _seen:
+            continue
+        _seen.add(id(_current))
+
+        if (isinstance(_current, _TIMEOUT_CAUSES)
+                and not isinstance(_current, _NOT_TIMEOUT_CAUSES)):
+            return True
+
+        # MaxRetryError carries the real cause on .reason
+        _reason = getattr(_current, 'reason', None)
+        if isinstance(_reason, BaseException):
+            _pending.append(_reason)
+        # requests wraps the urllib3 error as the first positional arg
+        for _arg in getattr(_current, 'args', ()):
+            if isinstance(_arg, BaseException):
+                _pending.append(_arg)
+        _pending.append(getattr(_current, '__cause__', None))
+        _pending.append(getattr(_current, '__context__', None))
+
+    return False
+
+
 def translate_error(exc: Exception, url: str = '', method: str = '', elapsed=None):
     """
     Map a requests-level failure onto the framework's transport errors.
@@ -95,7 +147,11 @@ def translate_error(exc: Exception, url: str = '', method: str = '', elapsed=Non
     __cause__ so no diagnostic detail is lost.
     """
     _method = str(method).upper()
-    if isinstance(exc, requests.exceptions.Timeout):
+
+    # Order matters: a retry-wrapped timeout is *also* a ConnectionError, so
+    # the timeout check has to come first or every timeout reads as a
+    # connection failure.
+    if _is_timeout(exc):
         return HttpTimeoutError(
             '{} {} timed out'.format(_method, url),
             details=str(exc), url=url, method=_method, elapsed=elapsed)

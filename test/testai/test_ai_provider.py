@@ -7,10 +7,21 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from ipandora.ai.aifactory import AIProviderFactory
-from ipandora.ai.anthropicprovider import AnthropicProvider
-from ipandora.ai.mockprovider import MockProvider
-from ipandora.utils.error import AIProviderError
+import pytest
+
+# `ipandora.ai` is optional and deletable by design -- `rm -rf src/ipandora/ai
+# && pytest` staying green is one of the five structural guarantees in
+# docs/design/03-LLM接入边界.md. Tests *of* that package cannot run once it is
+# gone, but they must not break collection either, or the guarantee is
+# unverifiable. This belongs here rather than in a conftest: a conftest is
+# imported earlier than any test module, and pulling ipandora in that early
+# binds the console log handler to a different sys.stdout than the tests see.
+pytest.importorskip('ipandora.ai', reason='optional ai/ package is absent')
+
+from ipandora.ai.aifactory import AIProviderFactory  # noqa: E402
+from ipandora.ai.anthropicprovider import AnthropicProvider  # noqa: E402
+from ipandora.ai.mockprovider import MockProvider  # noqa: E402
+from ipandora.utils.error import AIProviderError  # noqa: E402
 
 
 class TestMockProvider(unittest.TestCase):
