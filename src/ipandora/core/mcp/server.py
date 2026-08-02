@@ -8,6 +8,7 @@ from typing import Optional
 
 from mcp.server.mcpserver import MCPServer
 
+from ipandora.core import report
 from ipandora.core.runner import api as runner
 from ipandora.core.runner import store
 from ipandora.core.schedule.runtime import Runtime
@@ -73,6 +74,26 @@ def explain_failure(run_id: str) -> dict:
 def list_runs(limit: int = 10) -> dict:
     """Recent run ids, newest first, for use with explain_failure."""
     return {'runs': store.list_runs(limit=limit)}
+
+
+@mcp.tool()
+def build_report(run_id: str, directory: str, title: str = '') -> dict:
+    """
+    Write an HTML and JSON report for a previous run.
+
+    Both come from the same data and have already had secrets stripped.
+    Returns the paths written plus the totals, so the caller does not have to
+    open the files to know what happened.
+    """
+    _result = store.load(run_id)
+    if _result is None:
+        return {'error': 'unknown run_id {!r}'.format(run_id),
+                'known_runs': store.list_runs(limit=10)}
+    _report = report.build(_result, title=title or None)
+    return {'written': report.write(_report, directory),
+            'totals': _report.totals,
+            'pass_rate': _report.pass_rate,
+            'ok': _report.ok}
 
 
 @mcp.tool()

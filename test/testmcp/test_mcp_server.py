@@ -33,7 +33,8 @@ class TestMcpToolRegistration(unittest.TestCase):
         tools = asyncio.run(server.mcp.list_tools())
         self.assertEqual(
             {t.name for t in tools},
-            {'run_tests', 'explain_failure', 'list_runs', 'get_test_report'})
+            {'run_tests', 'explain_failure', 'list_runs', 'build_report',
+             'get_test_report'})
 
     def test_every_tool_documents_itself(self):
         # the docstring is the prompt: a model decides whether and how to call

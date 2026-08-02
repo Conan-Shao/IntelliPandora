@@ -1,3 +1,15 @@
+v1.10.0
+==============
+* add core/report: build report data from a run, then render it -- HTML and JSON come from the same model
+* strip secrets when the data is built, not when it is rendered; masking in a template would protect one view and leave the JSON behind it readable
+* redaction masks on two independent signals, field name and value shape, so a key pasted into a free-text error message is caught even though it has no field name
+* pass rate counts conclusive cases only -- a suite that skips half its cases is not 100% healthy
+* report separates cases that told us nothing (skipped/blocked/gap/error) from real results, and shows how many failures actually implicate the system under test
+* Status carries BLOCKED and GAP; neither is inferred from a run, since a run cannot report an assertion nobody wrote
+* HTML autoescapes: failure messages contain whatever the system under test returned
+* add build_report MCP tool
+* an unrecognised outcome maps to ERROR rather than PASS
+
 v1.9.0
 ==============
 * add core/triage: rule-based failure classification -- defect, contract, environment, data, harness -- always on, deterministic, free

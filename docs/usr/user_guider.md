@@ -348,7 +348,36 @@ ipandora.ai.enable()
 - **预算闸**：`ai.max_calls_per_run`，设 0 就是完全禁止
 - **fail-open**：模型不可用只是少一段分析文字，**绝不改变测试结论**
 
-#### 2.2.6 MCP 能力面
+#### 2.2.6 生成报告
+
+```python
+from ipandora.core.runner import run
+from ipandora.core.report import build, write
+
+report = build(run('test/testapi', quiet=True), title='每日回归')
+write(report, 'out/')        # 产出 out/report.html + out/report.json
+```
+
+HTML 和 JSON 出自同一份数据。**脱敏在 `build()` 时完成，不在渲染时** —— 报告会被下载、转发、进 CI artifact，只在模板里遮，背后的 JSON 照样能读。
+
+会被掩码的东西，靠两个独立信号识别：
+
+- **字段名**：`password` `token` `api_key` `mnemonic` `signedTx` `Authorization` `Cookie` …
+- **值的形状**：以太坊私钥 `0x[64位hex]`、JWT、`sk-` 前缀、AWS AKIA、PEM 私钥块、助记词
+
+宁可多掩码 —— 误掩码只是让人多跑一次，泄漏的凭据收不回来。
+
+**报告会显示"什么都没证明"的部分**：
+
+| 状态 | 含义 |
+|---|---|
+| `SKIPPED` | 前置不满足 |
+| `BLOCKED` | 写了但上游失败没跑到 |
+| `GAP` | 该有的断言没写（需自行声明，跑一次是推不出来的） |
+
+`pass_rate` **只算有结论的用例**。跳过一半用例的套件不是 100% 健康。
+
+#### 2.2.7 MCP 能力面
 
 `ipandora mcp` 启动后暴露 4 个工具：
 
@@ -357,11 +386,12 @@ ipandora.ai.enable()
 | `run_tests(selector, env)` | 跑用例，返回摘要 |
 | `explain_failure(run_id)` | 取完整失败现场 |
 | `list_runs(limit)` | 最近的 run_id |
+| `build_report(run_id, directory)` | 为某次运行生成 HTML + JSON 报告 |
 | `get_test_report(xml_file)` | 解析 Robot Framework 的 output.xml |
 
 典型闭环：`run_tests` → 有失败 → `explain_failure(run_id)` → 改代码 → 再 `run_tests`。
 
-#### 2.2.7 命令行能力
+#### 2.2.8 命令行能力
 
 ```shell
  ~/Repos/intellipandora ⮀ ipandora -h
