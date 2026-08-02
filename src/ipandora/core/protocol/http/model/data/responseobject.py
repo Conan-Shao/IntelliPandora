@@ -15,6 +15,7 @@ from ipandora.core.base.data.markdata import MarkData
 from ipandora.core.base.loglib.log import Log
 from ipandora.core.protocol.http.model.data.requestobject import RequestObject
 from ipandora.core.protocol.http.model.handler.responsehandler import ResponseHandler
+from ipandora.core.protocol.http.transport import translate_error
 from ipandora.core.schedule.runtime import Runtime
 
 R = Union[Response, bytes]
@@ -58,8 +59,21 @@ class PandoraRequest(metaclass=ABCMeta):
         _request_handle = getattr(self.request_object.option.obj,
                                   self.request_object.method)
         _start_time = time.perf_counter()
-        self.response = _request_handle(*self.request_object.args,
-                                        **self.request_object.kwargs)
+        try:
+            self.response = _request_handle(*self.request_object.args,
+                                            **self.request_object.kwargs)
+        except Exception as exc:
+            # A transport failure produced no response, so there is nothing to
+            # assert on. Re-raise it as a framework error carrying the url,
+            # method and elapsed time -- previously the bare requests exception
+            # propagated with no context about which call died.
+            _elapsed = time.perf_counter() - _start_time
+            _translated = translate_error(
+                exc, url=self.request_object.url,
+                method=self.request_object.method, elapsed=_elapsed)
+            if _translated is None:
+                raise
+            raise _translated from exc
         self.total_time = time.perf_counter() - _start_time
         self.set_step()
 

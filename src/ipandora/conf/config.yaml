@@ -18,6 +18,15 @@ addressesTo:
     - xxx@gmail.com
 report:
   host:
+# Transport reliability. verify defaults to true -- only turn it off for a
+# specific throwaway environment, and never repo-wide.
+http:
+  connect_timeout: 10
+  read_timeout: 30
+  verify: true
+  max_retries: 2        # idempotent methods only (GET/HEAD/PUT/DELETE/OPTIONS/TRACE)
+  backoff_factor: 0.3
+  pool_maxsize: 10
 # LLM access is OFF by default and stays that way unless explicitly enabled.
 # It is never used at test-execution time -- only post-run (triage, report
 # summaries). See docs/design/03-LLM接入边界.md.

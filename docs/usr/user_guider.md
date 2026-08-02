@@ -62,7 +62,44 @@ class ReportService(object):
 
 
 
-#### 2.1.2 断言
+#### 2.1.2 传输行为（超时 / 重试 / TLS）
+
+框架给每个请求都套了默认策略，**不需要在用例里写这些**：
+
+| 项 | 默认值 | 说明 |
+|---|---|---|
+| 超时 | 连接 10s / 读取 30s | 每个请求都有界，不会挂死套件 |
+| TLS 校验 | **开启** | 关掉就发现不了证书过期 |
+| 重试 | 2 次，指数退避 | **仅幂等方法**，仅 429/502/503/504 |
+| 连接池 | 10 | |
+
+改默认值在 `conf/config.yaml` 的 `http:` 段。单次调用要覆盖就直接传：
+
+```python
+@api.http.get(path="v1/slow-report")
+def get_report(self):
+    return dict(timeout=120)          # 这个接口就是慢
+```
+
+**为什么 POST 不重试**：重放可能造成重复提交。需要的话自己在用例里控制。
+
+**为什么 500 不重试**：500 是真实缺陷，重试只会把确定的失败伪装成偶发。
+
+**传输失败与断言失败是两回事**：
+
+```python
+from ipandora.utils.error import HttpTimeoutError, TransportError
+
+try:
+    resp = Client().fetch()
+except HttpTimeoutError as e:
+    # 压根没拿到响应，没有东西可断言
+    print(e.url, e.method, e.elapsed)
+```
+
+`HttpTimeoutError` / `HttpConnectionError` 都继承自 `TransportError`，同时也继承对应的 `requests` 异常 —— 既有的 `except requests.exceptions.Timeout` 照常生效。
+
+#### 2.1.3 断言
 
 > 断言是"判定对错"的地方。**每个 HTTP 测试都应该有 `status_ok`** —— 没有它，接口返回 500 测试照样 PASS。
 

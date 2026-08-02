@@ -1,3 +1,16 @@
+v1.5.0
+==============
+* add core/protocol/http/transport.py -- TransportPolicy, retry adapter, error translation
+* TLS verification now defaults to on; it was forced off for every https request, hiding certificate problems the suite should catch
+* every request now carries a timeout (10s connect / 30s read by default); previously ApiOption defaulted to 0 and nothing applied it, so a hung endpoint hung the suite forever
+* add retry with exponential backoff, restricted to idempotent methods and transient statuses (429/502/503/504); 500 is not retried
+* transport failures raise HttpTimeoutError / HttpConnectionError carrying url, method and elapsed, and also inherit the matching requests exception
+* mount an HTTPAdapter with configurable pool sizing on every session
+* add http section to config.yaml and Runtime.Http
+* fix SessionManager check-then-act happening outside the lock
+* fix SessionManager acquire/release without try/finally, which deadlocked the RLock permanently on any exception
+* fix deprecated current_thread().getName()
+
 v1.4.0
 ==============
 * add core/assertion -- the framework previously had no assertion layer at all, so a 500 response passed silently

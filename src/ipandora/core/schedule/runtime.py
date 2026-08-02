@@ -154,6 +154,88 @@ class Runtime(object):
         def recipients(self, value):
             self._recipients = value
 
+    class Http(metaclass=ClassPropertyMeta):
+        """
+        Transport reliability settings. See core/protocol/http/transport.py.
+
+        `verify` defaults to True on purpose. It used to be forced to False for
+        every HTTPS request, which hid exactly the certificate problems a test
+        suite ought to catch.
+        """
+        _connect_timeout = 0
+        _read_timeout = 0
+        _verify = None
+        _max_retries = None
+        _backoff_factor = None
+        _pool_maxsize = 0
+
+        @classproperty
+        def connect_timeout(self):
+            if not self._connect_timeout:
+                self._connect_timeout = DictUtils.safe_get(
+                    Runtime.settings, 'http', 'connect_timeout') or 10.0
+            return float(self._connect_timeout)
+
+        @connect_timeout.set
+        def connect_timeout(self, value):
+            self._connect_timeout = value
+
+        @classproperty
+        def read_timeout(self):
+            if not self._read_timeout:
+                self._read_timeout = DictUtils.safe_get(
+                    Runtime.settings, 'http', 'read_timeout') or 30.0
+            return float(self._read_timeout)
+
+        @read_timeout.set
+        def read_timeout(self, value):
+            self._read_timeout = value
+
+        @classproperty
+        def verify(self):
+            if self._verify is None:
+                _configured = DictUtils.safe_get(Runtime.settings, 'http', 'verify')
+                # absent/'' means "not configured" -> secure default
+                self._verify = True if _configured in ('', None) else bool(_configured)
+            return self._verify
+
+        @verify.set
+        def verify(self, value):
+            self._verify = value
+
+        @classproperty
+        def max_retries(self):
+            if self._max_retries is None:
+                _configured = DictUtils.safe_get(Runtime.settings, 'http', 'max_retries')
+                self._max_retries = 2 if _configured in ('', None) else int(_configured)
+            return self._max_retries
+
+        @max_retries.set
+        def max_retries(self, value):
+            self._max_retries = value
+
+        @classproperty
+        def backoff_factor(self):
+            if self._backoff_factor is None:
+                _configured = DictUtils.safe_get(Runtime.settings, 'http', 'backoff_factor')
+                self._backoff_factor = 0.3 if _configured in ('', None) else float(_configured)
+            return self._backoff_factor
+
+        @backoff_factor.set
+        def backoff_factor(self, value):
+            self._backoff_factor = value
+
+        @classproperty
+        def pool_maxsize(self):
+            if not self._pool_maxsize:
+                self._pool_maxsize = DictUtils.safe_get(
+                    Runtime.settings, 'http', 'pool_maxsize') or 10
+            return int(self._pool_maxsize)
+
+        @pool_maxsize.set
+        def pool_maxsize(self, value):
+            self._pool_maxsize = value
+
     class Ai(metaclass=ClassPropertyMeta):
         """
         LLM access config. Disabled by default: nothing in core/ may depend on

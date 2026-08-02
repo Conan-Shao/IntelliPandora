@@ -7,6 +7,7 @@
 from ipandora.core.base.data.markdata import MarkData
 from ipandora.core.protocol.http.model.sessionmodel import HttpSessionModel
 from ipandora.core.protocol.http.model.option.httpontion import HttpOption
+from ipandora.core.protocol.http.transport import TransportPolicy
 from ipandora.core.wrapper.basewrapper import EndPointApiProxy
 from ipandora.core.wrapper.interface.requestinterface import RequestInterface
 
@@ -79,7 +80,17 @@ class RequestWrapper(object):
         #     # self.params.update({self.mark.encrypt_data: _re})
         #     self.params.update(_re)
 
-        # deal with parameters `verify` which controls TLS certificate.
-        if 'https' in self.request_proxy.path and 'verify' not in self.params:
-            self.params.update({'verify': False})
+        _policy = TransportPolicy.from_runtime()
+
+        # TLS verification is on unless the caller explicitly opts out.
+        # This used to be forced to False for every https URL, which silently
+        # disabled the check that catches expired/misconfigured certificates.
+        if 'verify' not in self.params:
+            self.params.update({'verify': _policy.verify})
+
+        # Without this every request waits forever: ApiOption defaulted timeout
+        # to 0 and nothing ever called set_timeout.
+        if 'timeout' not in self.params:
+            self.params.update({'timeout': _policy.timeout})
+
         return getattr(_model, self.method)(self.request_proxy.path, **self.params)
