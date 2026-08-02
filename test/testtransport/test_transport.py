@@ -4,7 +4,9 @@
 @File  : test_transport.py
 @Time  : 2026-08-01
 """
+import contextlib
 import json
+import socket
 import threading
 
 import pytest
@@ -241,6 +243,110 @@ class TestErrorSemantics:
 
     def test_translate_returns_none_for_unrelated(self):
         assert translate_error(ValueError('nope'), url='u', method='get') is None
+
+
+@contextlib.contextmanager
+def _blackhole_server():
+    """
+    A listener that completes the TCP handshake and then says nothing.
+
+    The connection succeeds, so this is unambiguously a *read* timeout rather
+    than a connect failure -- which is the distinction the framework has to get
+    right. Loopback only: no network access is involved.
+    """
+    _srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    _srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    _srv.bind(('127.0.0.1', 0))
+    _srv.listen(8)
+    _srv.settimeout(0.2)
+    _held, _stop = [], threading.Event()
+
+    def _accept_loop():
+        while not _stop.is_set():
+            try:
+                _conn, _ = _srv.accept()
+            except OSError:
+                continue
+            _held.append(_conn)  # keep it open, send nothing
+
+    _thread = threading.Thread(target=_accept_loop, daemon=True)
+    _thread.start()
+    try:
+        yield 'http://127.0.0.1:{}/hang'.format(_srv.getsockname()[1])
+    finally:
+        _stop.set()
+        _thread.join(timeout=2)
+        for _conn in _held:
+            _conn.close()
+        _srv.close()
+
+
+class TestTimeoutThroughTheRealAdapter:
+    """
+    Regression: a read timeout used to surface as HttpConnectionError.
+
+    Mounting a Retry adapter -- which this framework does for every session --
+    makes urllib3 wrap the read timeout as MaxRetryError(reason=ReadTimeoutError),
+    and requests then maps that to ConnectionError instead of ReadTimeout. So
+    `isinstance(exc, Timeout)` quietly stopped being true.
+
+    The tests above missed it because they inject a ConnectTimeout straight into
+    a fake session, which never touches the adapter. These go through the real
+    adapter, real urllib3 and a real socket, so the wrapping actually happens.
+    """
+
+    @staticmethod
+    def _raise_through_adapter(url, retries):
+        session = mount(requests.Session(), TransportPolicy(max_retries=retries))
+        session.trust_env = False  # an ambient proxy would answer, defeating the point
+        with pytest.raises(requests.exceptions.RequestException) as exc:
+            session.get(url, timeout=(5, 0.25))
+        return exc.value
+
+    @pytest.mark.parametrize('retries', [0, 2])
+    def test_read_timeout_is_reported_as_a_timeout(self, retries):
+        with _blackhole_server() as url:
+            raw = self._raise_through_adapter(url, retries)
+            translated = translate_error(raw, url=url, method='GET', elapsed=0.3)
+        assert isinstance(translated, HttpTimeoutError), (
+            'a read timeout reported as {}'.format(type(translated).__name__))
+
+    def test_the_wrapping_this_guards_against_is_real(self):
+        # Control. If requests ever starts raising a plain ReadTimeout through a
+        # mounted adapter, the unwrapping below becomes dead code and this test
+        # says so instead of leaving it there forever.
+        with _blackhole_server() as url:
+            raw = self._raise_through_adapter(url, retries=2)
+        assert not isinstance(raw, requests.exceptions.Timeout)
+        assert isinstance(raw, requests.exceptions.ConnectionError)
+
+    def test_a_genuine_connection_failure_is_still_a_connection_error(self):
+        # The fix must not turn every ConnectionError into a timeout. Port 1 on
+        # loopback refuses immediately -- no timeout anywhere in the chain.
+        session = mount(requests.Session(), TransportPolicy(max_retries=0))
+        session.trust_env = False
+        with pytest.raises(requests.exceptions.RequestException) as exc:
+            session.get('http://127.0.0.1:1/nope', timeout=(2, 2))
+        translated = translate_error(exc.value, url='http://127.0.0.1:1/nope', method='GET')
+        assert isinstance(translated, HttpConnectionError)
+        assert not isinstance(translated, HttpTimeoutError)
+
+    def test_end_to_end_through_the_decorator(self, monkeypatch):
+        monkeypatch.setenv('NO_PROXY', '127.0.0.1,localhost')
+        SessionManager._session_map.pop(SessionManager.name(), None)
+        try:
+            with _blackhole_server() as url:
+                class Hanging:
+                    @api.http.get(url)
+                    def fetch(self):
+                        return dict(timeout=(5, 0.25))
+
+                with pytest.raises(HttpTimeoutError) as exc:
+                    Hanging().fetch()
+            assert exc.value.method == 'GET'
+            assert exc.value.elapsed is not None
+        finally:
+            SessionManager._session_map.pop(SessionManager.name(), None)
 
 
 class TestSessionLocking:

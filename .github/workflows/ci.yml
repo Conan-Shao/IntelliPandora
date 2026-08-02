@@ -47,9 +47,12 @@ jobs:
       - name: Install without AI extra
         run: pip install -e ".[mcp]"
 
+      # Only the package is removed. Deleting test/testai along with it -- which
+      # this step used to do -- meant the check could pass even if the suite
+      # could not actually survive the removal; those tests now skip themselves.
       - name: Remove ai/ and run the suite
         run: |
-          rm -rf src/ipandora/ai test/testai
+          rm -rf src/ipandora/ai
           pytest test/ -v
 
   layering:

@@ -6,7 +6,13 @@
 """
 import pytest
 
-import ipandora.ai
+# See the note in test_ai_provider.py: the ai/ package is optional and
+# deletable, so its own tests skip rather than break collection when it is
+# absent. Module level, not conftest -- a conftest imports ipandora earlier
+# than pytest's output capture is in place for the tests that follow.
+pytest.importorskip('ipandora.ai', reason='optional ai/ package is absent')
+
+import ipandora.ai  # noqa: E402
 from ipandora.ai import triage as ai_triage
 from ipandora.core.runner.result import CaseResult, RunResult
 from ipandora.core.schedule.runtime import Runtime
