@@ -62,7 +62,41 @@ class ReportService(object):
 
 
 
-#### 2.1.2 传输行为（超时 / 重试 / TLS）
+#### 2.1.2 响应数据
+
+`response.data` 会自动剥掉 `data` / `result` 外层包装，返回的对象**同时支持属性和键访问**：
+
+```python
+resp.data.origin           # 属性访问
+resp.data['x-req-id']      # 键访问 —— 含连字符、Python 关键字的键用这种
+resp.data.user.name        # 嵌套
+```
+
+字段不存在时报错会列出有哪些字段，不用去翻响应体。
+
+**取列表数据**：
+
+```python
+resp.fetch_all()                      # 全部条目
+resp.fetch_one()                      # 第一个；没有数据时返回 None
+resp.filter(status='ok').fetch_all()  # 过滤后再取
+```
+
+`filter` 支持的比较器与断言层一致：`$gt` `$in` `$notIn` `$contains` `$startWith` `$eq`。
+
+各种响应形态的行为：
+
+| 响应 | `fetch_all()` |
+|---|---|
+| `{"data":[{...},{...}]}` | 两个条目 |
+| `{"data":{...}}` | **一个**条目（不会被拆成字段值） |
+| `{"data":null}` | `[]` |
+| `{"data":5}` | `[5]` |
+| 非 JSON（HTML/二进制） | 原样返回 str / bytes |
+
+> `fetch_all()` 是**消耗性**的：它会清掉已应用的 filter，让下次查询从完整响应重新开始。`len(resp)` 不消耗。
+
+#### 2.1.3 传输行为（超时 / 重试 / TLS）
 
 框架给每个请求都套了默认策略，**不需要在用例里写这些**：
 
@@ -99,7 +133,7 @@ except HttpTimeoutError as e:
 
 `HttpTimeoutError` / `HttpConnectionError` 都继承自 `TransportError`，同时也继承对应的 `requests` 异常 —— 既有的 `except requests.exceptions.Timeout` 照常生效。
 
-#### 2.1.3 断言
+#### 2.1.4 断言
 
 > 断言是"判定对错"的地方。**每个 HTTP 测试都应该有 `status_ok`** —— 没有它，接口返回 500 测试照样 PASS。
 
@@ -178,8 +212,6 @@ def fee_within_cap(resp, cap):
 - **不要抛异常。** 字段缺失、body 不是 JSON，都应该返回 `ok=False` 的 Check。一旦抛出，`assert_all` 就退化成"第一个失败就停"，失去了意义 —— 所以用 `json_value` 而不是 `body['fee']`。
 - **`expr` 要写足证据。** 失败时应该不用翻日志就能看懂。
 
-`expr` 要写足证据 —— 失败时应该不用翻日志就能看懂。
-
 ### 2.2 辅助功能
 
 #### 2.2.1 测试数据注入
@@ -223,20 +255,23 @@ _os = Runtime.Ui.os
 ```
 
 #### 2.2.3 命令行能力
-* **一键创建工程**
+
 ```shell
- ~/Repos/intellipandora ⮀ intellipandora -h
-usage: intellipandora [-h] [-v] [-V] {project} ...
+ ~/Repos/intellipandora ⮀ ipandora -h
+usage: ipandora [-h] [-v] [-V] {mcp} ...
 
 positional arguments:
-  {project}        intellipandora support these sub-commands.
-    project        project command
+  {mcp}            ipandora support these sub-commands.
+    mcp            start the MCP server exposing IntelliPandora capabilities
+                   to AI clients
 
 options:
   -h, --help       show this help message and exit
   -v, --verbosity  log verbosity
   -V, --version    print version
 ```
+
+> 脚手架子命令 `project` 已在 P0 归档 —— agent 直接写文件比 scaffold 更可控。历史代码见提交 `5e0065e`。
 
 
 ### 2.3 kitTools

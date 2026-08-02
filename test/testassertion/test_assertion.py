@@ -155,7 +155,7 @@ class TestPayloadShapesThatBrokeTheOldHandler:
         assert_all(json_equals(resp, 'data', 5))
 
     def test_key_with_dash(self, make_response):
-        # json_to_obj degrades to a dict here; the path accessor does not care
+        # a key a namedtuple could never have held
         resp = make_response(body={'x-request-id': 'abc'})
         assert json_equals(resp, 'x-request-id', 'abc').ok
 

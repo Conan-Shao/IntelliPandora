@@ -30,10 +30,9 @@ def resolve(body: Any, path: str) -> Tuple[Any, str]:
     straight into a Check's evidence, so a failure is readable without
     re-running anything.
 
-    Works on plain dicts and lists only. It deliberately does not understand
-    namedtuples: ResponseHandler.json_to_obj silently degrades to a dict when
-    a JSON key is a Python keyword or contains a dash, which would make the
-    accessor's behaviour depend on the payload's key names.
+    Works on plain dicts and lists only, deliberately: judging correctness
+    should not depend on another layer's parsing conventions. ResponseHandler
+    now yields JsonObject, which is a dict, so this reads it either way.
     """
     if not path:
         return body, ''

@@ -1,3 +1,14 @@
+v1.6.0
+==============
+* fix response parsing: a single-object payload was torn into its field values, null and scalar data raised TypeError, and a string body was shredded into characters
+* replace the namedtuple conversion with JsonObject, a dict that also supports attribute access -- resp.data.origin still works and resp.data['x-req-id'] now does too
+* remove the silent degradation where a Python-keyword or dashed JSON key made json_to_obj fall back to a plain dict, so the parsed type depended on the payload's key names and filter() then raised AttributeError
+* non-JSON bodies are returned as-is (str for text, bytes for binary) instead of being wrapped in a fake object
+* filter() skips fieldless items instead of raising, and accepts dicts, JsonObject and namedtuples alike
+* fetch_one() returns None rather than [] when there is no data
+* __len__ no longer calls the consuming fetch_all(), so len() has no side effects and does not clear an applied filter
+* AttributeError on a missing field now lists the fields that are present
+
 v1.5.0
 ==============
 * add core/protocol/http/transport.py -- TransportPolicy, retry adapter, error translation
