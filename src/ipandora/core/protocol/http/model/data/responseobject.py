@@ -21,6 +21,18 @@ from ipandora.core.schedule.runtime import Runtime
 R = Union[Response, bytes]
 
 
+def _as_text(body):
+    """Request bodies reach us as str, bytes or None; the report wants text."""
+    if body is None or isinstance(body, str):
+        return body
+    if isinstance(body, bytes):
+        try:
+            return body.decode('utf-8')
+        except UnicodeDecodeError:
+            return '<{} bytes>'.format(len(body))
+    return str(body)
+
+
 class PandoraRequest(metaclass=ABCMeta):
     def __init__(self, request_object: RequestObject = None):
         self._request_object = request_object
@@ -55,6 +67,24 @@ class PandoraRequest(metaclass=ABCMeta):
     @abstractmethod
     def set_step(self): pass
 
+    def _record_failed_exchange(self, exc, elapsed):
+        """
+        Record a call that never produced a response.
+
+        A report that only shows exchanges which succeeded is misleading in the
+        exact case someone opens it for: the request that died leaves no trace,
+        and the case looks like it never called anything.
+        """
+        try:
+            from ipandora.core.evidence import add_exchange
+            add_exchange(
+                method=str(self.request_object.method).upper(),
+                url=self.request_object.url,
+                ms=round(elapsed * 1000.0, 1),
+                error='{}: {}'.format(type(exc).__name__, exc))
+        except Exception:  # noqa: BLE001
+            pass
+
     def handle_response(self):
         _request_handle = getattr(self.request_object.option.obj,
                                   self.request_object.method)
@@ -71,6 +101,7 @@ class PandoraRequest(metaclass=ABCMeta):
             _translated = translate_error(
                 exc, url=self.request_object.url,
                 method=self.request_object.method, elapsed=_elapsed)
+            self._record_failed_exchange(exc, _elapsed)
             if _translated is None:
                 raise
             raise _translated from exc
@@ -109,6 +140,35 @@ class NiceRequest(PandoraRequest):
                   self.request_object.option.params,
                   self.response.text]
             Runtime.Case.steps = _s
+        self.record_exchange()
+
+    def record_exchange(self):
+        """
+        Hand the call to the evidence recorder so the report can show it.
+
+        Separate from set_step, which feeds the legacy step list and is gated
+        behind report_detail. This one is unconditional and cheap: it stores
+        references the response already holds, and does nothing at all when no
+        run is collecting.
+
+        Never raises -- a request that succeeded must not fail because the
+        report could not describe it.
+        """
+        try:
+            from ipandora.core.evidence import add_exchange
+            _req = getattr(self.response, 'request', None)
+            add_exchange(
+                method=str(self.request_object.method).upper(),
+                url=getattr(_req, 'url', '') or self.request_object.url,
+                status=self.response.status_code,
+                reason=getattr(self.response, 'reason', '') or '',
+                ms=round(self.total_time * 1000.0, 1),
+                request_headers=dict(getattr(_req, 'headers', {}) or {}),
+                request_body=_as_text(getattr(_req, 'body', None)),
+                response_headers=dict(self.response.headers or {}),
+                response_body=self.response.text)
+        except Exception:  # noqa: BLE001 - see docstring
+            pass
 
     def handle(self):
 

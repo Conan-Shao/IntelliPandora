@@ -263,3 +263,58 @@ class TestResultModel:
         assert result.summary()['collect_error'] == 'boom'
         # nothing ran, so there is nothing to explain per-case
         assert 'failures' not in result.summary()
+
+
+class TestEvidenceReachesTheResult:
+    """
+    The report can only show what the run carries out. Before this the runner
+    kept one string per case, so every structured fact the assertion layer
+    produced was thrown away and re-parsed from prose.
+    """
+
+    def test_checks_survive_the_run(self, evidence_suite):
+        result = run(evidence_suite, persist=False, quiet=True)
+        case = next(c for c in result.cases if 'test_documented' in c.nodeid)
+        assert [c['name'] for c in case.checks] == ['状态正确', '余额实际增加']
+        assert case.checks[0]['src'] == 'api'
+
+    def test_a_declared_gap_arrives_as_a_gap(self, evidence_suite):
+        result = run(evidence_suite, persist=False, quiet=True)
+        case = next(c for c in result.cases if 'test_documented' in c.nodeid)
+        assert case.checks[1]['kind'] == 'gap'
+        assert case.outcome == 'passed', 'a gap must not fail the case'
+
+    def test_checks_from_a_failing_case_survive(self, evidence_suite):
+        result = run(evidence_suite, persist=False, quiet=True)
+        case = next(c for c in result.cases if 'test_with_a_failure' in c.nodeid)
+        assert case.outcome == 'failed'
+        assert [(c['name'], c['ok']) for c in case.checks] == [
+            ('状态正确', True), ('金额一致', False)]
+
+    def test_dims_and_title_are_collected(self, evidence_suite):
+        result = run(evidence_suite, persist=False, quiet=True)
+        case = next(c for c in result.cases if 'test_documented' in c.nodeid)
+        assert case.dims == {'kind': 'a', 'mode': 'x'}
+        assert case.title == '这条用例有说明'
+
+    def test_axes_are_read_once_per_module(self, evidence_suite):
+        result = run(evidence_suite, persist=False, quiet=True)
+        assert len(result.coverage) == 1, 'axes duplicated per test'
+
+    def test_a_suite_that_declares_nothing_still_runs(self, sample_suite):
+        result = run(sample_suite, persist=False, quiet=True)
+        assert result.total == 4
+        assert all(c.checks == [] and c.dims == {} for c in result.cases)
+
+    def test_evidence_does_not_bleed_between_cases(self, evidence_suite):
+        result = run(evidence_suite, persist=False, quiet=True)
+        names = {c.nodeid: [k['name'] for k in c.checks] for c in result.cases}
+        assert all(len(v) == 2 for v in names.values()), names
+
+    def test_the_report_builds_from_it(self, evidence_suite):
+        from ipandora.core.report import build, to_html
+        report = build(run(evidence_suite, persist=False, quiet=True))
+        assert report.check_totals == {'passed': 2, 'failed': 1, 'gap': 1}
+        assert report.coverage_matrix[0]['filled'] == 2
+        assert [g['name'] for g in report.gaps] == ['余额实际增加']
+        assert '余额实际增加' in to_html(report)

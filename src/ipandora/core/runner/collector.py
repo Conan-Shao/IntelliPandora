@@ -7,6 +7,7 @@
 import textwrap
 from typing import Dict, List
 
+from ipandora.core.evidence import recorder
 from ipandora.core.runner.result import CaseResult, ERROR, FAILED, PASSED, SKIPPED
 
 
@@ -65,12 +66,68 @@ class ResultCollector:
         self.cases = {}  # type: Dict[str, CaseResult]
         self._order = []  # type: List[str]
         self.collect_errors = []  # type: List[str]
+        self.coverage = []  # type: List[Dict]
+        self._coverage_seen = set()
 
     def _slot(self, nodeid: str) -> CaseResult:
         if nodeid not in self.cases:
             self.cases[nodeid] = CaseResult(nodeid=nodeid, outcome=PASSED)
             self._order.append(nodeid)
         return self.cases[nodeid]
+
+    # -- evidence ----------------------------------------------------------
+
+    def pytest_configure(self, config):
+        config.addinivalue_line(
+            'markers',
+            'dims(**axes): place this case in the coverage matrix, '
+            'e.g. @pytest.mark.dims(chain="56", pay="native")')
+
+    def pytest_runtest_setup(self, item):
+        """
+        Open an evidence slot before the test body runs.
+
+        Setup, not call: fixtures make requests too, and a fixture that fails
+        is exactly when someone wants to see what it asked for.
+        """
+        recorder.begin(item.nodeid)
+        self._read_declarations(item)
+
+    def pytest_runtest_teardown(self, item):
+        _evidence = recorder.end(item.nodeid)
+        if _evidence is None:
+            return
+        _case = self._slot(item.nodeid)
+        # extend rather than assign: a case that somehow files evidence twice
+        # should accumulate it, and this collector is per-run so nothing older
+        # can be here
+        _case.checks.extend(_evidence.checks)
+        _case.exchanges.extend(_evidence.exchanges)
+
+    def _read_declarations(self, item):
+        """
+        Pull the two things a test can declare about itself: where it sits in
+        the coverage matrix, and what it is for.
+        """
+        _case = self._slot(item.nodeid)
+
+        _marker = item.get_closest_marker('dims')
+        if _marker is not None:
+            _case.dims = {str(_k): str(_v) for _k, _v in (_marker.kwargs or {}).items()}
+
+        _doc = (getattr(item, 'function', None).__doc__
+                if getattr(item, 'function', None) else None)
+        if _doc:
+            _case.title = _doc.strip().splitlines()[0].strip()
+
+        # Axes are declared once per module, not per test: the whole point of
+        # the matrix is the cells with no test in them, and a run can only know
+        # those if the full value set is stated independently of what ran.
+        _module = getattr(item, 'module', None)
+        _axes = getattr(_module, 'COVERAGE', None)
+        if _axes and id(_module) not in self._coverage_seen:
+            self._coverage_seen.add(id(_module))
+            self.coverage.extend(_axes)
 
     def pytest_runtest_logreport(self, report):
         _case = self._slot(report.nodeid)

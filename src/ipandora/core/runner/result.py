@@ -27,6 +27,14 @@ class CaseResult:
     """Short, human-readable reason. Empty when the case passed."""
     detail: str = ''
     """Full traceback. Kept out of summaries on purpose."""
+    checks: List[Dict[str, Any]] = field(default_factory=list)
+    """Every judgement the case made, as the assertion layer produced it."""
+    exchanges: List[Dict[str, Any]] = field(default_factory=list)
+    """Every HTTP call the case made, request and response."""
+    dims: Dict[str, str] = field(default_factory=dict)
+    """Coverage coordinates, from @pytest.mark.dims."""
+    title: str = ''
+    """Human-readable intent, from the test's docstring."""
 
     @property
     def name(self) -> str:
@@ -45,6 +53,8 @@ class RunResult:
     duration: float = 0.0
     exit_code: int = 0
     cases: List[CaseResult] = field(default_factory=list)
+    coverage: List[Dict[str, Any]] = field(default_factory=list)
+    """Coverage axes declared by the suite, for the matrix. See COVERAGE."""
     collect_error: str = ''
     """Set when pytest could not even collect the selector."""
 

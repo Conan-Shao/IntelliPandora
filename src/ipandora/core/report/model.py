@@ -41,6 +41,19 @@ class Status:
 INCONCLUSIVE = frozenset({Status.SKIPPED, Status.BLOCKED, Status.GAP, Status.ERROR})
 
 
+def _cell_status(cases) -> str:
+    """A matrix cell is as bad as its worst case, and empty when there is none."""
+    if not cases:
+        return 'none'
+    _states = {_c.status for _c in cases}
+    for _bad in (Status.ERROR, Status.FAIL):
+        if _bad in _states:
+            return 'fail'
+    if _states <= INCONCLUSIVE:
+        return 'skip'
+    return 'pass'
+
+
 @dataclass
 class ReportCase:
     name: str
@@ -53,13 +66,53 @@ class ReportCase:
     reason: str = ''
     next_step: str = ''
     suite: str = ''
+    title: str = ''
+    """What the case is for, in a sentence. From its docstring."""
+    dims: Dict[str, str] = field(default_factory=dict)
+    """Where the case sits in the coverage matrix."""
+    checks: List[Dict[str, Any]] = field(default_factory=list)
+    """Every judgement, as the assertion layer made it -- not re-parsed text."""
+    exchanges: List[Dict[str, Any]] = field(default_factory=list)
+    """Every HTTP call, request and response."""
 
     @property
     def conclusive(self) -> bool:
         return self.status not in INCONCLUSIVE
 
+    @property
+    def judgements(self) -> List[Dict[str, Any]]:
+        return [_c for _c in self.checks if _c.get('kind') != 'gap']
+
+    @property
+    def gaps(self) -> List[Dict[str, Any]]:
+        return [_c for _c in self.checks if _c.get('kind') == 'gap']
+
+    @property
+    def checks_passed(self) -> int:
+        return sum(1 for _c in self.judgements if _c.get('ok'))
+
+    @property
+    def checks_failed(self) -> int:
+        return sum(1 for _c in self.judgements if not _c.get('ok'))
+
+    @property
+    def slowest_exchange(self) -> Dict[str, Any]:
+        """The call worth looking at first when a case is slow."""
+        return max(self.exchanges, key=lambda _e: _e.get('ms') or 0.0,
+                   default={}) if self.exchanges else {}
+
+    @property
+    def exchange_ms(self) -> float:
+        return sum((_e.get('ms') or 0.0) for _e in self.exchanges)
+
     def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
+        _out = asdict(self)
+        _out.update({
+            'checks_passed': self.checks_passed,
+            'checks_failed': self.checks_failed,
+            'gaps': self.gaps,
+        })
+        return _out
 
 
 @dataclass
@@ -79,6 +132,8 @@ class ReportData:
     duration: float = 0.0
     cases: List[ReportCase] = field(default_factory=list)
     triage: Dict[str, Any] = field(default_factory=dict)
+    coverage: List[Dict[str, Any]] = field(default_factory=list)
+    """Matrix axes declared by the suite. See `coverage_matrix`."""
     collect_error: str = ''
 
     def _count(self, status: str) -> int:
@@ -133,6 +188,100 @@ class ReportData:
             _grouped.setdefault(_case.suite or 'default', []).append(_case)
         return _grouped
 
+    @property
+    def gaps(self) -> List[Dict[str, Any]]:
+        """
+        Declared gaps across the whole run, deduplicated with a count.
+
+        Aggregated on purpose: one case saying "balance not verified" is a
+        note, twelve cases saying it is the next thing to go build.
+        """
+        _seen = {}
+        for _case in self.cases:
+            for _gap in _case.gaps:
+                _key = (_gap.get('name', ''), _gap.get('src', ''))
+                _entry = _seen.setdefault(_key, {
+                    'name': _gap.get('name', ''),
+                    'expr': _gap.get('expr', ''),
+                    'src': _gap.get('src', ''),
+                    'count': 0, 'cases': []})
+                _entry['count'] += 1
+                _entry['cases'].append(_case.name)
+        return sorted(_seen.values(), key=lambda _g: -_g['count'])
+
+    @property
+    def check_totals(self) -> Dict[str, int]:
+        """Judgements, not cases. A suite can pass every case and still barely
+        check anything -- this is where that shows."""
+        return {
+            'passed': sum(_c.checks_passed for _c in self.cases),
+            'failed': sum(_c.checks_failed for _c in self.cases),
+            'gap': sum(len(_c.gaps) for _c in self.cases),
+        }
+
+    @property
+    def by_source(self) -> Dict[str, Dict[str, int]]:
+        """
+        Judgements broken down by the dimension they came from.
+
+        A suite that only ever produces `api` checks is testing that the
+        endpoint answered, not that it was right. The breakdown makes that
+        visible without reading a single case.
+        """
+        _out = {}
+        for _case in self.cases:
+            for _check in _case.judgements:
+                _slot = _out.setdefault(_check.get('src') or 'derived',
+                                        {'passed': 0, 'failed': 0})
+                _slot['passed' if _check.get('ok') else 'failed'] += 1
+            for _gap in _case.gaps:
+                _slot = _out.setdefault(_gap.get('src') or 'derived',
+                                        {'passed': 0, 'failed': 0})
+                _slot['gap'] = _slot.get('gap', 0) + 1
+        return _out
+
+    @property
+    def coverage_matrix(self) -> List[Dict[str, Any]]:
+        """
+        The declared axes filled in with what actually ran.
+
+        An empty cell is the reason this exists: it is a combination nobody
+        wrote a test for, and no list of passing cases can show it. The axes
+        have to be declared separately from the tests for exactly that reason
+        -- a run can only report the cells it has, never the ones it lacks.
+        """
+        _grids = []
+        for _group in self.coverage or []:
+            _y, _x = _group.get('y', {}), _group.get('x', {})
+            _rows, _filled = [], 0
+            for _yv in _y.get('values', []):
+                _cells = []
+                for _xv in _x.get('values', []):
+                    _hit = [_c for _c in self.cases
+                            if _c.dims.get(_y.get('key')) == _yv.get('key')
+                            and _c.dims.get(_x.get('key')) == _xv.get('key')]
+                    if _hit:
+                        _filled += 1
+                    _cells.append({
+                        'label': _xv.get('label', ''),
+                        'cases': [{'name': _c.name, 'nodeid': _c.nodeid,
+                                   'status': _c.status} for _c in _hit],
+                        'status': _cell_status(_hit),
+                    })
+                _rows.append({'label': _yv.get('label', ''), 'cells': _cells})
+            _total = max(len(_y.get('values', [])) * len(_x.get('values', [])), 0)
+            _grids.append({
+                'id': _group.get('id', ''),
+                'title': _group.get('title', ''),
+                'note': _group.get('note', ''),
+                'y_label': _y.get('label', ''),
+                'x_labels': [_v.get('label', '') for _v in _x.get('values', [])],
+                'rows': _rows,
+                'filled': _filled,
+                'total': _total,
+            })
+        return _grids
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             'title': self.title,
@@ -146,5 +295,9 @@ class ReportData:
             'pass_rate': self.pass_rate,
             'collect_error': self.collect_error,
             'triage': self.triage,
+            'check_totals': self.check_totals,
+            'by_source': self.by_source,
+            'gaps': self.gaps,
+            'coverage': self.coverage_matrix,
             'cases': [_c.to_dict() for _c in self.cases],
         }
