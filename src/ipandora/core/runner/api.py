@@ -136,6 +136,7 @@ def run(selector: str = '', env: str = '', extra_args: Sequence[str] = (),
         duration=_duration,
         exit_code=int(_exit),
         cases=_collector.results(),
+        coverage=list(_collector.coverage),
         collect_error=_collect_error)
 
     if persist:
@@ -152,6 +153,9 @@ def looks_like_path(selector: str) -> bool:
 
 def _build_args(selector: str, extra_args: Sequence[str]) -> List[str]:
     _args = list(BASE_ARGS)
+    # `extra_args=None` is the natural way for a caller to say "none", and it
+    # used to raise from inside pytest argument assembly rather than here.
+    extra_args = extra_args or ()
     if selector:
         # A path (optionally with ::nodeid) is passed through; anything else
         # is a -k expression.

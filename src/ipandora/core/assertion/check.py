@@ -20,6 +20,23 @@ class Source:
     ONCHAIN = 'onchain'
 
 
+class Kind:
+    """
+    What a Check is claiming.
+
+    ASSERT is a judgement the run actually made. GAP is the opposite: a
+    judgement the run *should* make and does not -- declared by hand against a
+    requirement, because no run can report an assertion nobody wrote.
+
+    Keeping gaps in the same list as real checks is the point. A case showing
+    "5 passed" reads as thorough; the same case showing "5 passed, 3 not
+    covered" reads as what it is. Gaps never fail a run -- they are a statement
+    about the suite, not about the system.
+    """
+    ASSERT = 'assert'
+    GAP = 'gap'
+
+
 @dataclass(frozen=True)
 class Check:
     """
@@ -42,12 +59,17 @@ class Check:
     ok: bool
     expr: str = ''
     src: str = Source.DERIVED
+    kind: str = Kind.ASSERT
+
+    @property
+    def is_gap(self) -> bool:
+        return self.kind == Kind.GAP
 
     def __bool__(self) -> bool:
         return self.ok
 
     def __str__(self) -> str:
-        _mark = 'PASS' if self.ok else 'FAIL'
+        _mark = 'GAP' if self.is_gap else ('PASS' if self.ok else 'FAIL')
         _detail = ' | {}'.format(self.expr) if self.expr else ''
         return '[{}] {} ({}){}'.format(_mark, self.name, self.src, _detail)
 
@@ -109,3 +131,21 @@ def passed(name: str, expr: str = '', src: str = Source.DERIVED) -> Check:
 def failed(name: str, expr: str = '', src: str = Source.DERIVED) -> Check:
     """Shorthand for a check that does not hold."""
     return Check(name=name, ok=False, expr=expr, src=src)
+
+
+def gap(name: str, expr: str = '', src: str = Source.DERIVED) -> Check:
+    """
+    Declare a judgement this test *ought* to make and does not.
+
+        assert_all(
+            status_ok(r),
+            json_equals(r, 'data.status', 'SUCCESS'),
+            gap('收款方余额实际增加', 'balanceOf(recipient) 前后差值 —— 未校验',
+                src=Source.ONCHAIN),
+        )
+
+    Passing a gap to assert_all is safe: it cannot fail the run. It exists so
+    the report can say what this test does not cover, next to what it does --
+    which is the only place anyone will actually read it.
+    """
+    return Check(name=name, ok=True, expr=expr, src=src, kind=Kind.GAP)

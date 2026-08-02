@@ -23,11 +23,24 @@ def run_with(*cases, **kwargs):
     return RunResult(run_id=kwargs.get('run_id', 'run-1'),
                      selector=kwargs.get('selector', ''),
                      collect_error=kwargs.get('collect_error', ''),
+                     coverage=kwargs.get('coverage', []),
                      cases=list(cases))
 
 
-def case(nodeid='suite_a.py::test_x', outcome='passed', message=''):
-    return CaseResult(nodeid=nodeid, outcome=outcome, message=message)
+def case(nodeid='suite_a.py::test_x', outcome='passed', message='', **kwargs):
+    return CaseResult(nodeid=nodeid, outcome=outcome, message=message, **kwargs)
+
+
+AXES = [{'id': 'g', 'title': 'chain × path', 'note': '',
+         'y': {'key': 'chain', 'label': 'Chain',
+               'values': [{'key': '1', 'label': 'ETH'}, {'key': '56', 'label': 'BSC'}]},
+         'x': {'key': 'pay', 'label': 'Pay',
+               'values': [{'key': 'native', 'label': 'Native'},
+                          {'key': 'token', 'label': 'Token'}]}}]
+
+
+def judgement(name='a', ok=True, src='api', kind='assert'):
+    return {'name': name, 'ok': ok, 'kind': kind, 'expr': '{} = x'.format(name), 'src': src}
 
 
 class TestStatusMapping:
@@ -144,13 +157,59 @@ class TestRendering:
         html = to_html(report)
         assert 'My Run' in html and 'FAIL' in html and 'defect' in html
 
-    def test_response_content_cannot_inject_markup(self):
-        # failure messages contain whatever the system under test returned
-        report = ReportData(cases=[
-            ReportCase(name='x', message='<img src=x onerror=alert(1)>')])
-        html = to_html(report)
-        assert '<img src=x' not in html
-        assert '&lt;img' in html
+    # Everything below is content the system under test controls. The report
+    # now shows far more of it than a failure message -- check evidence, request
+    # and response bodies, headers, URLs -- and highlight_json is the one place
+    # the report emits markup it built itself rather than letting Jinja escape
+    # it. Each surface is enumerated so adding one without escaping it fails
+    # here rather than in someone's browser.
+    PAYLOAD = '<img src=x onerror=alert(1)>'
+
+    def _rendered(self, **case_kwargs):
+        return to_html(ReportData(cases=[
+            ReportCase(name='x', status='FAIL', **case_kwargs)]))
+
+    def test_failure_message_cannot_inject_markup(self):
+        html = self._rendered(message=self.PAYLOAD)
+        assert '<img src=x' not in html and '&lt;img' in html
+
+    def test_check_evidence_cannot_inject_markup(self):
+        html = self._rendered(checks=[
+            {'name': self.PAYLOAD, 'ok': False, 'kind': 'assert',
+             'expr': self.PAYLOAD, 'src': self.PAYLOAD}])
+        assert '<img src=x' not in html and '&lt;img' in html
+
+    def test_response_body_cannot_inject_markup(self):
+        # goes through highlight_json, which returns Markup
+        html = self._rendered(exchanges=[
+            {'method': 'GET', 'url': 'https://x.test', 'status': 200, 'ms': 1,
+             'request_headers': {}, 'request_body': None,
+             'response_headers': {}, 'response_body': self.PAYLOAD}])
+        assert '<img src=x' not in html and '&lt;img' in html
+
+    def test_markup_inside_a_json_string_is_escaped(self):
+        # the token path of the highlighter, not the gap path
+        html = self._rendered(exchanges=[
+            {'method': 'GET', 'url': 'https://x.test', 'status': 200, 'ms': 1,
+             'request_headers': {}, 'request_body': None, 'response_headers': {},
+             'response_body': '{"k": "<script>alert(1)</script>"}'}])
+        assert '<script>alert(1)' not in html
+        assert '&lt;script&gt;' in html
+
+    def test_headers_and_url_cannot_inject_markup(self):
+        html = self._rendered(exchanges=[
+            {'method': 'GET', 'url': 'https://x.test/' + self.PAYLOAD, 'status': 200,
+             'ms': 1, 'request_headers': {self.PAYLOAD: self.PAYLOAD},
+             'request_body': None,
+             'response_headers': {self.PAYLOAD: self.PAYLOAD}, 'response_body': ''}])
+        assert '<img src=x' not in html and '&lt;img' in html
+
+    def test_curl_attribute_cannot_break_out_of_the_attribute(self):
+        html = self._rendered(exchanges=[
+            {'method': 'GET', 'url': 'https://x.test', 'status': 200, 'ms': 1,
+             'request_headers': {'X-A': '" onmouseover="alert(1)'},
+             'request_body': None, 'response_headers': {}, 'response_body': ''}])
+        assert 'onmouseover="alert(1)"' not in html
 
     def test_json_is_valid_and_matches_the_model(self):
         report = build(run_with(case('s.py::a', 'failed', ASSERT_FAILURE)))
@@ -175,8 +234,10 @@ class TestRendering:
         to_html(build(run_with()))
 
     def test_collect_error_is_shown(self):
+        # the reason itself, not the surrounding label -- the label is prose
+        # and changes; the reason is the thing a reader needs
         report = build(run_with(collect_error='no tests were collected'))
-        assert 'Nothing ran' in to_html(report)
+        assert 'no tests were collected' in to_html(report)
         assert report.ok is False
 
 
@@ -195,3 +256,104 @@ class TestGrouping:
         ('', 'default')])
     def test_suite_extraction(self, nodeid, expected):
         assert suite_of(nodeid) == expected
+
+
+class TestCoverageMatrix:
+    """
+    An empty cell is a combination nobody wrote a test for. It is the one thing
+    a list of results can never show, and the reason the axes are declared by
+    the suite rather than derived from what ran.
+    """
+
+    def _report(self, *cases):
+        return build(run_with(*cases, coverage=AXES), include_triage=False)
+
+    def test_a_cell_with_no_test_is_reported_as_empty(self):
+        report = self._report(case('s.py::a', dims={'chain': '1', 'pay': 'native'}))
+        grid = report.coverage_matrix[0]
+        assert grid['filled'] == 1 and grid['total'] == 4
+        states = [c['status'] for row in grid['rows'] for c in row['cells']]
+        assert states.count('none') == 3
+
+    def test_a_cell_is_as_bad_as_its_worst_case(self):
+        report = self._report(
+            case('s.py::a', dims={'chain': '1', 'pay': 'native'}),
+            case('s.py::b', 'failed', dims={'chain': '1', 'pay': 'native'}))
+        assert report.coverage_matrix[0]['rows'][0]['cells'][0]['status'] == 'fail'
+
+    def test_a_cell_of_only_skips_is_not_a_pass(self):
+        report = self._report(case('s.py::a', 'skipped',
+                                   dims={'chain': '1', 'pay': 'native'}))
+        assert report.coverage_matrix[0]['rows'][0]['cells'][0]['status'] == 'skip'
+
+    def test_cases_without_dims_do_not_fill_anything(self):
+        report = self._report(case('s.py::a'))
+        assert report.coverage_matrix[0]['filled'] == 0
+
+    def test_no_declared_axes_means_no_matrix(self):
+        assert build(run_with(case('s.py::a')), include_triage=False).coverage_matrix == []
+
+
+class TestJudgementsAndGaps:
+    def _report(self, *cases):
+        return build(run_with(*cases), include_triage=False)
+
+    def test_check_counts_are_judgements_not_cases(self):
+        report = self._report(case('s.py::a', checks=[
+            judgement('a'), judgement('b', ok=False), judgement('c', kind='gap')]))
+        assert report.check_totals == {'passed': 1, 'failed': 1, 'gap': 1}
+
+    def test_gaps_are_aggregated_with_a_count(self):
+        shared = judgement('余额实际增加', kind='gap', src='onchain')
+        report = self._report(case('s.py::a', checks=[dict(shared)]),
+                              case('s.py::b', checks=[dict(shared)]),
+                              case('s.py::c', checks=[judgement('别的', kind='gap')]))
+        by_name = {g['name']: g['count'] for g in report.gaps}
+        assert by_name == {'余额实际增加': 2, '别的': 1}
+        assert report.gaps[0]['name'] == '余额实际增加', 'most common should sort first'
+
+    def test_a_suite_that_only_checks_one_dimension_shows_it(self):
+        report = self._report(case('s.py::a', checks=[
+            judgement('a', src='api'), judgement('b', src='api')]))
+        assert set(report.by_source) == {'api'}
+
+    def test_gaps_do_not_count_as_passed_checks(self):
+        report = self._report(case('s.py::a', checks=[judgement('g', kind='gap')]))
+        assert report.cases[0].checks_passed == 0
+        assert report.cases[0].checks_failed == 0
+
+    def test_evidence_is_redacted_like_everything_else(self):
+        report = self._report(case('s.py::a', exchanges=[{
+            'method': 'GET', 'url': 'https://x.test', 'status': 200, 'ms': 1,
+            'request_headers': {'Authorization': 'Bearer abcdef1234567890'},
+            'request_body': None, 'response_headers': {}, 'response_body': ''}]))
+        assert report.cases[0].exchanges[0]['request_headers']['Authorization'] == MASK
+
+    def test_json_roundtrip_survives_the_derived_fields(self):
+        report = self._report(case('s.py::a', checks=[judgement('a')]))
+        restored = build_from_dict(json.loads(to_json(report)))
+        assert restored.cases[0].checks[0]['name'] == 'a'
+
+
+class TestCurlReproduction:
+    def test_the_command_is_shell_safe(self):
+        """
+        A header value comes from whatever the suite sent, and the command is
+        offered for pasting into a shell. The property that matters is not how
+        it is quoted but that it parses back to the argv we meant -- a metachar
+        must end up inside one argument, never as syntax.
+        """
+        import shlex
+        from ipandora.core.report.render import to_curl
+        hostile = "it's; rm -rf /"
+        argv = shlex.split(to_curl({'method': 'GET', 'url': 'https://x.test/?a=1&b=2',
+                                    'request_headers': {'X-A': hostile},
+                                    'request_body': None}))
+        assert argv == ['curl', '-X', 'GET', '-H', 'X-A: ' + hostile,
+                        'https://x.test/?a=1&b=2']
+
+    def test_a_body_is_included(self):
+        from ipandora.core.report.render import to_curl
+        command = to_curl({'method': 'POST', 'url': 'https://x.test',
+                           'request_headers': {}, 'request_body': '{"a": 1}'})
+        assert '--data' in command and '-X POST' in command

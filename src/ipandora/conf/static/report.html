@@ -1,143 +1,580 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{ title }}</title>
 <style>
-  :root { --pass:#2e7d32; --fail:#c62828; --error:#ad1457; --skip:#ef6c00;
-          --blocked:#6a1b9a; --gap:#546e7a; --line:#e0e0e0; --muted:#666; }
-  body { font-family: -apple-system, "Segoe UI", "PingFang SC", Roboto, sans-serif;
-         margin: 0; padding: 24px; color: #222; background: #fafafa; }
-  h1 { font-size: 20px; margin: 0 0 4px; }
-  .meta { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
-  .meta code { background:#eee; padding:1px 5px; border-radius:3px; }
-  .cards { display:flex; flex-wrap:wrap; gap:12px; margin-bottom:8px; }
-  .card { background:#fff; border:1px solid var(--line); border-radius:6px;
-          padding:10px 16px; min-width:78px; }
-  .card .n { font-size:22px; font-weight:600; }
-  .card .l { font-size:11px; color:var(--muted); text-transform:uppercase;
-             letter-spacing:.04em; }
-  .banner { padding:10px 14px; border-radius:6px; margin:16px 0; font-size:14px; }
-  .banner.bad { background:#ffebee; border:1px solid #ffcdd2; }
-  .banner.good { background:#e8f5e9; border:1px solid #c8e6c9; }
-  .banner.warn { background:#fff8e1; border:1px solid #ffe082; }
-  table { width:100%; border-collapse:collapse; background:#fff;
-          border:1px solid var(--line); border-radius:6px; overflow:hidden; }
-  th, td { text-align:left; padding:8px 12px; border-bottom:1px solid var(--line);
-           font-size:13px; vertical-align:top; }
-  th { background:#f5f5f5; font-weight:600; font-size:12px; }
-  tr:last-child td { border-bottom:none; }
-  .st { font-weight:600; font-size:11px; letter-spacing:.03em; }
-  .PASS{color:var(--pass)} .FAIL{color:var(--fail)} .ERROR{color:var(--error)}
-  .SKIPPED{color:var(--skip)} .BLOCKED{color:var(--blocked)} .GAP{color:var(--gap)}
-  .cat { display:inline-block; font-size:11px; padding:1px 7px; border-radius:10px;
-         background:#eceff1; color:#37474f; }
-  .cat.defect,.cat.contract { background:#ffebee; color:#b71c1c; }
-  .cat.environment { background:#e3f2fd; color:#0d47a1; }
-  .cat.data { background:#fff3e0; color:#e65100; }
-  .cat.harness { background:#f3e5f5; color:#4a148c; }
-  details { margin-top:5px; }
-  summary { cursor:pointer; color:var(--muted); font-size:12px; }
-  pre { background:#fafafa; border:1px solid var(--line); border-radius:4px;
-        padding:8px; overflow-x:auto; font-size:12px; margin:6px 0 0;
-        white-space:pre-wrap; word-break:break-word; }
-  .next { color:var(--muted); font-size:12px; margin-top:4px; }
-  h2 { font-size:14px; margin:22px 0 8px; }
-  .foot { color:var(--muted); font-size:11px; margin-top:24px; }
+:root{
+  --ink:#0D1420; --panel:#131C2C; --panel-2:#182337; --code:#0F1724;
+  --line:rgba(228,234,242,.10); --line-strong:rgba(228,234,242,.20);
+  --text:#E4EAF2; --dim:#8C9AB0; --faint:#5C6A80;
+  --pass:#5FD3A6; --fail:#FF7060; --warn:#F0B152; --meta:#A78BFA; --none:#3E4A5E;
+  --jk:#7FB2FF; --js:#8FD9B6; --jn:#F0B152; --jb:#C39BFF;
+  --sans:'IBM Plex Sans','PingFang SC','Microsoft YaHei',system-ui,-apple-system,sans-serif;
+  --mono:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;
+}
+@media (prefers-color-scheme:light){
+  /* The row tints are re-stated rather than inherited: 7% of a colour over a
+     dark panel reads as tinted, the same 7% over white reads as dirty grey --
+     which is exactly the shade a reader ignores. */
+  .check.bad,.why,.errline{background:#FDECEA !important}
+  .check.gap,.why.warn{background:#FDF3E2 !important}
+  :root{
+    --ink:#F4F7FA; --panel:#FFFFFF; --panel-2:#EEF2F7; --code:#F7F9FC;
+    --line:rgba(13,20,32,.10); --line-strong:rgba(13,20,32,.20);
+    --text:#16202F; --dim:#5A6779; --faint:#8793A5;
+    --pass:#12855F; --fail:#C8372A; --warn:#8A5A0B; --meta:#6D45D4; --none:#C3CCDA;
+    --jk:#1E5FBF; --js:#12855F; --jn:#8A5A0B; --jb:#6D45D4;
+  }
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;padding:40px 24px 80px;background:var(--ink);color:var(--text);
+  font-family:var(--sans);font-size:14px;line-height:1.55}
+.wrap{max-width:1140px;margin:0 auto}
+
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--faint);display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center}
+.eyebrow .sep{color:var(--line-strong)}
+.eyebrow .env{color:var(--warn)}
+h1{font-weight:600;font-size:clamp(22px,4vw,31px);letter-spacing:-.015em;margin:14px 0 4px}
+.runid{font-family:var(--mono);font-size:12.5px;color:var(--dim);word-break:break-all}
+
+.hero{margin-top:28px;display:grid;grid-template-columns:1fr auto;gap:22px;align-items:start}
+.stack{display:grid;gap:14px;min-width:0}
+.stamp{color:var(--verdict);border:2px solid currentColor;border-radius:10px;
+  padding:18px 22px;text-align:center;min-width:190px}
+.stamp.good{--verdict:var(--pass)} .stamp.bad{--verdict:var(--fail)}
+.stamp .big{font-weight:700;font-size:36px;line-height:1;letter-spacing:-.02em}
+.stamp .verdict{font-weight:700;font-size:18px;letter-spacing:.12em;margin-top:6px}
+.stamp .rule{height:1px;background:currentColor;opacity:.45;margin:11px 0}
+.stamp .line{font-family:var(--mono);font-size:10px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--dim)}
+
+.card{border:1px solid var(--line);border-radius:14px;background:var(--panel);padding:18px 20px}
+.card h3{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--dim);margin:0 0 3px;font-weight:600}
+.card p.note{font-size:12px;color:var(--faint);margin:0 0 14px}
+
+.matrix{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:420px}
+th,td{text-align:left;padding:8px 12px;vertical-align:middle}
+thead th{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--faint);font-weight:500;border-bottom:1px solid var(--line)}
+thead th:first-child{width:180px}
+tbody th{font-weight:500;font-size:12.5px;color:var(--text);
+  border-bottom:1px solid var(--line);font-family:var(--mono)}
+tbody td{border-bottom:1px solid var(--line)}
+tbody tr:last-child th,tbody tr:last-child td{border-bottom:none}
+.cell{display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:12px}
+.dot{width:9px;height:9px;border-radius:50%;flex:none}
+.cell.pass .dot{background:var(--pass)}
+.cell.fail .dot{background:var(--fail)} .cell.fail{color:var(--fail)}
+.cell.skip .dot{background:var(--warn)} .cell.skip{color:var(--warn)}
+.cell.none .dot{background:none;border:1px dashed var(--none)} .cell.none{color:var(--none)}
+a.cell{text-decoration:none;color:inherit;border:0}
+a.cell:hover{color:var(--meta)}
+
+.mix{display:grid;gap:9px}
+.mixrow{display:grid;grid-template-columns:96px 1fr 112px;gap:12px;align-items:center}
+.mixrow .k{font-family:var(--mono);font-size:11px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--dim)}
+.mixrow .n{font-family:var(--mono);font-size:11.5px;color:var(--faint);text-align:right}
+.bar{display:flex;height:9px;border-radius:3px;overflow:hidden;background:rgba(140,154,176,.14)}
+.bar i{display:block;height:100%}
+.bar .ok{background:var(--pass)} .bar .bad{background:var(--fail)} .bar .gp{background:var(--warn)}
+
+section{margin-top:40px}
+.sec-head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;
+  border-bottom:1px solid var(--line);padding-bottom:8px;margin-bottom:14px;flex-wrap:wrap}
+.sec-head h2{font-family:var(--mono);font-weight:600;font-size:12px;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--dim);margin:0}
+.sec-head .tally{font-family:var(--mono);font-size:12px;color:var(--faint)}
+.sec-note{color:var(--faint);font-size:12.5px;margin:-4px 0 14px}
+.sec-note code{font-family:var(--mono);font-size:11.5px;color:var(--dim)}
+.band{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--faint);margin:24px 0 10px;display:flex;align-items:center;gap:12px}
+.band::after{content:'';flex:1;height:1px;background:var(--line)}
+
+.filters{display:flex;gap:8px;flex-wrap:wrap}
+.filters button{font-family:var(--mono);font-size:11.5px;letter-spacing:.08em;
+  text-transform:uppercase;background:none;border:1px solid var(--line-strong);
+  color:var(--dim);padding:5px 12px;border-radius:20px;cursor:pointer}
+.filters button:hover{color:var(--text);border-color:var(--dim)}
+.filters button[aria-pressed="true"]{background:var(--text);color:var(--ink);border-color:var(--text)}
+.filters button:focus-visible{outline:2px solid var(--meta);outline-offset:2px}
+
+.cases{display:grid;gap:8px}
+details.case{border:1px solid var(--line);border-radius:11px;background:var(--panel);
+  overflow:hidden;scroll-margin-top:20px}
+details.case[open]{border-color:var(--line-strong)}
+details.case>summary{list-style:none;cursor:pointer;padding:14px 18px;
+  display:grid;grid-template-columns:22px 1fr auto auto;gap:16px;align-items:center}
+details.case>summary::-webkit-details-marker{display:none}
+details.case>summary:hover{background:var(--panel-2)}
+details.case>summary:focus-visible{outline:2px solid var(--meta);outline-offset:-2px}
+.st{font-family:var(--mono);font-size:14px;font-weight:700}
+.case.PASS .st{color:var(--pass)} .case.FAIL .st,.case.ERROR .st{color:var(--fail)}
+.case.SKIPPED .st,.case.BLOCKED .st,.case.GAP .st{color:var(--warn)}
+.ct{font-size:14px}
+.cid{font-family:var(--mono);font-size:11.5px;color:var(--meta);margin-top:3px;word-break:break-all}
+.pills{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.pill{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--dim);border:1px solid var(--line-strong);padding:3px 9px;border-radius:20px;white-space:nowrap}
+.cms{font-family:var(--mono);font-size:12px;color:var(--faint);text-align:right;white-space:nowrap}
+.body{border-top:1px solid var(--line);background:var(--panel-2);padding:18px}
+
+.why{border-left:2px solid var(--fail);background:rgba(255,112,96,.08);
+  padding:11px 14px;margin:0 0 16px;border-radius:0 6px 6px 0}
+.why .cat{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--fail);font-weight:600}
+.why .r{font-size:13px;margin-top:3px}
+.why .n{font-size:12.5px;color:var(--dim);margin-top:5px}
+.why.warn{border-left-color:var(--warn);background:rgba(240,177,82,.09)}
+.why.warn .cat{color:var(--warn)}
+
+.sub{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--faint);margin:18px 0 9px}
+.body>.sub:first-child{margin-top:0}
+
+.checks{display:grid;gap:1px;background:var(--line);border:1px solid var(--line);
+  border-radius:8px;overflow:hidden}
+.check{background:var(--panel);display:grid;grid-template-columns:20px 1fr auto;
+  gap:12px;padding:9px 14px;align-items:start}
+.check .mark{font-family:var(--mono);font-weight:700;font-size:12.5px}
+.check .name{font-size:13px}
+.check .expr{font-family:var(--mono);font-size:11.5px;color:var(--dim);
+  margin-top:2px;word-break:break-word;display:block}
+.check .src{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--faint);white-space:nowrap;padding-top:3px}
+.check.ok .mark{color:var(--pass)}
+.check.bad{background:rgba(255,112,96,.07)} .check.bad .mark{color:var(--fail)}
+.check.gap{background:rgba(240,177,82,.07)} .check.gap .mark,.check.gap .src{color:var(--warn)}
+
+details.step{border:1px solid var(--line);border-radius:8px;background:var(--panel);
+  overflow:hidden;margin-bottom:5px}
+details.step>summary{list-style:none;cursor:pointer;padding:9px 14px;
+  display:grid;grid-template-columns:58px 1fr 110px 46px 66px;gap:12px;align-items:center}
+details.step>summary::-webkit-details-marker{display:none}
+details.step>summary:hover{background:var(--panel-2)}
+details.step>summary:focus-visible{outline:2px solid var(--meta);outline-offset:-2px}
+.verb{font-family:var(--mono);font-size:10px;letter-spacing:.08em;color:var(--meta);
+  border:1px solid var(--line-strong);border-radius:4px;padding:2px 0;text-align:center}
+.su{font-family:var(--mono);font-size:12px;min-width:0;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.track{position:relative;height:9px;background:rgba(140,154,176,.12);border-radius:3px;overflow:hidden}
+.track i{position:absolute;top:0;bottom:0;background:var(--meta);border-radius:3px;min-width:3px}
+.track i.slow{background:var(--warn)} .track i.err{background:var(--fail)}
+.code-n{font-family:var(--mono);font-size:12px;font-weight:600;text-align:right}
+.code-n.ok{color:var(--pass)} .code-n.bad{color:var(--fail)}
+.sms{font-family:var(--mono);font-size:11.5px;color:var(--faint);text-align:right}
+
+.io{border-top:1px solid var(--line);background:var(--panel-2);padding:14px}
+.reqline{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:12px}
+.reqline .m{font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.08em;
+  background:var(--meta);color:var(--ink);padding:2px 8px;border-radius:4px}
+.reqline .u{font-family:var(--mono);font-size:12px;word-break:break-all;flex:1;min-width:200px}
+.copy{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+  background:none;border:1px solid var(--line-strong);color:var(--dim);
+  padding:3px 9px;border-radius:5px;cursor:pointer}
+.copy:hover{color:var(--text);border-color:var(--dim)}
+.copy:focus-visible{outline:2px solid var(--meta);outline-offset:2px}
+.panes{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}
+.panes.single{grid-template-columns:1fr}
+.panes+.panes{margin-top:2px}
+.pane{min-width:0}
+.pane h5{font-family:var(--mono);font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--faint);margin:0 0 6px}
+pre{margin:0 0 10px;background:var(--code);border:1px solid var(--line);border-radius:6px;
+  padding:10px 12px;font-family:var(--mono);font-size:11.5px;line-height:1.5;
+  overflow:auto;max-height:300px;color:var(--text);white-space:pre-wrap;word-break:break-word}
+pre.hdr{max-height:132px;color:var(--dim)}
+.jk{color:var(--jk)} .js{color:var(--js)} .jn{color:var(--jn)} .jb{color:var(--jb)}
+.hint{font-family:var(--mono);font-size:11px;color:var(--faint);margin:0 0 10px}
+.errline{border-left:2px solid var(--fail);background:rgba(255,112,96,.09);
+  padding:9px 13px;border-radius:0 6px 6px 0;font-family:var(--mono);font-size:12px;
+  color:var(--fail);margin-bottom:12px;word-break:break-word}
+.timenote{font-size:12px;color:var(--faint);margin-top:9px}
+.timenote b{color:var(--warn);font-family:var(--mono);font-weight:500}
+pre.trace{max-height:340px;color:var(--dim);font-size:11px;margin-top:8px}
+details.raw{margin-top:18px}
+details.raw>summary{list-style:none;cursor:pointer;font-family:var(--mono);font-size:10.5px;
+  letter-spacing:.16em;text-transform:uppercase;color:var(--faint)}
+details.raw>summary::-webkit-details-marker{display:none}
+details.raw>summary:hover{color:var(--dim)}
+details.raw>summary::before{content:'▸ '}
+details.raw[open]>summary::before{content:'▾ '}
+
+.gaps,.rows{display:grid;gap:1px;background:var(--line);border:1px solid var(--line);
+  border-radius:10px;overflow:hidden}
+.gaprow{background:var(--panel);display:grid;grid-template-columns:22px 1fr auto;
+  gap:14px;padding:12px 16px;align-items:center}
+.gaprow .mark{font-family:var(--mono);color:var(--warn);font-weight:700}
+.gaprow .name{font-size:13px}
+.gaprow .expr{font-family:var(--mono);font-size:11.5px;color:var(--dim);margin-top:3px;display:block}
+.gaprow .cnt{font-family:var(--mono);font-size:11.5px;color:var(--warn);white-space:nowrap}
+.row{background:var(--panel);display:grid;grid-template-columns:1fr auto;gap:16px;
+  padding:11px 16px;align-items:center}
+.row .nm{font-size:13px}
+.row .rs{font-family:var(--mono);font-size:11.5px;color:var(--dim);margin-top:2px;display:block}
+.row .tag{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--warn);white-space:nowrap}
+
+.banner{padding:11px 15px;border-radius:8px;margin:22px 0 0;font-size:13.5px;
+  border:1px solid var(--line-strong)}
+.banner.bad{background:rgba(255,112,96,.09);border-color:rgba(255,112,96,.32)}
+a{color:var(--meta);text-decoration:none;border-bottom:1px solid rgba(167,139,250,.35)}
+a:hover{border-bottom-color:var(--meta)}
+footer{margin-top:50px;padding-top:16px;border-top:1px solid var(--line);
+  font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--faint);display:flex;flex-wrap:wrap;gap:6px 18px}
+
+@media (max-width:860px){
+  body{padding:26px 14px 60px}
+  .hero{grid-template-columns:1fr}
+  .stamp{justify-self:start}
+  details.case>summary{grid-template-columns:20px 1fr;gap:10px}
+  .pills,.cms{display:none}
+  details.step>summary{grid-template-columns:54px 1fr 60px}
+  .track,.code-n{display:none}
+  .panes{grid-template-columns:1fr}
+  .mixrow{grid-template-columns:78px 1fr 96px}
+}
+@media print{
+  body{background:#fff;color:#000;padding:0}
+  details{break-inside:avoid}
+  details>summary{cursor:default}
+  .filters,.copy{display:none}
+}
 </style>
 </head>
 <body>
+<div class="wrap">
 
+{%- set marks = {'PASS':'✓','FAIL':'✗','ERROR':'✗','SKIPPED':'–','BLOCKED':'–','GAP':'!'} %}
+
+<div class="eyebrow">
+  <span>{{ run_id or 'run' }}</span><span class="sep">/</span>
+  {%- if env %}<span class="env">{{ env }}</span><span class="sep">/</span>{% endif %}
+  <span>{{ totals.total }} cases</span><span class="sep">/</span>
+  <span>{{ check_totals.passed + check_totals.failed }} checks</span>
+</div>
 <h1>{{ title }}</h1>
-<div class="meta">
-  {{ generated }} &middot; {{ '%.2f'|format(duration) }}s
-  {%- if run_id %} &middot; <code>{{ run_id }}</code>{% endif %}
-  {%- if env %} &middot; env: <code>{{ env }}</code>{% endif %}
-  {%- if selector %} &middot; selector: <code>{{ selector }}</code>{% endif %}
-</div>
-
-<div class="cards">
-  <div class="card"><div class="n">{{ totals.total }}</div><div class="l">total</div></div>
-  <div class="card"><div class="n PASS">{{ totals.passed }}</div><div class="l">passed</div></div>
-  <div class="card"><div class="n FAIL">{{ totals.failed }}</div><div class="l">failed</div></div>
-  <div class="card"><div class="n ERROR">{{ totals.error }}</div><div class="l">error</div></div>
-  <div class="card"><div class="n SKIPPED">{{ totals.skipped }}</div><div class="l">skipped</div></div>
-  {%- if totals.blocked %}
-  <div class="card"><div class="n BLOCKED">{{ totals.blocked }}</div><div class="l">blocked</div></div>
-  {%- endif %}
-  {%- if totals.gap %}
-  <div class="card"><div class="n GAP">{{ totals.gap }}</div><div class="l">gap</div></div>
-  {%- endif %}
-  <div class="card"><div class="n">{{ pass_rate }}</div><div class="l">pass rate</div></div>
-</div>
+<div class="runid">{{ generated }} · {{ '%.2f'|format(duration) }}s{% if selector %} · {{ selector }}{% endif %}</div>
 
 {% if collect_error %}
-<div class="banner bad"><b>Nothing ran.</b> {{ collect_error }}</div>
-{% elif triage and triage.blames_system_under_test %}
-<div class="banner bad">
-  <b>{{ triage.blames_system_under_test }} failure(s) point at the system under test.</b>
-  {{ triage.headline }}
-</div>
-{% elif not ok %}
-<div class="banner warn">
-  <b>Failures are all on our side</b> &mdash; environment, data or the tests
-  themselves. {{ triage.headline if triage else '' }}
-</div>
-{% else %}
-<div class="banner good"><b>All conclusive cases passed.</b>
-  {%- if inconclusive %} {{ inconclusive|length }} case(s) told us nothing &mdash; see below.{% endif %}
-</div>
+<div class="banner bad"><strong>收集失败 —— 一条用例都没跑起来。</strong> {{ collect_error }}</div>
 {% endif %}
 
-{% if triage and triage.analysis %}
-<h2>Root cause</h2>
-<div class="banner warn">{{ triage.analysis }}</div>
+<div class="hero">
+  <div class="stack">
+
+    {% for grid in coverage %}
+    <div class="card matrix">
+      <h3>{{ grid.title }} · 覆盖 {{ grid.filled }}/{{ grid.total }}</h3>
+      {% if grid.note %}<p class="note">{{ grid.note }}</p>{% endif %}
+      <table>
+        <thead><tr><th>{{ grid.y_label }}</th>
+          {%- for x in grid.x_labels %}<th>{{ x }}</th>{% endfor %}</tr></thead>
+        <tbody>
+          {%- for row in grid.rows %}
+          <tr><th>{{ row.label }}</th>
+            {%- for cell in row.cells %}
+            <td>
+              {%- if cell.cases %}
+              <a class="cell {{ cell.status }}" href="#{{ cell.cases[0].nodeid }}">
+                <span class="dot"></span>{{ cell.cases|length }} 例</a>
+              {%- else %}
+              <span class="cell none"><span class="dot"></span>无用例</span>
+              {%- endif %}
+            </td>
+            {%- endfor %}
+          </tr>
+          {%- endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endfor %}
+
+    {% if by_source %}
+    <div class="card">
+      <h3>判定构成 · 按维度</h3>
+      <p class="note">这里数的是断言，不是用例。一个套件可以每条用例都通过，却几乎什么都没判。</p>
+      <div class="mix">
+        {%- for src, n in by_source.items() %}
+        {%- set gp = n.get('gap', 0) %}
+        {%- set tot = (n.passed + n.failed + gp) or 1 %}
+        <div class="mixrow">
+          <span class="k">{{ src }}</span>
+          <span class="bar">
+            {%- if n.passed %}<i class="ok" style="width:{{ '%.1f'|format(100.0 * n.passed / tot) }}%"></i>{% endif %}
+            {%- if n.failed %}<i class="bad" style="width:{{ '%.1f'|format(100.0 * n.failed / tot) }}%"></i>{% endif %}
+            {%- if gp %}<i class="gp" style="width:{{ '%.1f'|format(100.0 * gp / tot) }}%"></i>{% endif %}
+          </span>
+          <span class="n">{{ n.passed }}✓{% if n.failed %} {{ n.failed }}✗{% endif %}{% if gp %} {{ gp }}!{% endif %}</span>
+        </div>
+        {%- endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+
+  <div class="stamp {{ 'good' if ok else 'bad' }}">
+    <div class="big">{{ totals.passed }}/{{ totals.total }}</div>
+    <div class="verdict">{{ 'PASS' if ok else 'FAIL' }}</div>
+    <div class="rule"></div>
+    <div class="line">通过率 {{ pass_rate }}</div>
+    {%- if totals.failed or totals.error %}<div class="line">{{ totals.failed + totals.error }} failed</div>{% endif %}
+    {%- if inconclusive %}<div class="line">{{ inconclusive|length }} 无结论</div>{% endif %}
+    {%- if check_totals.gap %}<div class="line">{{ check_totals.gap }} 处未覆盖</div>{% endif %}
+    <div class="line">{{ '%.2f'|format(duration) }}s wall</div>
+  </div>
+</div>
+
+{% if triage and triage.headline %}
+<section>
+  <div class="sec-head">
+    <h2>失败归因</h2>
+    <span class="tally">{{ triage.headline }}</span>
+  </div>
+  <p class="sec-note">
+    规则分类，不调模型。<strong>{{ triage.blames_system_under_test }}</strong> 条指向被测系统；
+    其余是环境或数据问题 —— 修它们不会改变产品。
+  </p>
+</section>
 {% endif %}
 
 {% if inconclusive %}
-<h2>Told us nothing ({{ inconclusive|length }})</h2>
-<table>
-  <tr><th style="width:22%">Case</th><th style="width:10%">Status</th><th>Why</th></tr>
-  {% for case in inconclusive %}
-  <tr>
-    <td>{{ case.name }}</td>
-    <td class="st {{ case.status }}">{{ case.status }}</td>
-    <td>{{ case.reason or case.message or '&mdash;' }}</td>
-  </tr>
-  {% endfor %}
-</table>
+<section>
+  <div class="sec-head">
+    <h2>什么都没测到</h2>
+    <span class="tally">{{ inconclusive|length }} 条</span>
+  </div>
+  <p class="sec-note">这些用例没有对产品作出任何判断，因此不计入通过率。</p>
+  <div class="rows">
+    {%- for case in inconclusive %}
+    <div class="row">
+      <span>
+        <span class="nm">{{ case.title or case.name }}</span>
+        <span class="rs">{{ case.reason or case.message or '—' }}</span>
+      </span>
+      <span class="tag">{{ case.status }}</span>
+    </div>
+    {%- endfor %}
+  </div>
+</section>
 {% endif %}
 
-<h2>All cases</h2>
-{% for suite, suite_cases in by_suite.items() %}
-<h2 style="font-weight:500;color:#555">{{ suite }}</h2>
-<table>
-  <tr>
-    <th style="width:26%">Case</th><th style="width:8%">Status</th>
-    <th style="width:12%">Category</th><th style="width:7%">Time</th><th>Detail</th>
-  </tr>
-  {% for case in suite_cases %}
-  <tr>
-    <td>{{ case.name }}</td>
-    <td class="st {{ case.status }}">{{ case.status }}</td>
-    <td>{% if case.category %}<span class="cat {{ case.category }}">{{ case.category }}</span>{% endif %}</td>
-    <td>{{ '%.3f'|format(case.duration) }}s</td>
-    <td>
-      {%- if case.reason %}{{ case.reason }}{% endif %}
-      {%- if case.message %}
-      <details><summary>evidence</summary><pre>{{ case.message }}</pre></details>
-      {%- endif %}
-      {%- if case.next_step %}<div class="next">&rarr; {{ case.next_step }}</div>{% endif %}
-    </td>
-  </tr>
-  {% endfor %}
-</table>
-{% endfor %}
+<section>
+  <div class="sec-head">
+    <h2>用例明细</h2>
+    <div class="filters">
+      <button data-filter="all" aria-pressed="true">全部</button>
+      <button data-filter="bad" aria-pressed="false">仅失败</button>
+      <button data-filter="gap" aria-pressed="false">有缺口</button>
+      <button data-filter="none" aria-pressed="false">无结论</button>
+    </div>
+  </div>
 
-<div class="foot">
-  Secrets are stripped when this data is built, not when it is rendered.
-  Pass rate counts conclusive cases only.
+  {% for suite, suite_cases in by_suite.items() %}
+  <div class="band" data-band="{{ suite }}">{{ suite }}</div>
+  <div class="cases">
+    {%- for case in suite_cases %}
+    {%- set bad = case.status in ('FAIL', 'ERROR') %}
+    <details class="case {{ case.status }}" id="{{ case.nodeid }}"
+             data-status="{{ case.status }}" data-gap="{{ 1 if case.gaps else 0 }}"
+             {% if bad %}open{% endif %}>
+      <summary>
+        <span class="st">{{ marks.get(case.status, '?') }}</span>
+        <span>
+          <span class="ct">{{ case.title or case.name }}</span>
+          <span class="cid">{{ case.name }}</span>
+        </span>
+        <span class="pills">
+          {%- for key, value in case.dims.items() %}<span class="pill">{{ value }}</span>{% endfor %}
+          {%- if case.checks %}<span class="pill">{{ case.checks_passed }}✓{% if case.checks_failed %} {{ case.checks_failed }}✗{% endif %}{% if case.gaps %} {{ case.gaps|length }}!{% endif %}</span>{% endif %}
+        </span>
+        <span class="cms">{{ '%.3f'|format(case.duration) }}s</span>
+      </summary>
+      <div class="body">
+
+        {%- if case.reason %}
+        <div class="why {{ '' if bad else 'warn' }}">
+          <div class="cat">{{ case.category or case.status }}</div>
+          <div class="r">{{ case.reason }}</div>
+          {%- if case.next_step %}<div class="n">↳ {{ case.next_step }}</div>{% endif %}
+        </div>
+        {%- endif %}
+
+        {%- if case.checks %}
+        <div class="sub">判定 · {{ case.checks_passed }} 通过{% if case.checks_failed %} · {{ case.checks_failed }} 失败{% endif %}{% if case.gaps %} · {{ case.gaps|length }} 未覆盖{% endif %}</div>
+        <div class="checks">
+          {%- for check in case.checks %}
+          {%- set cls = 'gap' if check.kind == 'gap' else ('ok' if check.ok else 'bad') %}
+          <div class="check {{ cls }}">
+            <span class="mark">{{ '!' if cls == 'gap' else ('✓' if check.ok else '✗') }}</span>
+            <span>
+              <span class="name">{{ check.name }}</span>
+              {%- if check.expr %}<span class="expr">{{ check.expr }}</span>{% endif %}
+            </span>
+            <span class="src">{{ check.src }}</span>
+          </div>
+          {%- endfor %}
+        </div>
+        {%- elif case.status == 'PASS' %}
+        <div class="hint">这条用例通过了，但没有留下任何判定 —— 它可能什么都没断言。</div>
+        {%- endif %}
+
+        {%- if case.exchanges %}
+        {%- set total_ms = case.exchange_ms or 1 %}
+        {%- set ns = namespace(at=0.0) %}
+        <div class="sub">请求 · {{ case.exchanges|length }} 次 · {{ case.exchange_ms|ms }}</div>
+        {%- for ex in case.exchanges %}
+        {%- set left = 100.0 * ns.at / total_ms %}
+        {%- set width = [100.0 * (ex.ms or 0) / total_ms, 0.8]|max %}
+        {%- set ns.at = ns.at + (ex.ms or 0) %}
+        {%- set broke = ex.error or not (ex.status and 200 <= ex.status < 400) %}
+        <details class="step" {% if broke %}open{% endif %}>
+          <summary>
+            <span class="verb">{{ ex.method or 'GET' }}</span>
+            <span class="su">{{ ex.url }}</span>
+            <span class="track"><i class="{{ 'err' if broke else ('slow' if case.exchanges|length > 1 and width > 50 else '') }}"
+              style="left:{{ '%.2f'|format(left) }}%;width:{{ '%.2f'|format(width) }}%"></i></span>
+            <span class="code-n {{ 'bad' if broke else 'ok' }}">{{ ex.status or '—' }}</span>
+            <span class="sms">{{ ex.ms|ms }}</span>
+          </summary>
+          <div class="io">
+            {%- if ex.error %}<div class="errline">{{ ex.error }}</div>{% endif %}
+            <div class="reqline">
+              <span class="m">{{ ex.method or 'GET' }}</span>
+              <span class="u">{{ ex.url }}</span>
+              {%- if ex.status %}<span class="code-n {{ 'bad' if broke else 'ok' }}">{{ ex.status }} {{ ex.reason }}</span>{% endif %}
+              <button class="copy" data-curl="{{ ex|curl }}">copy as curl</button>
+            </div>
+            <div class="panes">
+              <div class="pane">
+                <h5>Request headers</h5>
+                {%- if ex.request_headers %}
+                <pre class="hdr">{% for k, v in ex.request_headers.items() %}{{ k }}: {{ v }}
+{% endfor %}</pre>
+                {%- else %}<div class="hint">无</div>{% endif %}
+              </div>
+              <div class="pane">
+                <h5>Response headers</h5>
+                {%- if ex.response_headers %}
+                <pre class="hdr">{% for k, v in ex.response_headers.items() %}{{ k }}: {{ v }}
+{% endfor %}</pre>
+                {%- else %}<div class="hint">无</div>{% endif %}
+              </div>
+            </div>
+            {#- Bodies get their own row, and collapse to one column when the
+                request has none. A GET leaves an empty half otherwise, which
+                is most of what an API suite sends. #}
+            <div class="panes {{ '' if ex.request_body else 'single' }}">
+              {%- if ex.request_body %}
+              <div class="pane">
+                <h5>Request body</h5>
+                <pre>{{ ex.request_body|hljson }}</pre>
+              </div>
+              {%- endif %}
+              <div class="pane">
+                <h5>Response body</h5>
+                {%- if ex.response_body %}<pre>{{ ex.response_body|hljson }}</pre>
+                {%- else %}<div class="hint">无响应体</div>{% endif %}
+              </div>
+            </div>
+          </div>
+        </details>
+        {%- endfor %}
+        {%- set slow = case.slowest_exchange %}
+        {%- if slow and case.exchanges|length > 1 and (slow.ms or 0) > 0.4 * total_ms %}
+        <div class="timenote">最慢一次占 <b>{{ '%.0f'|format(100.0 * slow.ms / total_ms) }}%</b>（{{ slow.ms|ms }}），其余 {{ (total_ms - slow.ms)|ms }}。</div>
+        {%- endif %}
+        {%- endif %}
+
+        {%- if bad and case.message %}
+        <details class="raw">
+          <summary>失败原文</summary>
+          <pre class="trace">{{ case.message }}</pre>
+        </details>
+        {%- endif %}
+      </div>
+    </details>
+    {%- endfor %}
+  </div>
+  {% endfor %}
+</section>
+
+{% if gap_list %}
+<section>
+  <div class="sec-head">
+    <h2>断言缺口汇总</h2>
+    <span class="tally">{{ gap_list|length }} 类，共 {{ check_totals.gap }} 处</span>
+  </div>
+  <p class="sec-note">
+    由各用例声明的 <code>gap()</code> 聚合而来，供排下一轮补测的优先级。
+    它们不影响本次结论 —— 缺口是关于套件的陈述，不是关于被测系统的。
+  </p>
+  <div class="gaps">
+    {%- for g in gap_list %}
+    <div class="gaprow">
+      <span class="mark">!</span>
+      <span>
+        <span class="name">{{ g.name }}</span>
+        {%- if g.expr %}<span class="expr">{{ g.expr }}</span>{% endif %}
+      </span>
+      <span class="cnt">{{ g.count }} 处 · {{ g.src }}</span>
+    </div>
+    {%- endfor %}
+  </div>
+</section>
+{% endif %}
+
+<footer>
+  <span>IntelliPandora</span>
+  <span>{{ run_id }}</span>
+  <span>生成于 {{ generated }}</span>
+  <span>凭据在构建期脱敏，非渲染期</span>
+</footer>
 </div>
 
+<script>
+document.addEventListener("click", function (ev) {
+  var copyBtn = ev.target.closest("[data-curl]");
+  if (copyBtn) {
+    navigator.clipboard.writeText(copyBtn.getAttribute("data-curl")).then(function () {
+      var old = copyBtn.textContent;
+      copyBtn.textContent = "copied";
+      setTimeout(function () { copyBtn.textContent = old; }, 1200);
+    }).catch(function () { copyBtn.textContent = "copy failed"; });
+    return;
+  }
+  var btn = ev.target.closest("[data-filter]");
+  if (!btn) return;
+  document.querySelectorAll("[data-filter]").forEach(function (b) {
+    b.setAttribute("aria-pressed", String(b === btn));
+  });
+  var mode = btn.getAttribute("data-filter");
+  var inconclusive = ["SKIPPED", "BLOCKED", "GAP", "ERROR"];
+  document.querySelectorAll("details.case").forEach(function (el) {
+    var st = el.getAttribute("data-status");
+    var show = mode === "all"
+      || (mode === "bad" && (st === "FAIL" || st === "ERROR"))
+      || (mode === "gap" && el.getAttribute("data-gap") === "1")
+      || (mode === "none" && inconclusive.indexOf(st) !== -1);
+    el.style.display = show ? "" : "none";
+  });
+  document.querySelectorAll("[data-band]").forEach(function (band) {
+    var group = band.nextElementSibling;
+    var any = group && Array.prototype.some.call(
+      group.querySelectorAll("details.case"),
+      function (c) { return c.style.display !== "none"; });
+    band.style.display = any ? "" : "none";
+    if (group) { group.style.display = any ? "" : "none"; }
+  });
+});
+</script>
 </body>
 </html>

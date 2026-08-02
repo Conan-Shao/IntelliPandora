@@ -27,14 +27,42 @@ def _flatten(checks: Iterable) -> List[Check]:
     return _out
 
 
+def _judged(checks: List[Check]) -> List[Check]:
+    """The checks that actually judged something -- gaps did not."""
+    return [_c for _c in checks if not _c.is_gap]
+
+
 def _report(checks: List[Check], failures: List[Check], header: str) -> str:
-    _lines = ['{} ({}/{} checks failed)'.format(header, len(failures), len(checks)), '']
+    _judgements = _judged(checks)
+    _lines = ['{} ({}/{} checks failed)'.format(
+        header, len(failures), len(_judgements)), '']
     _lines.extend('  {}'.format(_c) for _c in failures)
-    _passed = [_c for _c in checks if _c.ok]
+
+    _passed = [_c for _c in _judgements if _c.ok]
     if _passed:
         _lines.append('')
         _lines.append('  passed: {}'.format(', '.join(_c.name for _c in _passed)))
+
+    # Named here too, not only in the report: someone reading a red build in a
+    # terminal should see that the case was never checking these to begin with.
+    _gaps = [_c for _c in checks if _c.is_gap]
+    if _gaps:
+        _lines.append('  not covered: {}'.format(', '.join(_c.name for _c in _gaps)))
     return '\n'.join(_lines)
+
+
+def _record(checks: List[Check]) -> None:
+    """
+    Hand the checks to the evidence recorder, if a run is collecting.
+
+    Import is local and failure is swallowed inside the recorder: assertion is
+    the one path that must not acquire a dependency on reporting.
+    """
+    try:
+        from ipandora.core.evidence import add_checks
+        add_checks(checks)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def assert_all(*checks) -> List[Check]:
@@ -49,7 +77,8 @@ def assert_all(*checks) -> List[Check]:
     Framework both render it natively.
     """
     _checks = _flatten(checks)
-    _failures = [_c for _c in _checks if not _c.ok]
+    _record(_checks)
+    _failures = [_c for _c in _judged(_checks) if not _c.ok]
     if _failures:
         raise AssertionError(_report(_checks, _failures, 'Assertion failed'))
     return _checks
@@ -67,7 +96,8 @@ def require(*checks) -> List[Check]:
     Skips via pytest when available, otherwise raises PreconditionNotMet.
     """
     _checks = _flatten(checks)
-    _failures = [_c for _c in _checks if not _c.ok]
+    _record(_checks)
+    _failures = [_c for _c in _judged(_checks) if not _c.ok]
     if not _failures:
         return _checks
 
