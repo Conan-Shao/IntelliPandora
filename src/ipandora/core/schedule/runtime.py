@@ -6,11 +6,13 @@
 """
 import os
 import socket
+import threading
 from typing import Union, List
 from ipandora.common.dictutils import DictUtils
 from ipandora.common.stringaction import StringAction
 from ipandora.common.systeminfo import SystemInfo
-from ipandora.core.base.classwrap.classproperty import classproperty, ClassPropertyMeta
+from ipandora.core.base.classwrap.classproperty import (ClassProperty, ClassPropertyMeta,
+                                                        classproperty)
 from ipandora.core.engine.crypto.crypto import CryptoFactory
 from ipandora.utils.fileload import FileLoad
 from ipandora.utils.pathutils import PathUtils
@@ -21,6 +23,39 @@ class Runtime(object):
     product = ''
     settings = FileLoad(
         os.path.join(PathUtils().pandora_path, 'conf/config.yaml')).load_yaml()  # type:dict
+
+    # Snapshot of every section's memo slots, taken at import before anything
+    # has been read. Populated by _snapshot_config_defaults() below.
+    _config_defaults = {}
+
+    @classmethod
+    def reset(cls, *sections):
+        """
+        Drop the lazily-cached config values so they are re-read from
+        `settings` on next access.
+
+        Every config classproperty memoises into a private `_field` on first
+        read, process-wide. That is fine in a normal run, but it means a test
+        that overrides one leaks the override into every test after it, and
+        that reassigning `Runtime.settings` has no effect on anything already
+        touched. Call this after changing settings, or between tests that
+        override config.
+
+            Runtime.reset()            # everything
+            Runtime.reset('Http')      # one section
+        """
+        _names = sections or list(cls._config_defaults)
+        for _name in _names:
+            _slots = cls._config_defaults.get(_name)
+            if _slots is None:
+                raise ValueError('unknown Runtime section {!r}; known: {}'.format(
+                    _name, ', '.join(sorted(cls._config_defaults))))
+            _section = getattr(cls, _name)
+            for _attr, _value in _slots.items():
+                # bypass ClassPropertyMeta.__setattr__, which would route a
+                # public name to its property setter instead of the memo slot
+                type.__setattr__(_section, _attr,
+                                 list(_value) if isinstance(_value, list) else _value)
 
     class User(metaclass=ClassPropertyMeta):
         _user = ''
@@ -405,30 +440,65 @@ class Runtime(object):
             self._report_host = value
 
     class Case(metaclass=ClassPropertyMeta):
+        """
+        Per-case step recording.
 
-        case_list = []
+        State is thread-local. It used to be a process-global dict keyed by a
+        single process-global case name, so under any concurrency every
+        thread's steps landed under whichever case name was set last. Reading
+        `steps` also used to pop, meaning the first reader emptied it and a
+        second read silently returned [].
+        """
+        _local = threading.local()
 
-        _case_steps = {}
+        @classmethod
+        def _steps_store(cls) -> dict:
+            if not hasattr(cls._local, 'case_steps'):
+                cls._local.case_steps = {}
+            return cls._local.case_steps
 
-        _cur_case_name = None
+        @classproperty
+        def case_list(self) -> List:
+            if not hasattr(self._local, 'case_list'):
+                self._local.case_list = []
+            return self._local.case_list
+
+        @case_list.set
+        def case_list(self, value):
+            self._local.case_list = value
 
         @classproperty
         def cur_case_name(self) -> str:
-            return self._cur_case_name
+            return getattr(self._local, 'cur_case_name', None)
 
         @cur_case_name.set
         def cur_case_name(self, case_name):
-            self._cur_case_name = case_name
+            self._local.cur_case_name = case_name
 
         @classproperty
         def steps(self) -> List:
-            return self._case_steps.pop(self.cur_case_name, [])
+            # Non-destructive: reading a value must not consume it. Use
+            # drain_steps() where the caller genuinely wants to take them.
+            return list(self._steps_store().get(self.cur_case_name, []))
 
         @steps.set
         def steps(self, step: list):
             if step:
-                _l = self._case_steps.setdefault(self.cur_case_name, [])
+                _l = self._steps_store().setdefault(self.cur_case_name, [])
                 _l.append(step)
+
+        @classmethod
+        def drain_steps(cls, case_name=None) -> List:
+            """Take and clear the steps for a case (the old `steps` behaviour)."""
+            return cls._steps_store().pop(
+                cls.cur_case_name if case_name is None else case_name, [])
+
+        @classmethod
+        def clear(cls):
+            """Drop everything recorded for the current thread."""
+            cls._steps_store().clear()
+            cls._local.cur_case_name = None
+            cls._local.case_list = []
 
     class Option(metaclass=ClassPropertyMeta):
 
@@ -591,3 +661,29 @@ class Runtime(object):
         @platform.set
         def platform(self, v: str):
             self._platform = v.lower()
+
+def _snapshot_config_defaults():
+    """
+    Record each section's memo slots before anything reads them, so
+    Runtime.reset() can restore real defaults instead of guessing blanks by
+    type. Runs once at import.
+    """
+    _memo_types = (str, int, float, bool, list, type(None))
+    for _name, _section in vars(Runtime).items():
+        if not isinstance(_section, type) or not _name[0].isupper():
+            continue
+        _slots = {}
+        for _attr, _value in vars(_section).items():
+            if not _attr.startswith('_') or _attr.startswith('__'):
+                continue
+            if isinstance(_value, ClassProperty) or callable(_value):
+                continue
+            # threading.local and similar live state must not be restored
+            if not isinstance(_value, _memo_types):
+                continue
+            _slots[_attr] = list(_value) if isinstance(_value, list) else _value
+        if _slots:
+            Runtime._config_defaults[_name] = _slots
+
+
+_snapshot_config_defaults()

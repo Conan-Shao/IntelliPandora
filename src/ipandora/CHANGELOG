@@ -1,3 +1,12 @@
+v1.7.0
+==============
+* Runtime.Case is now thread-local: steps used to live in a process-global dict keyed by a single process-global case name, so under any concurrency every thread's steps landed under whichever name was set last
+* reading Runtime.Case.steps no longer pops -- the first reader used to empty it and a second read silently returned []; use drain_steps() to take them, clear() to reset
+* MultiHandle buffers per instance under a lock; the buffer used to be a class attribute shared by every instance and mutated unsynchronised from both the producer and the background thread
+* MultiHandle's background thread waits on an Event instead of busy-looping on sleep, so stop() takes effect immediately
+* deduplicate the atexit flush registration, which two package __init__ modules were each registering
+* add Runtime.reset() to drop memoised config, restoring defaults snapshotted at import; config overrides used to leak process-wide with no way to undo them
+
 v1.6.0
 ==============
 * fix response parsing: a single-object payload was torn into its field values, null and scalar data raised TypeError, and a string body was shredded into characters

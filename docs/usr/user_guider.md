@@ -254,7 +254,31 @@ _project_path = Runtime.Option.project_path
 _os = Runtime.Ui.os
 ```
 
-#### 2.2.3 命令行能力
+**配置是进程级懒缓存的** —— 首次读取后就记住了。测试里改过配置要还原，用 `reset`：
+
+```python
+Runtime.Http.verify = False
+...
+Runtime.reset('Http')     # 恢复该段默认值
+Runtime.reset()           # 恢复全部
+```
+
+不还原的话，这个覆盖会泄漏给后面所有测试。
+
+#### 2.2.3 用例步骤记录
+
+`Runtime.Case` 的状态是 **thread-local** 的，并发跑用例不会互相串号：
+
+```python
+Runtime.Case.cur_case_name = 'test_send'
+Runtime.Case.steps = [url, headers, params, body]   # 追加一条
+
+Runtime.Case.steps          # 读取，非破坏性
+Runtime.Case.drain_steps()  # 取走并清空
+Runtime.Case.clear()        # 清掉当前线程的全部记录
+```
+
+#### 2.2.4 命令行能力
 
 ```shell
  ~/Repos/intellipandora ⮀ ipandora -h

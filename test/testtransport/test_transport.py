@@ -61,6 +61,14 @@ class RecordingSession(requests.Session):
 
 
 @pytest.fixture
+def reset_runtime():
+    """Undo config overrides. Runtime memoises process-wide, so without this an
+    override leaks into every test that follows."""
+    yield
+    Runtime.reset()
+
+
+@pytest.fixture
 def recording(request):
     """Install a recording session for the current thread, then restore."""
     session = RecordingSession(raises=getattr(request, 'param', None))
@@ -101,13 +109,10 @@ class TestTlsVerification:
         Client().fetch_insecure()
         assert recording.calls[0]['kwargs']['verify'] is False
 
-    def test_follows_config(self, recording):
+    def test_follows_config(self, recording, reset_runtime):
         Runtime.Http.verify = False
-        try:
-            Client().fetch()
-            assert recording.calls[0]['kwargs']['verify'] is False
-        finally:
-            Runtime.Http.verify = True
+        Client().fetch()
+        assert recording.calls[0]['kwargs']['verify'] is False
 
 
 class TestTimeout:
