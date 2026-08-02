@@ -278,7 +278,48 @@ Runtime.Case.drain_steps()  # 取走并清空
 Runtime.Case.clear()        # 清掉当前线程的全部记录
 ```
 
-#### 2.2.4 命令行能力
+#### 2.2.4 以库方式执行测试
+
+不用起子进程、不用解析 stdout：
+
+```python
+from ipandora.core.runner import run, explain
+
+result = run('test/testapi', env='dev')
+
+result.ok          # 全过才是 True
+result.headline()  # '5 passed, 1 failed'
+result.failures    # 失败的 CaseResult 列表
+result.summary()   # 裁剪过的 dict，适合给 agent / 存报告
+
+explain(result.run_id)   # 完整 traceback，按需取
+```
+
+**为什么 `summary()` 和 `explain()` 分开**：`summary()` 只带失败用例名和断言消息；完整 traceback 留在 run store 里按 `run_id` 取。给 agent 灌几千行 pytest 日志只会淹掉它的上下文。
+
+`selector` 可以是路径、pytest nodeid，或 `-k` 表达式；留空跑全部。
+
+几个注意点：
+
+- **选择器匹配不到东西时 `ok` 是 `False`** —— 打错一个字不会被当成"全部通过"
+- **stdout 归调用方所有**：如果你自己在 stdout 上跑协议（比如 MCP stdio），传 `quiet=True`，并调 `ipandora.utils.log.log_to_stderr()`
+- 运行记录存在 `~/.ipandora/runs`（`IPANDORA_RUNS_DIR` 可改），保留最近 50 次
+- pytest 在**当前进程内**执行，测试模块会被导入且保持导入状态；需要完全干净的环境请用新进程
+
+#### 2.2.5 MCP 能力面
+
+`ipandora mcp` 启动后暴露 4 个工具：
+
+| tool | 用途 |
+|---|---|
+| `run_tests(selector, env)` | 跑用例，返回摘要 |
+| `explain_failure(run_id)` | 取完整失败现场 |
+| `list_runs(limit)` | 最近的 run_id |
+| `get_test_report(xml_file)` | 解析 Robot Framework 的 output.xml |
+
+典型闭环：`run_tests` → 有失败 → `explain_failure(run_id)` → 改代码 → 再 `run_tests`。
+
+#### 2.2.6 命令行能力
 
 ```shell
  ~/Repos/intellipandora ⮀ ipandora -h

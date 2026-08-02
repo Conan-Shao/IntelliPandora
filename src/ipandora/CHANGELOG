@@ -1,3 +1,14 @@
+v1.8.0
+==============
+* add core/runner: run(selector, env) -> RunResult, callable as a library
+* MCP run_tests/explain_failure/list_runs go through it; run_tests no longer shells out to pytest and parses stdout
+* output forks by audience: summary() carries failure names and assertion messages for an agent, full tracebacks stay in the run store behind explain_failure(run_id)
+* runs are archived by run_id under ~/.ipandora/runs (override with IPANDORA_RUNS_DIR), pruned to the last 50
+* use --import-mode=importlib so run() can be called repeatedly in one process; the default mode aborts on a second run over same-named test files
+* a selector that matches nothing, or any pytest exit code meaning the run did not happen, now reports ok=False instead of reading as "everything passed"
+* run(quiet=True) suppresses pytest output, and the MCP server routes logging to stderr under stdio transport -- both would otherwise corrupt the JSON-RPC stream
+* add log_to_stderr() for callers that own stdout
+
 v1.7.0
 ==============
 * Runtime.Case is now thread-local: steps used to live in a process-global dict keyed by a single process-global case name, so under any concurrency every thread's steps landed under whichever name was set last

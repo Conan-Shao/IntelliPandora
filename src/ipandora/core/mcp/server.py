@@ -8,29 +8,66 @@ from typing import Optional
 
 from mcp.server.mcpserver import MCPServer
 
+from ipandora.core.runner import api as runner
+from ipandora.core.runner import store
 from ipandora.core.schedule.runtime import Runtime
-from ipandora.utils.log import logger
+from ipandora.utils.log import log_to_stderr, logger
 from ipandora.utils.robotlogparser import RobotLogParser
 
 mcp = MCPServer(Runtime.Mcp.name)
 
 
 @mcp.tool()
+def run_tests(selector: str = '', env: str = '') -> dict:
+    """
+    Run tests and return a summary of what happened.
+
+    selector: a path, a pytest nodeid, or a -k expression. Empty runs everything.
+    env: environment name, e.g. "dev" or "prod". Optional.
+
+    Returns totals plus, for each failure, the case name and the assertion
+    message. Full tracebacks are NOT included -- call explain_failure(run_id)
+    when you actually need them.
+    """
+    # quiet=True is not optional here: on stdio transport, anything pytest
+    # prints would land in the middle of this server's JSON-RPC stream.
+    _result = runner.run(selector=selector, env=env, quiet=True)
+    return _result.summary()
+
+
+@mcp.tool()
+def explain_failure(run_id: str) -> dict:
+    """
+    Full context for a previous run: every failure with its complete traceback.
+
+    Use this after run_tests reports failures and the summary is not enough to
+    tell you what to change. Output is large by design.
+    """
+    _detail = runner.explain(run_id)
+    if _detail is None:
+        return {'error': 'unknown run_id {!r}'.format(run_id),
+                'known_runs': store.list_runs(limit=10)}
+    return _detail
+
+
+@mcp.tool()
+def list_runs(limit: int = 10) -> dict:
+    """Recent run ids, newest first, for use with explain_failure."""
+    return {'runs': store.list_runs(limit=limit)}
+
+
+@mcp.tool()
 def get_test_report(xml_file: str, details_url: Optional[str] = None) -> dict:
     """
-    Parse a Robot Framework output.xml and return the statistics/details
-    summary produced by the framework's existing RobotLogParser.
+    Parse a Robot Framework output.xml and return its statistics and details.
     """
     return RobotLogParser(xml_file, details_url=details_url).results
 
 
-# Deliberately NOT exposed yet -- see docs/design/04-实施计划.md (P3):
+# Deliberately NOT exposed -- see docs/design/04-实施计划.md:
 #
-#   run_tests(selector)      needs core/runner/api.py first. The previous
-#                            implementation shelled out to pytest and parsed
-#                            stdout, which docs/design/00 rules out.
-#   explain_failure(run_id)  needs core/triage.
-#   provision(spec)          needs core/fixture.
+#   provision(spec)   needs core/fixture (P2)
+#   impact(diff)      needs a call-graph source (P5)
 #
 # `create_test_case` was removed on purpose: agents already write files, so
 # generating cases through a tool hides them from diff review and git.
@@ -38,6 +75,11 @@ def get_test_report(xml_file: str, details_url: Optional[str] = None) -> dict:
 
 def serve():
     """Entry point used by the `ipandora mcp` CLI command."""
+    if Runtime.Mcp.transport == 'stdio':
+        # stdout belongs to the JSON-RPC stream from here on. The framework's
+        # console handler writes to stdout by default, and a single log line
+        # in the middle of a protocol message drops the connection.
+        log_to_stderr()
     logger.info("Starting IntelliPandora MCP server <{}> via <{}>".format(
         Runtime.Mcp.name, Runtime.Mcp.transport))
     mcp.run(transport=Runtime.Mcp.transport)
