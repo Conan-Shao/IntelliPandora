@@ -14,6 +14,7 @@ and leaves the JSON behind it fully readable.
 Bias is deliberately toward over-redaction. A masked value that turned out to
 be harmless costs someone a re-run; a leaked credential does not get un-leaked.
 """
+import json
 import re
 from typing import Any
 
@@ -42,7 +43,9 @@ VALUE_PATTERNS = (
     # Authorization header values found inline in a log line
     re.compile(r'(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]{8,}'),
     # common provider key prefixes
-    re.compile(r'\b(sk|pk|rk)-[A-Za-z0-9]{16,}\b'),
+    # sk_live_…, sk-proj-…: the separator is part of every real format,
+    # so requiring 16 unbroken alphanumerics after it matches none of them
+    re.compile(r'\b(sk|pk|rk)[-_][A-Za-z0-9][A-Za-z0-9_-]{14,}\b'),
     re.compile(r'\bAKIA[0-9A-Z]{16}\b'),
     # PEM blocks
     re.compile(r'-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----'),
@@ -61,6 +64,43 @@ def redact_text(value: str) -> str:
         _out = _pattern.sub(MASK, _out)
     _out = MNEMONIC.sub(MASK, _out)
     return _out
+
+
+def redact_body(body: Any) -> Any:
+    """
+    Redact a request or response body.
+
+    A body arrives as text, and text only ever went through the value-shape
+    patterns -- so `{"token": "..."}` came out untouched, because the rule that
+    knows `token` is a credential only ever looked at dict keys. Bodies are the
+    single largest thing a report or a cassette stores, and once cassettes get
+    imported from production traffic they are the likeliest place for a real
+    secret to sit. So JSON is parsed, redacted as a structure, and written
+    back; anything that will not parse falls back to text redaction.
+
+    The re-serialised form follows the input: indented if the input was, compact
+    if it was not, so redaction does not silently reformat a stored body.
+    """
+    if not isinstance(body, str) or not body.strip():
+        return redact(body)
+    try:
+        _parsed = json.loads(body)
+    except (TypeError, ValueError):
+        return redact_text(body)
+    if not isinstance(_parsed, (dict, list)):
+        return redact_text(body)
+
+    _clean = redact(_parsed)
+    if _clean == _parsed:
+        # Nothing was secret, so hand back the original bytes. Re-serialising
+        # anyway would rewrite every body in the archive -- different spacing,
+        # different key order, a different hash -- for no gain. A cassette is
+        # replayed and diffed; gratuitous reformatting is not free there.
+        return body
+
+    if '\n' in body:
+        return json.dumps(_clean, ensure_ascii=False, indent=2)
+    return json.dumps(_clean, ensure_ascii=False, separators=(',', ':'))
 
 
 def _is_secret_key(key: Any) -> bool:

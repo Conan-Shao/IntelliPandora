@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Any, Dict
 
 from ipandora.core.report.model import ReportCase, ReportData, Status
-from ipandora.core.report.redact import redact
+from ipandora.core.report.redact import redact, redact_body
 from ipandora.core.triage import triage as run_triage
 
 # runner outcome -> report status
@@ -26,6 +26,22 @@ def suite_of(nodeid: str) -> str:
     """The file a case came from, used to group the report."""
     _path = nodeid.split('::', 1)[0]
     return os.path.basename(_path) or 'default'
+
+
+def _redact_exchange(exchange: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    An exchange, safe to publish.
+
+    Bodies go through redact_body rather than redact: a body is a string, and
+    plain string redaction only ever applied the value-shape patterns -- so a
+    field literally named `token` survived, because the rule that knows what
+    `token` means only looks at dict keys.
+    """
+    _out = redact(dict(exchange or {}))
+    for _side in ('request_body', 'response_body'):
+        if _side in _out:
+            _out[_side] = redact_body((exchange or {}).get(_side))
+    return _out
 
 
 def build_from_run(result, title: str = None, include_triage: bool = True) -> ReportData:
@@ -61,7 +77,8 @@ def build_from_run(result, title: str = None, include_triage: bool = True) -> Re
             # every request. It goes through the same redaction as everything
             # else, before it is ever written.
             checks=redact(list(getattr(_case, 'checks', []) or [])),
-            exchanges=redact(list(getattr(_case, 'exchanges', []) or []))))
+            exchanges=[_redact_exchange(_e)
+                       for _e in (getattr(_case, 'exchanges', []) or [])]))
 
     return ReportData(
         title=title or 'IntelliPandora Test Report',
