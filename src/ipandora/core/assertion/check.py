@@ -18,6 +18,8 @@ class Source:
     DERIVED = 'derived'
     AUTHZ = 'authz'
     ONCHAIN = 'onchain'
+    DIFF = 'diff'
+    """Compared against a recorded baseline rather than against a rule."""
 
 
 class Kind:

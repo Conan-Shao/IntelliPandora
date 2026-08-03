@@ -60,7 +60,10 @@ class Command(CommandBase):
                           extra_args=options.pytest_arg or None,
                           persist=not options.no_store)
         finally:
-            self._close_cassette(options, _tape)
+            # Returns a reason rather than raising. Bailing out here would skip
+            # the report -- and a guardrail that fails without producing the
+            # evidence for the failure is the least useful moment to lose it.
+            _tape_failure = self._close_cassette(options, _tape)
 
         _report = build(_result, title=options.title)
 
@@ -74,9 +77,12 @@ class Command(CommandBase):
 
         self._print_summary(_result, _report, _paths)
 
+        if _tape_failure:
+            print('\n  {}'.format(_tape_failure))
+
         # The exit code is the run's verdict, not the report's. A suite that
         # failed must fail the shell that called it, or CI goes green on red.
-        sys.exit(0 if _result.ok else 1)
+        sys.exit(1 if (_tape_failure or not _result.ok) else 0)
 
     @staticmethod
     def _open_cassette(options):
@@ -91,8 +97,9 @@ class Command(CommandBase):
         from ipandora.core.cassette import Cassette, Mode
         from ipandora.core.protocol.http import replay
 
-        _mode = Mode.RECORD if options.record else (
-            Mode.REPLAY if options.replay else Mode.OFF)
+        _mode = (Mode.RECORD if options.record else
+                 Mode.REPLAY if options.replay else
+                 Mode.VERIFY if options.verify else Mode.OFF)
         if _mode == Mode.OFF:
             return None
 
@@ -115,10 +122,11 @@ class Command(CommandBase):
 
     @staticmethod
     def _close_cassette(options, tape):
+        """Wind the tape up. Returns a failure reason, or '' when all is well."""
         from ipandora.core.cassette import Mode
         from ipandora.core.protocol.http import replay
         if tape is None:
-            return
+            return ''
         _mode = replay.session.mode
         replay.session.deactivate()
 
@@ -126,7 +134,10 @@ class Command(CommandBase):
             from ipandora import version
             tape.finish_recording(version=getattr(version, '__version__', ''))
             print('\n  磁带  {} 条 → {}'.format(tape.manifest.count, tape.store.root))
-        else:
+            return ''
+        if _mode == Mode.VERIFY:
+            return Command._report_diffs(options, tape)
+        if True:
             _age = tape.age_days
             print('\n  磁带  {} · {} 条已播 / 共 {} 条{}'.format(
                 tape.name, tape.played, tape.total,
@@ -136,9 +147,60 @@ class Command(CommandBase):
             # loud is the cheap half of the fix; --max-cassette-age is the rest.
             if _age is not None and options.max_cassette_age \
                     and _age > options.max_cassette_age:
-                raise SystemExit(
-                    '  磁带已过期：{:.0f} 天 > 上限 {} 天。重录后再跑。'.format(
-                        _age, options.max_cassette_age))
+                return '磁带已过期：{:.0f} 天 > 上限 {} 天。重录后再跑。'.format(
+                    _age, options.max_cassette_age)
+        return ''
+
+    @staticmethod
+    def _report_diffs(options, tape):
+        """
+        Say what changed against the baseline, and return why it failed.
+
+        The verdict lives here rather than in the adapter. A guardrail that
+        cannot fail a build is decoration, but a transport layer that can turn
+        a suite red is a reporting concern with too much power -- so the
+        adapter observes and the command decides.
+        """
+        _changed = tape.changed
+        _tolerated = sum(len(_d.tolerated) for _d in tape.diffs)
+        print('\n  基线  {} · 请求 {} 次 · 比对 {} 次 · {} 次有差异{}'.format(
+            tape.name, tape.attempted, len(tape.diffs), len(_changed),
+            ' · {} 处已容忍'.format(_tolerated) if _tolerated else ''))
+
+        for _diff in _changed[:10]:
+            print('    ✗ {} {}'.format(_diff.method, _diff.url))
+            for _difference in _diff.real[:5]:
+                print('        {}'.format(_difference.describe()))
+            if len(_diff.real) > 5:
+                print('        … 另有 {} 处'.format(len(_diff.real) - 5))
+        if len(_changed) > 10:
+            print('    … 另有 {} 个请求有差异'.format(len(_changed) - 10))
+
+        if tape.misses:
+            # Not the same as agreement: the baseline never saw these, so this
+            # run says nothing about them either way.
+            print('    ! {} 个请求在基线里没有对应记录，未参与比较'.format(
+                len(tape.misses)))
+
+        # A comparison that could not run is not a comparison that found
+        # nothing. Reporting the second as the first is exactly how a broken
+        # comparator reads as a clean bill of health -- and --allow-diff must
+        # not silence it either, because it says "differences are acceptable",
+        # not "not comparing is acceptable".
+        if tape.verify_errors:
+            for _error in tape.verify_errors[:5]:
+                print('    ! 无法比对：{}'.format(_error))
+            return ('{} 次比对失败 —— 这不等于"没有差异"，'
+                    '本次运行没有验证任何东西。'.format(len(tape.verify_errors)))
+
+        if tape.attempted and not tape.diffs:
+            return ('发出了 {} 次请求，但一次都没能与基线比对上。'
+                    '磁带是不是录的另一批接口？'.format(tape.attempted))
+
+        if _changed and not options.allow_diff:
+            return ('与基线不一致：{} 个请求有差异。确认是预期变更后用 --record '
+                    '重录基线，或用 --allow-diff 只报告不失败。'.format(len(_changed)))
+        return ''
 
     @staticmethod
     def _print_summary(result, report, paths):
@@ -213,6 +275,14 @@ class Command(CommandBase):
         _mode.add_argument(
             '--replay', action='store_true',
             help='serve every response from the cassette; makes no network calls')
+        _mode.add_argument(
+            '--verify', action='store_true',
+            help='call the real system and report how it differs from the '
+                 'cassette. This is the rewrite guardrail: same traffic, old '
+                 'and new, what changed')
+        _tape.add_argument(
+            '--allow-diff', action='store_true',
+            help='with --verify, report differences without failing the run')
         _tape.add_argument(
             '--cassette', default=None,
             help='cassette name. Default: derived from the selector')
