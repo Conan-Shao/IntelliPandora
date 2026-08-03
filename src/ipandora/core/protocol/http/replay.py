@@ -126,6 +126,12 @@ class ReplayAdapter(HTTPAdapter):
         _cassette = session.cassette
         _body = _text_of(getattr(request, 'body', None))
 
+        if session.mode == Mode.VERIFY:
+            _start = time.perf_counter()
+            _response = super().send(request, **kwargs)
+            self._verify(_cassette, request, _body, _response)
+            return _response
+
         if session.mode == Mode.REPLAY:
             _record = _cassette.play(request.method, request.url, _body)
             if _record is not None:
@@ -139,6 +145,58 @@ class ReplayAdapter(HTTPAdapter):
             self._record(_cassette, request, _body, _response,
                          (time.perf_counter() - _start) * 1000.0)
         return _response
+
+    @staticmethod
+    def _verify(cassette, request, body, response) -> None:
+        """
+        Compare the live response with the tape and file the verdict.
+
+        The difference is pushed to the evidence recorder as a Check, so it
+        lands on the case that made the call and shows up in the report next to
+        that case's own assertions -- no separate diff view to go and find, and
+        it counts in the by-source breakdown like any other judgement.
+
+        The Check does not fail the test. Whether a difference fails the *run*
+        is the command's call, not the transport's: a layer this deep deciding
+        verdicts is how a reporting concern ends up able to turn a suite red.
+        """
+        try:
+            from ipandora.core.assertion.check import Check, Source
+            from ipandora.core.evidence import add_checks
+
+            _result = cassette.verify(
+                request.method, request.url, body,
+                response.status_code, dict(response.headers or {}), response.text)
+
+            if _result is None:
+                add_checks([Check(
+                    name='基线中有此请求', ok=False, src=Source.DIFF,
+                    expr='{} {} 在基线里没有对应记录，本次调用无从比较'.format(
+                        request.method, request.url))])
+                return
+
+            _where = '{} {}'.format(request.method, request.url)
+
+            if _result.identical:
+                add_checks([Check(
+                    name='响应与基线一致', ok=True, src=Source.DIFF,
+                    expr='{} · {}'.format(_where, _result.summary()))])
+                return
+
+            # One check per difference rather than one per exchange. The report
+            # renders check lists well, so each change gets its own readable
+            # row -- and the by-source count then means "how many things
+            # changed" instead of "how many calls had something change", which
+            # is the number anyone actually wants. Bounded already: the diff
+            # engine caps differences per exchange.
+            add_checks([Check(
+                name='{} 与基线一致'.format(_difference.path),
+                ok=False, src=Source.DIFF,
+                expr='{} · {}'.format(_where, _difference.describe()))
+                for _difference in _result.real])
+        except Exception as exc:  # noqa: BLE001 - comparison must not break the call
+            logger.warning('could not verify %s %s: %s',
+                           request.method, request.url, exc)
 
     @staticmethod
     def _record(cassette, request, body, response, ms) -> None:

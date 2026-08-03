@@ -9,6 +9,7 @@ The tape, and what it means to play it.
 import threading
 from typing import Dict, List, Optional
 
+from ipandora.core.cassette.diff import DiffResult, DiffRules, compare
 from ipandora.core.cassette.matcher import MatchRules, key_for, nearest
 from ipandora.core.cassette.model import Manifest, Miss, Record
 from ipandora.core.cassette.store import CassetteStore
@@ -27,6 +28,14 @@ class Mode:
     OFF = 'off'
     RECORD = 'record'
     REPLAY = 'replay'
+    VERIFY = 'verify'
+    """
+    Call the real system and compare it against the tape.
+
+    Not a variant of replay -- it answers a different question. Replay asks
+    "can this run offline"; verify asks "did anything change", which is the one
+    a rewrite needs answered.
+    """
 
 
 class OnExhausted:
@@ -100,6 +109,19 @@ class Cassette:
         self._lock = threading.RLock()
         self.misses = []  # type: List[Miss]
         self.played = 0
+        self.diff_rules = DiffRules.from_dict(self.manifest.diff)
+        self.diffs = []  # type: List[DiffResult]
+        self.verify_errors = []  # type: List[str]
+        """Comparisons that could not be made. Never silently empty -- see
+        the note on `attempted`."""
+        self.attempted = 0
+        """
+        Requests verify was asked about, whatever came of them.
+
+        Kept because `len(diffs) == 0` has two very different meanings: nothing
+        differed, or nothing was compared. Reporting the second as the first is
+        how a broken comparator reads as a clean bill of health.
+        """
 
     # -- loading -----------------------------------------------------------
 
@@ -170,12 +192,59 @@ class Cassette:
                     exhausted=exhausted, total=self.total,
                     keys=list(self._records)[:20])
 
+    # -- verify ------------------------------------------------------------
+
+    def verify(self, method: str, url: str, body, status: int, headers,
+               response_body) -> Optional[DiffResult]:
+        """
+        Compare a live response against its recording.
+
+        Returns None when the tape has nothing to compare against. That is not
+        the same as "no differences" and must not be reported as agreement --
+        an endpoint the baseline never saw is a gap in the comparison, not a
+        clean result.
+        """
+        _key = key_for(method, url, body, self.rules)
+        with self._lock:
+            self.attempted += 1
+            _bucket = self._records.get(_key) or []
+            _at = self._cursor.get(_key, 0)
+            if _at >= len(_bucket):
+                self.misses.append(
+                    self._miss_for(_key, method, url, exhausted=bool(_bucket)))
+                return None
+            self._cursor[_key] = _at + 1
+            self.played += 1
+            _record = _bucket[_at]
+
+        try:
+            _result = compare(_record, status, headers, response_body,
+                              rules=self.diff_rules, method=method, url=url)
+        except Exception as exc:  # noqa: BLE001
+            # Recorded, not just logged. A comparison that could not run is not
+            # a comparison that found nothing, and the run has to be able to
+            # tell them apart.
+            with self._lock:
+                self.verify_errors.append('{} {}: {}: {}'.format(
+                    method, url, type(exc).__name__, exc))
+            logger.warning('could not compare %s %s: %s', method, url, exc)
+            return None
+
+        with self._lock:
+            self.diffs.append(_result)
+        return _result
+
+    @property
+    def changed(self) -> List[DiffResult]:
+        return [_d for _d in self.diffs if not _d.identical]
+
     # -- record ------------------------------------------------------------
 
     def start_recording(self, recorded_from: str = '') -> 'Cassette':
         self.store.begin_recording()
         self.manifest = Manifest(name=self.name, recorded_from=recorded_from,
-                                 match=self.rules.to_dict())
+                                 match=self.rules.to_dict(),
+                                 diff=self.diff_rules.to_dict())
         return self
 
     def record(self, method: str, url: str, request_headers, request_body,
