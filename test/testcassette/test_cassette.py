@@ -115,7 +115,7 @@ class TestRedactionHappensOnTheWayIn:
         Deliberately not a value that also matches a shape pattern: that
         version of this test passed either way and proved nothing.
         """
-        store.append(exchange(body=json.dumps({'password': 'correcthorsebattery'})))
+        store.append(exchange(body=json.dumps({'password': 'correcthorsebattery'})))  # pragma: allowlist secret
         raw = open(store.exchanges_path, encoding='utf-8').read()
         assert 'correcthorsebattery' not in raw
         assert MASK in raw
@@ -127,7 +127,7 @@ class TestRedactionHappensOnTheWayIn:
             store.exchanges_path, encoding='utf-8').read()
 
     def test_a_nested_credential_is_redacted(self, store):
-        store.append(exchange(body=json.dumps({'d': {'items': [{'apiKey': 'zzz-plain'}]}})))
+        store.append(exchange(body=json.dumps({'d': {'items': [{'apiKey': 'zzz-plain'}]}})))  # pragma: allowlist secret
         assert 'zzz-plain' not in open(store.exchanges_path, encoding='utf-8').read()
 
     def test_a_body_with_no_secrets_is_stored_byte_for_byte(self, store):

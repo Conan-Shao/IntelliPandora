@@ -250,7 +250,7 @@ class TestRedactionOnTheWayIn:
 
     def test_a_credential_named_only_by_its_field_never_lands(self, tmp_path):
         path = har_file(tmp_path, [har_entry(
-            body=json.dumps({'password': 'correcthorsebattery'}))])
+            body=json.dumps({'password': 'correcthorsebattery'}))])  # pragma: allowlist secret
         do_import('t', path, tmp_path)
         _raw = (tmp_path / 'tapes' / 't' / 'exchanges.jsonl').read_text(encoding='utf-8')
         assert 'correcthorsebattery' not in _raw
@@ -259,7 +259,7 @@ class TestRedactionOnTheWayIn:
         """Decoding first is what makes redaction able to see it at all -- a
         base64 blob matches no rule."""
         path = har_file(tmp_path, [har_entry(
-            body=json.dumps({'token': 'sk-live-abcdef1234567890'}),
+            body=json.dumps({'token': 'sk-live-abcdef1234567890'}),  # pragma: allowlist secret
             encoding='base64')])
         do_import('t', path, tmp_path)
         _raw = (tmp_path / 'tapes' / 't' / 'exchanges.jsonl').read_text(encoding='utf-8')
@@ -267,7 +267,7 @@ class TestRedactionOnTheWayIn:
 
     def test_an_envoy_header_is_redacted_too(self, tmp_path):
         path = envoy_file(tmp_path, [envoy_trace(
-            headers={'x-token': 'sk-live-abcdef1234567890'})])
+            headers={'x-token': 'sk-live-abcdef1234567890'})])  # pragma: allowlist secret
         do_import('t', path, tmp_path)
         _raw = (tmp_path / 'tapes' / 't' / 'exchanges.jsonl').read_text(encoding='utf-8')
         assert 'sk-live-abcdef1234567890' not in _raw

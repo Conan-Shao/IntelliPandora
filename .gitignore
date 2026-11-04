@@ -140,3 +140,26 @@ cython_debug/
 # PyCharm
 .idea/
 .DS_Store
+
+# --- Credential material ---------------------------------------------------
+# Nothing that is a key, or named like one, belongs in this repo. The framework
+# itself generates an AES/Fernet key on first use; before this entry existed it
+# landed inside the tracked package tree and `git add -A` would have taken it.
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+id_rsa*
+id_ed25519*
+*.ppk
+
+# --- Run artifacts ---------------------------------------------------------
+# Cassettes hold real captured traffic and reports hold request/response
+# evidence. Both default to ~/.ipandora (outside any checkout), but
+# `--cassette-dir .` or IPANDORA_REPORTS_DIR=./reports puts them right here.
+# Redaction at write time removes known credential shapes -- it cannot remove
+# the business data itself.
+.ipandora/
+reports/
+cassettes/

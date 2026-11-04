@@ -217,14 +217,17 @@ def fee_within_cap(resp, cap):
 #### 2.2.1 测试数据注入
 
 ```python
+import os
+
 from ipandora.core.base.data.markdata import MarkData
 from ipandora.core.plugin.pluginmanager import PluginManager
 from ipandora.core.plugin.interface.endpointsinterface import EndPointsInterface
 
+# 端点地址可以写死，凭据不行：仓库是公开的。
 ENDPOINTS = {
-    "unionPlatform": {"url": "https://adqa.test.gifshow.com",
-                      "token": "20005_cc76734266c02094846bdcdc82b3de7d",
-                      "user": "shaofeng"}
+    "unionPlatform": {"url": "https://api.example.com",
+                      "token": os.environ["UNION_PLATFORM_TOKEN"],
+                      "user": os.environ["UNION_PLATFORM_USER"]}
 }
 
 
