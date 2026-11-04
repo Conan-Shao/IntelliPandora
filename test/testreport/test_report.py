@@ -123,7 +123,7 @@ class TestRedactionHappensAtBuildTime:
     readable.
     """
 
-    SECRET = 'sk-abcdefghij0123456789'
+    SECRET = 'sk-abcdefghij0123456789'  # pragma: allowlist secret
 
     def test_secret_in_a_failure_message_is_masked(self):
         report = build(run_with(

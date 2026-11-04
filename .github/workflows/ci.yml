@@ -68,12 +68,40 @@ jobs:
       - name: core/ must not import ai/
         run: python scripts/check_layering.py
 
+      # This used to be a second, weaker grep written inline here, over src/
+      # alone, while the real check (scripts/check_secrets.py) ran only in
+      # pre-commit -- which is opt-in per machine, so in practice nothing
+      # gated. One implementation now, over every tracked file.
+      #
+      # -z / xargs -0 is load-bearing: git quotes paths holding non-ASCII
+      # characters, and most design docs are named in Chinese. Splitting that
+      # output on whitespace hands the script unopenable paths, which it skips
+      # in silence -- a gate that scans nothing and reports clean.
       - name: No hardcoded secrets
         run: |
-          if grep -rnE --include='*.py' --include='*.yaml' \
-               "(password|passwd|api_key|token|secret)[[:space:]]*=[[:space:]]*['\"][^'\"]{6,}['\"]" \
-               src/ | grep -v 'os.environ\|getenv\|safe_get\|= *$'; then
-            echo "::error::hardcoded credential detected"
-            exit 1
-          fi
+          git -c core.quotepath=false ls-files -z \
+            | xargs -0 --no-run-if-empty python scripts/check_secrets.py
           echo "OK: no hardcoded credentials"
+
+  # The wheel on PyPI carries conf/__init__.py and none of the data files
+  # beside it -- no config.yaml, no report templates -- so an installed copy
+  # cannot render a report. The test suite cannot see this: it runs from an
+  # editable install, where those files are simply there in the source tree.
+  # Whether they reach the artifact depends on the setuptools version doing
+  # the build, which is not pinned by anything in this repo. So: look inside
+  # the wheel. See scripts/check_packaging.py.
+  packaging:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install build frontend
+        run: pip install build
+
+      - name: Required data files must reach the wheel
+        run: python scripts/check_packaging.py

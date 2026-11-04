@@ -7,6 +7,7 @@
 import os
 from cryptography.fernet import Fernet
 from ipandora.core.engine.crypto.cryptoabc import CryptoABC
+from ipandora.core.engine.crypto.keystore import keystore_dir, open_key_file
 from ipandora.utils.error import CryptoError
 from ipandora.utils.log import logger
 from ipandora.utils.pathutils import PathUtils
@@ -15,7 +16,8 @@ from ipandora.utils.pathutils import PathUtils
 class FernetCryptographer(CryptoABC):
     def __init__(self, key_name=None):
         self.key = b''
-        self._directory = os.path.join(PathUtils().pandora_path, 'conf/crypto')
+        # Not inside the package: see keystore.py for why that mattered.
+        self._directory = keystore_dir()
         self.initialize_key(key_name)
         self.cipher = Fernet(self.key)
 
@@ -53,11 +55,13 @@ class FernetCryptographer(CryptoABC):
             raise CryptoError("Failed to decrypt the message: {}".format(e))
 
     def save_key_to_pem(self, file_path):
-        self.key = Fernet.generate_key()
+        # The key is whatever the caller already put on self.key; generating a
+        # second one here (as this used to) threw away the first for no reason.
         _file_path_abs = os.path.join(self._directory, file_path)
-        with open(_file_path_abs, 'wb') as key_file:
+        with open_key_file(_file_path_abs, binary=True) as key_file:
             key_file.write(self.key)
-        logger.info("aes key saved to <%s>" % _file_path_abs)
+        # The path, not the key: this line goes to the log file.
+        logger.info("fernet key saved to <%s>" % _file_path_abs)
         return _file_path_abs
 
     def load_key_from_pem(self, filename):
@@ -77,7 +81,10 @@ class FernetCryptographer(CryptoABC):
 
 
 if __name__ == '__main__':
-    print(FernetCryptographer().encrypt('Hello, GT!'))
-    msg = b'gAAAAABmTXEq-B_VWx0or157aKaSqccLwGuugrTId9jUiUzyMDyAtJChTX7o1jlChbnP2EtgIaNh7bQ6_kyRa1-b4O8eWkj7FA=='
-    print(FernetCryptographer().decrypt(msg))
+    # A round trip, not a stored ciphertext: the one that used to be here was
+    # encrypted with a key nobody has any more, so this could only ever raise.
+    _crypto = FernetCryptographer()
+    _token = _crypto.encrypt('Hello, GT!')
+    print(_token)
+    print(_crypto.decrypt(_token))
 

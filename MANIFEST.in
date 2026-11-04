@@ -1,10 +1,32 @@
-recursive-include intellipandora/conf *
-recursive-include intellipandora/statistics *
+# Paths here are relative to the project root, and the package lives under
+# src/. These lines used to say `intellipandora/conf` -- the *distribution*
+# name, not the package name (`ipandora`) nor its real path -- so they matched
+# nothing at all, and two of the four lines named directories
+# (`intellipandora/statistics`, `conf/pytest_template`) that do not exist.
+#
+# On its own that was not what broke the published wheels. Current setuptools
+# (tested at 79.0.1) honours `include_package_data=True` by taking every file
+# inside a package directory, so the data files ship here even with MANIFEST.in
+# deleted outright -- which is why the 1.1.0 wheel on PyPI carries
+# conf/__init__.py and nothing beside it, while a build from this same source
+# today carries all of them. The artifact depended on the setuptools version of
+# whatever machine ran the release.
+#
+# So this file is now correct, but correctness here is not the guarantee.
+# `scripts/check_packaging.py` is: it looks inside the built wheel. It fails
+# the real 1.1.0 wheel and passes a build from this tree.
+recursive-include src/ipandora/conf *
 global-include CHANGELOG
 global-include AUTHORS.rst
 global-exclude __pycache__
 global-exclude *.py[co]
 global-exclude .gitignore
-prune intellipandora/conf/pytest_template/.git
 
-
+# Key material. The framework writes its own AES/Fernet key on first use; it
+# now lands in ~/.ipandora/crypto, but a stale copy under conf/crypto from an
+# older checkout must never be packaged. Given the behaviour above -- data
+# files inside a package get picked up whatever this file says -- these
+# excludes matter more than the include does.
+global-exclude *.pem
+global-exclude *.key
+prune src/ipandora/conf/crypto

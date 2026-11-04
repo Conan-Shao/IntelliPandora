@@ -8,7 +8,7 @@ import pytest
 
 from ipandora.core.report.redact import MASK, redact, redact_text
 
-SECRET = 'sk-abcdefghij0123456789'
+SECRET = 'sk-abcdefghij0123456789'  # pragma: allowlist secret
 ETH_KEY = '0x' + 'a' * 64
 JWT = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abcdefghijkl'
 MNEMONIC = ('abandon ability able about above absent absorb abstract '
@@ -58,7 +58,7 @@ class TestSecretsByValueShape:
         assert not leaks({'note': MNEMONIC}, MNEMONIC)
 
     def test_pem_private_key_is_masked(self):
-        pem = ('-----BEGIN RSA PRIVATE KEY-----\n'
+        pem = ('-----BEGIN RSA PRIVATE KEY-----\n'  # pragma: allowlist secret
                'MIIEowIBAAKCAQEA1234\n'
                '-----END RSA PRIVATE KEY-----')
         assert not leaks({'key': pem}, 'MIIEowIBAAKCAQEA1234')

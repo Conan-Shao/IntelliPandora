@@ -10,12 +10,14 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import padding
 from cryptography.hazmat.backends import default_backend
 from ipandora.core.engine.crypto.cryptoabc import CryptoABC
+from ipandora.core.engine.crypto.keystore import keystore_dir, open_key_file
 from ipandora.utils.pathutils import PathUtils
 
 
 class AESCryptographer(CryptoABC):
     def __init__(self, key=None, key_size=32):
-        self._directory = os.path.join(PathUtils().pandora_path, 'conf/crypto')
+        # Not inside the package: see keystore.py for why that mattered.
+        self._directory = keystore_dir()
         self.block_size = 128  # aes block size in bits
         # aes key size in bytes (16 for 128-bit, 24 for 192-bit, 32 for 256-bit)
         self.key_size = key_size
@@ -84,11 +86,17 @@ class AESCryptographer(CryptoABC):
         """
         _file_path_abs = os.path.join(self._directory, file_path)
         pem_key = base64.b64encode(self.key).decode('utf-8')
-        with open(_file_path_abs, 'w') as f:
-            f.write("-----BEGIN aes KEY-----\n")
+        with open_key_file(_file_path_abs) as f:
+            f.write("-----BEGIN aes KEY-----\n")  # pragma: allowlist secret
             f.write(pem_key)
             f.write("\n-----END aes KEY-----\n")
-        self.key = pem_key
+        # self.key stays the raw bytes. It used to be reassigned to `pem_key`
+        # here, which left the first run of a fresh install holding a 44-char
+        # base64 *str* where AES wants 32 raw bytes -- so encrypt() raised, and
+        # only the second run (which loads the file back, decoded) worked.
+        # Nothing caught it because the directory did not exist either, so this
+        # path crashed earlier, in select_key_with_tag's listdir.
+        return _file_path_abs
 
     def load_key_from_pem(self, file_path):
         """
@@ -98,7 +106,7 @@ class AESCryptographer(CryptoABC):
         """
         _file_path_abs = os.path.join(self._directory, file_path)
         with open(_file_path_abs, 'r') as f:
-            pem_key = f.read().replace("-----BEGIN aes KEY-----", "").replace("-----END aes KEY-----", "").strip()
+            pem_key = f.read().replace("-----BEGIN aes KEY-----", "").replace("-----END aes KEY-----", "").strip()  # pragma: allowlist secret
         return base64.b64decode(pem_key)
 
     def select_key_with_tag(self, tag='aes_pandora'):

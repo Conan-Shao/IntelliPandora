@@ -41,7 +41,7 @@ class TestAIProviderFactory(unittest.TestCase):
 
     def test_get_anthropic_provider(self):
         provider = AIProviderFactory.get_provider(
-            'anthropic', api_key='sk-test', model='claude-sonnet-5')
+            'anthropic', api_key='sk-test', model='claude-sonnet-5')  # pragma: allowlist secret
         self.assertIsInstance(provider, AnthropicProvider)
         self.assertEqual(provider.model, 'claude-sonnet-5')
 
@@ -61,7 +61,7 @@ class TestAnthropicProvider(unittest.TestCase):
         mock_client.messages.create.return_value = mock_response
         mock_anthropic_cls.return_value = mock_client
 
-        provider = AnthropicProvider(api_key='sk-test')
+        provider = AnthropicProvider(api_key='sk-test')  # pragma: allowlist secret
         result = provider.chat(messages=[{'role': 'user', 'content': 'hi'}])
         self.assertEqual(result, 'hello from claude')
 
@@ -71,7 +71,7 @@ class TestAnthropicProvider(unittest.TestCase):
         mock_client.messages.create.side_effect = RuntimeError('boom')
         mock_anthropic_cls.return_value = mock_client
 
-        provider = AnthropicProvider(api_key='sk-test')
+        provider = AnthropicProvider(api_key='sk-test')  # pragma: allowlist secret
         with self.assertRaises(AIProviderError):
             provider.chat(messages=[{'role': 'user', 'content': 'hi'}])
 
