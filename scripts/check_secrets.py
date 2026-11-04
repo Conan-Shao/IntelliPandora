@@ -36,12 +36,20 @@ import os
 import re
 import sys
 
-# name = "literal"  where the literal looks like a real value
+# name = "literal"  where the literal looks like a real value.
+#
+# The `['"]?` after the name is load-bearing. A dict or JSON literal quotes its
+# key, so the name is followed by a quote rather than by the separator and the
+# whole form walks past without it. That is not
+# hypothetical: a live internal token sat in docs/usr/user_guider.md in exactly
+# that shape from the first public commit, through an audit that added this
+# very pattern, until a sweep that did not rely on it found the host it sat
+# next to.
 ASSIGNMENT = re.compile(
     r"""(?i)\b(password|passwd|pwd|api_key|apikey|secret|token|access_key"""
     r"""|secret_key|client_secret|private_key|access_token|auth_token"""
-    r"""|credential|user_name|username)\b"""
-    r"""\s*[:=]\s*['"]([^'"]{6,})['"]"""
+    r"""|credential|user_name|username|user|account|appkey|app_secret)\b"""
+    r"""['"]?\s*[:=]\s*['"]([^'"]{6,})['"]"""
 )
 
 # Values that are obviously not credentials.

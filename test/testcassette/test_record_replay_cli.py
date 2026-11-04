@@ -51,7 +51,7 @@ SUITE = '''
 
 class _Handler(BaseHTTPRequestHandler):
     def do_GET(self):  # noqa: N802
-        _body = json.dumps({'name': 'widget', 'secret': 'hunter2hunter2'}).encode()
+        _body = json.dumps({'name': 'widget', 'secret': 'hunter2hunter2'}).encode()  # pragma: allowlist secret
         self.send_response(200)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Content-Length', str(len(_body)))

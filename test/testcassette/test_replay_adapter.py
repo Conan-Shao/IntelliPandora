@@ -31,7 +31,7 @@ class _Handler(BaseHTTPRequestHandler):
     def do_GET(self):  # noqa: N802 - BaseHTTPRequestHandler's naming
         type(self).hits += 1
         _body = json.dumps({'path': self.path, 'hit': type(self).hits,
-                            'token': 'sk-live-abcdef1234567890'}).encode()
+                            'token': 'sk-live-abcdef1234567890'}).encode()  # pragma: allowlist secret
         self.send_response(200)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Content-Length', str(len(_body)))
