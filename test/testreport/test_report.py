@@ -223,10 +223,11 @@ class TestRendering:
         assert restored.totals == report.totals
         assert restored.cases[0].category == report.cases[0].category
 
-    def test_write_produces_both_artifacts(self, tmp_path):
+    def test_write_produces_every_artifact(self, tmp_path):
+        # HTML for a person, JSON for whatever comes next, JUnit XML for CI
         report = build(run_with(case('s.py::a', 'passed')))
         paths = write(report, str(tmp_path))
-        assert set(paths) == {'html', 'json'}
+        assert set(paths) == {'html', 'json', 'junit'}
         for path in paths.values():
             assert open(path, encoding='utf-8').read()
 

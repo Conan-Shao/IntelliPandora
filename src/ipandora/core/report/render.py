@@ -13,6 +13,7 @@ import shlex
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from markupsafe import Markup
 
+from ipandora.core.report.junit import to_junit
 from ipandora.core.report.model import ReportData
 from ipandora.utils.log import logger
 from ipandora.utils.pathutils import PathUtils
@@ -142,12 +143,17 @@ def to_json(report: ReportData, indent: int = 2) -> str:
 
 
 def write(report: ReportData, directory: str, basename: str = 'report',
-          html: bool = True, as_json: bool = True) -> dict:
+          html: bool = True, as_json: bool = True, junit: bool = True) -> dict:
     """
     Write the report to disk. Returns the paths written.
 
-    Both formats come from the same ReportData, which is the whole reason
+    All three formats come from the same ReportData, which is the whole reason
     building and rendering are separate steps.
+
+    The HTML is for a person, the JSON for whatever comes next, and the JUnit
+    XML for CI and qa-report-visualizer -- the only one of the three whose
+    shape is not ours to choose. It is written by default because a gate
+    nobody remembers to ask for is a gate that is not there.
     """
     os.makedirs(directory, exist_ok=True)
     _written = {}
@@ -163,6 +169,12 @@ def write(report: ReportData, directory: str, basename: str = 'report',
         with open(_path, 'w', encoding='utf-8') as fh:
             fh.write(to_json(report))
         _written['json'] = _path
+
+    if junit:
+        _path = os.path.join(directory, '{}.xml'.format(basename))
+        with open(_path, 'w', encoding='utf-8') as fh:
+            fh.write(to_junit(report))
+        _written['junit'] = _path
 
     logger.info('report written: %s', ', '.join(_written.values()))
     return _written

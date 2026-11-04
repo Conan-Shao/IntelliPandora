@@ -14,7 +14,6 @@ from ipandora.core.runner import store
 from ipandora.core.schedule.runtime import Runtime
 from ipandora.core.triage import triage
 from ipandora.utils.log import log_to_stderr, logger
-from ipandora.utils.robotlogparser import RobotLogParser
 
 mcp = MCPServer(Runtime.Mcp.name)
 
@@ -96,18 +95,15 @@ def build_report(run_id: str, directory: str, title: str = '') -> dict:
             'ok': _report.ok}
 
 
-@mcp.tool()
-def get_test_report(xml_file: str, details_url: Optional[str] = None) -> dict:
-    """
-    Parse a Robot Framework output.xml and return its statistics and details.
-    """
-    return RobotLogParser(xml_file, details_url=details_url).results
 
 
 # Deliberately NOT exposed -- see docs/design/04-实施计划.md:
 #
 #   provision(spec)   needs core/fixture (P2)
 #   impact(diff)      needs a call-graph source (P5)
+#
+# `get_test_report` is gone with the Robot Framework adapter: it parsed a
+# Robot output.xml, which nothing in this framework produces any more.
 #
 # `create_test_case` was removed on purpose: agents already write files, so
 # generating cases through a tool hides them from diff review and git.

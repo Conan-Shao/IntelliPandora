@@ -75,6 +75,12 @@ class Command(CommandBase):
         else:
             _paths = archive(_report, directory=options.report_dir)
 
+        # --junit-xml puts the file where CI expects it, which is rarely where
+        # the history keeps it. Written even under --no-report: a gate needs
+        # the XML, and "run only, no report" should not quietly disarm it.
+        if options.junit_xml:
+            _paths['junit'] = self._write_junit(_report, options.junit_xml)
+
         self._print_summary(_result, _report, _paths)
 
         if _tape_failure:
@@ -83,6 +89,17 @@ class Command(CommandBase):
         # The exit code is the run's verdict, not the report's. A suite that
         # failed must fail the shell that called it, or CI goes green on red.
         sys.exit(1 if (_tape_failure or not _result.ok) else 0)
+
+    @staticmethod
+    def _write_junit(report, path):
+        """Write the JUnit XML to an explicit path, creating its directory."""
+        from ipandora.core.report.junit import to_junit
+
+        _directory = os.path.dirname(os.path.abspath(path))
+        os.makedirs(_directory, exist_ok=True)
+        with open(path, 'w', encoding='utf-8') as fh:
+            fh.write(to_junit(report))
+        return os.path.abspath(path)
 
     @staticmethod
     def _open_cassette(options):
@@ -257,6 +274,11 @@ class Command(CommandBase):
         self.parser.add_argument(
             '--no-report', action='store_true',
             help='run only; write no report')
+        self.parser.add_argument(
+            '--junit-xml', default=None, metavar='PATH',
+            help='also write JUnit XML here, for CI and report viewers. One '
+                 'is already written beside every report; this puts a copy '
+                 'where the pipeline expects it')
         self.parser.add_argument(
             '--no-store', action='store_true',
             help='do not keep the raw run for explain_failure')

@@ -5,26 +5,12 @@
 import sys
 import logging
 import json
-from robot.api import logger as rf_logger
 
-
-class RobotFrameworkLoggingHandler(logging.Handler):
-    def emit(self, record):
-        try:
-            msg = self.format(record)
-            level = record.levelno
-            if level >= logging.CRITICAL:
-                rf_logger.error(msg)
-            elif level >= logging.ERROR:
-                rf_logger.error(msg)
-            elif level >= logging.WARNING:
-                rf_logger.warn(msg)
-            elif level >= logging.INFO:
-                rf_logger.info(msg)
-            else:
-                rf_logger.debug(msg)
-        except Exception:
-            self.handleError(record)
+# `from robot.api import logger` used to sit here, unguarded, and
+# setup_logger() always installed a handler that forwarded every record into
+# Robot's log. With the Robot adapter gone and robotframework no longer a
+# dependency, that import would have failed at the first `import ipandora` --
+# the whole package, unusable, from one line in a logging module.
 
 
 class SmartJsonFormatter(logging.Formatter):
@@ -51,13 +37,6 @@ def setup_logger():
     # set logger level
     _logger = logging.getLogger(__name__)
     _logger.setLevel(logging.DEBUG)
-
-    # Robot Framework handler
-    rf_handler = RobotFrameworkLoggingHandler()
-    rf_handler.setLevel(logging.DEBUG)
-    rf_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    rf_handler.setFormatter(rf_formatter)
-    _logger.addHandler(rf_handler)
 
     # Console handler
     # formatter = logging.Formatter('[%(asctime)s](%(levelname)s)(%(name)s): %(message)s')

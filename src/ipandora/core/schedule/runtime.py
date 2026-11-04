@@ -383,12 +383,9 @@ class Runtime(object):
             if option is None:
                 return default
             try:
-                if Runtime.Frame.is_rf:
-                    return Runtime.settings \
-                        .get('suite_config', {}) \
-                        .get('metadata', {}) \
-                        .get(option, default)
-                elif Runtime.Frame.is_pytest:
+                # The Robot branch that used to come first read the option out
+                # of suite_config.metadata. It went with the Robot adapter.
+                if Runtime.Frame.is_pytest:
                     return Runtime.settings.get(option, default)
                 else:
                     return Runtime.settings.get(option, default)
@@ -460,21 +457,7 @@ class Runtime(object):
 
         _is_locust = False
 
-        @classproperty
-        def is_rf(self):
-            try:
-                from robot.running import EXECUTION_CONTEXTS
-                if EXECUTION_CONTEXTS.current:
-                    return True
-            except ImportError:
-                return False
 
-            return False
-
-        @classproperty
-        def is_pytest_upload_case(self):
-            return Runtime.Option \
-                .getMetaData(option='pandora_upload_case', default=False)
 
         @classproperty
         def is_pytest(self):
