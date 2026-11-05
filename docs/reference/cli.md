@@ -37,6 +37,7 @@ run a suite and write its HTML report into the run history
 | `--exclude-flaky` |  | skip cases marked @pytest.mark.flaky(reason=...). This is what a gate runs: a known-unstable case must not be able to fail a build. Without it they run and count normally |
 | `--junit-xml` `PATH` |  | also write JUnit XML here, for CI and report viewers. One is already written beside every report; this puts a copy where the pipeline expects it |
 | `--baseline` `PATH` |  | judgement inventory to compare with. Default: conf/judgements.json in the project config dir, when it exists |
+| `--compare-with` `REPORT` |  | an earlier report.json (or the run directory holding it) to compare failures with: new, still failing, recovered. In CI, typically the last report from the main branch. Default: the previous run of the same selector and environment in the local report archive, when this machine has one; otherwise no comparison. The committed baseline is compared either way |
 | `--no-baseline` |  | do not compare judgements with any baseline |
 | `--update-baseline` |  | accept this run's judgements as the new baseline, and write every matches_golden() image as its new golden. Commit both: their diff is what a reviewer reads to see which judgements changed |
 | `--fail-on-weakened` |  | exit non-zero when judgements got weaker than the baseline -- removed, loosened, changed, newly skipped or excluded, or a case that passes without judging anything. The gate for suites that agents edit |

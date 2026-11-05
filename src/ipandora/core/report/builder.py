@@ -103,6 +103,7 @@ def build_from_run(result, title: str = None, include_triage: bool = True) -> Re
             category=_finding.category if _finding else '',
             reason=redact(_finding.reason) if _finding else '',
             next_step=_finding.next_step if _finding else '',
+            confidence=_finding.confidence if _finding else '',
             suite=suite_of(_case.nodeid),
             title=getattr(_case, 'title', ''),
             dims=dict(getattr(_case, 'dims', {}) or {}),
@@ -129,7 +130,8 @@ def build_from_run(result, title: str = None, include_triage: bool = True) -> Re
         collect_error=redact(getattr(result, 'collect_error', '')),
         baseline=getattr(result, 'baseline', '') or '',
         # claims quote expected values, which can be anything a test compared
-        judgement_changes=redact(list(getattr(result, 'judgement_changes', []) or [])))
+        judgement_changes=redact(list(getattr(result, 'judgement_changes', []) or [])),
+        against_baseline=dict(getattr(result, 'against_baseline', {}) or {}))
 
 
 def build_from_dict(data: Dict[str, Any]) -> ReportData:
@@ -144,7 +146,10 @@ def build_from_dict(data: Dict[str, Any]) -> ReportData:
         triage=data.get('triage', {}),
         collect_error=data.get('collect_error', ''),
         baseline=data.get('baseline', ''),
-        judgement_changes=list(data.get('judgement_changes', []) or []))
+        judgement_changes=list(data.get('judgement_changes', []) or []),
+        against_baseline=dict(data.get('against_baseline', {}) or {}),
+        against_run=dict(data.get('against_run', {}) or {}),
+        view=data.get('view', 'tests') or 'tests')
     # to_dict emits derived fields (checks_passed, gaps, ...) that are not
     # constructor arguments; drop them rather than have a round-trip fail.
     _fields = {_f.name for _f in dataclasses.fields(ReportCase)}

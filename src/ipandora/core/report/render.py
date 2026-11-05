@@ -103,6 +103,17 @@ def duration(ms) -> str:
     return '{:.2f} s'.format(_ms / 1000.0)
 
 
+def display_path(path: str) -> str:
+    """A path as a reader recognises it: relative to the project when it is inside."""
+    if not path or not os.path.isabs(path):
+        return path or ''
+    try:
+        _rel = os.path.relpath(path)
+    except ValueError:      # another drive on Windows
+        return path
+    return path if _rel.startswith('..') else _rel
+
+
 def environment() -> Environment:
     # autoescape matters here: failure messages contain whatever the system
     # under test returned, and an unescaped payload would both break the page
@@ -112,6 +123,8 @@ def environment() -> Environment:
         autoescape=select_autoescape(['html']))
     _env.filters.update({'pretty': pretty, 'hljson': highlight_json,
                          'curl': to_curl, 'ms': duration})
+    from ipandora.core.triage.category import CONFIDENCE_LABEL, LABEL
+    _env.globals.update({'category_label': LABEL, 'confidence_label': CONFIDENCE_LABEL})
     return _env
 
 
@@ -129,6 +142,10 @@ def to_html(report: ReportData, template: str = TEMPLATE) -> str:
         'gap_list': report.gaps,
         'check_totals': report.check_totals,
         'by_source': report.by_source,
+        'attention': report.attention,
+        'weak_by_case': report.weakened_by_case,
+        'case_by_id': {_c.nodeid: _c for _c in report.cases},
+        'baseline_display': display_path(report.baseline),
     })
     return environment().get_template(template).render(**_context)
 

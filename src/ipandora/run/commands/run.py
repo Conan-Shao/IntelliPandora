@@ -60,6 +60,16 @@ class Command(CommandBase):
             sys.exit(2)
 
         _report = build(_result, title=options.title)
+        _report.gate_weakened = bool(options.fail_on_weakened and not options.update_baseline)
+        # The local archive is where earlier runs live; with --no-archive the
+        # report dir is not one, so the default archive is searched instead.
+        from ipandora.core.report import compare
+        try:
+            compare.attach(_report, compare_with=options.compare_with,
+                           directory=None if options.no_archive else options.report_dir)
+        except ValueError as exc:
+            print('  ERROR  --compare-with: {}'.format(exc), file=sys.stderr)
+            sys.exit(2)
 
         if options.no_report:
             _paths = {}
@@ -109,10 +119,26 @@ class Command(CommandBase):
 
     @staticmethod
     def _print_summary(result, report, paths):
+        def _names(nodeids):
+            _short = [_n.rsplit('::', 1)[-1] for _n in nodeids]
+            return '、'.join(_short[:3]) + ('…（共 {} 条）'.format(len(_short)) if len(_short) > 3 else '')
+
         print('')
         print('  {}  {}'.format('PASS' if result.ok else 'FAIL', result.headline()))
-        print('  通过率 {} · {:.2f}s · {}'.format(
-            report.pass_rate, result.duration, result.run_id))
+        _basis = report.pass_rate_basis
+        print('  {}：{}'.format(report.verdict['label'], report.verdict['sentence']))
+        print('  通过率 {}（{} / {}，跳过与未判定不进分母）· {:.2f}s · {}'.format(
+            report.pass_rate, _basis['passed'], _basis['denominator'],
+            result.duration, result.run_id))
+
+        _base = report.against_baseline
+        if _base.get('newly_failing'):
+            print('  基线里通过、这次失败：{}'.format(_names(_base['newly_failing'])))
+        _run = report.against_run
+        if _run:
+            print('  对比 {}（{}）：新失败 {} · 仍失败 {} · 恢复 {}'.format(
+                _run['run_id'] or '?', '传入的报告' if _run['source'] == 'argument' else '本机缓存',
+                len(_run['newly_failing']), len(_run['still_failing']), len(_run['recovered'])))
 
         _checks = report.check_totals
         if _checks['passed'] or _checks['failed'] or _checks['gap']:
@@ -121,7 +147,10 @@ class Command(CommandBase):
                 ' · {} 未覆盖'.format(_checks['gap']) if _checks['gap'] else ''))
 
         for _grid in report.coverage_matrix:
-            print('  覆盖 {} {}/{}'.format(_grid['title'], _grid['filled'], _grid['total']))
+            if _grid.get('problem'):
+                print('  覆盖 无法识别：{}'.format(_grid['problem']))
+            else:
+                print('  覆盖 {} {}/{}'.format(_grid['title'], _grid['filled'], _grid['total']))
 
         if report.inconclusive:
             print('  {} 条什么都没测到，不计入通过率'.format(len(report.inconclusive)))
@@ -165,7 +194,7 @@ class Command(CommandBase):
             print('')
             print('  报告  {}'.format(paths['html']))
         if paths.get('index'):
-            print('  历史  {}'.format(paths['index']))
+            print('  本机存档  {}'.format(paths['index']))
         print('')
 
     @property
@@ -212,6 +241,14 @@ class Command(CommandBase):
             help='judgement inventory to compare with. Default: '
                  'conf/judgements.json in the project config dir, when it '
                  'exists')
+        self.parser.add_argument(
+            '--compare-with', default=None, metavar='REPORT',
+            help='an earlier report.json (or the run directory holding it) to '
+                 'compare failures with: new, still failing, recovered. In CI, '
+                 'typically the last report from the main branch. Default: the '
+                 'previous run of the same selector and environment in the local '
+                 'report archive, when this machine has one; otherwise no '
+                 'comparison. The committed baseline is compared either way')
         self.parser.add_argument(
             '--no-baseline', action='store_true',
             help='do not compare judgements with any baseline')

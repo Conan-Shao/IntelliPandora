@@ -39,7 +39,7 @@ from dataclasses import asdict, dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, List, Optional
 
-from ipandora.core.runner.result import PASSED, SKIPPED, RunResult
+from ipandora.core.runner.result import ERROR, FAILED, PASSED, SKIPPED, RunResult
 from ipandora.core.schedule import config
 
 VERSION = 1
@@ -311,3 +311,32 @@ def compare(baseline: Optional[Dict[str, Any]], result: RunResult) -> List[Findi
 
     _findings.sort(key=lambda _f: (not _f.weakening, _f.nodeid, _f.kind))
     return _findings
+
+
+def against(baseline: Optional[Dict[str, Any]], result: RunResult) -> Dict[str, List[str]]:
+    """
+    This run's failures, split by what the baseline knew about each case.
+
+    The baseline records only cases that passed (or were skipped) when it was
+    written -- a failed case says nothing reliable and is left out. So a case
+    the baseline holds as passing and that fails now has turned red since,
+    which is what "new failure" means without any run history: the baseline
+    is committed, so the answer is the same on every machine and in CI.
+
+    newly_failing      failing now, passing in the baseline
+    no_passing_record  failing now, and the baseline never saw it pass
+    new_cases          not in the baseline and not failing
+    """
+    if not baseline:
+        return {}
+    _base = baseline.get('cases', {}) or {}
+    _out = {'newly_failing': [], 'no_passing_record': [], 'new_cases': []}
+    for _case in result.cases:
+        _before = _base.get(_case.nodeid)
+        if _case.outcome in (FAILED, ERROR):
+            _key = ('newly_failing' if _before and _before.get('state') == S_PASSED
+                    else 'no_passing_record')
+            _out[_key].append(_case.nodeid)
+        elif _before is None:
+            _out['new_cases'].append(_case.nodeid)
+    return _out

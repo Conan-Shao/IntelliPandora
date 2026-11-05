@@ -91,6 +91,8 @@ class RunResult:
     """The judgement inventory this run was compared with. Empty: none."""
     judgement_changes: List[Dict[str, Any]] = field(default_factory=list)
     """What changed in what the suite judges, vs the baseline. See inventory.py."""
+    against_baseline: Dict[str, List[str]] = field(default_factory=dict)
+    """This run's failures split by the baseline: see inventory.against. Empty: no baseline."""
 
     @property
     def weakened(self) -> List[Dict[str, Any]]:
@@ -175,6 +177,11 @@ class RunResult:
                     'intended, a person should review it and accept it with '
                     '`ipandora run --update-baseline`; otherwise restore '
                     'them.'.format(self.baseline))
+        if self.against_baseline.get('newly_failing'):
+            # what an agent most needs to know: which of these it just broke
+            _out['newly_failing'] = self.against_baseline['newly_failing'][:SUMMARY_LIST_MAX]
+            _out['newly_failing_hint'] = (
+                'these passed in the committed baseline and fail now')
         if self.collect_error:
             _out['collect_error'] = self.collect_error[:SUMMARY_MESSAGE_CHARS]
             return _out
@@ -201,6 +208,7 @@ class RunResult:
             'deselected': list(self.deselected),
             'baseline': self.baseline,
             'judgement_changes': list(self.judgement_changes),
+            'against_baseline': dict(self.against_baseline),
             'totals': {'total': self.total, 'passed': self.passed,
                        'failed': self.failed, 'skipped': self.skipped,
                        'error': self.errors},
@@ -219,4 +227,5 @@ class RunResult:
             deselected=list(data.get('deselected', []) or []),
             baseline=data.get('baseline', ''),
             judgement_changes=list(data.get('judgement_changes', []) or []),
+            against_baseline=dict(data.get('against_baseline', {}) or {}),
             cases=[CaseResult(**_c) for _c in data.get('cases', [])])

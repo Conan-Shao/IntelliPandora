@@ -97,9 +97,12 @@ class ResultCollector:
         self.rootdir = str(getattr(config, 'rootpath', '') or '')
         # xdist runs collection, and so deselection, in the workers and does
         # not forward pytest_deselected. Each worker reports what it removed
-        # when it shuts down; the hook for that only exists when xdist does.
-        if hasattr(config.hook, 'pytest_testnodedown'):
-            config.pluginmanager.register(_WorkerOutput(self), 'ipandora-worker-output')
+        # when it shuts down; the hook for that only exists when xdist does,
+        # so the implementation is marked optional. (Testing for the hook with
+        # hasattr(config.hook, ...) stopped working in pytest 9.2, which
+        # answers yes for any name: without xdist installed, every run then
+        # died with "unknown hook 'pytest_testnodedown'".)
+        config.pluginmanager.register(_WorkerOutput(self), 'ipandora-worker-output')
 
     # -- what the case itself sent --------------------------------------------
 
@@ -226,11 +229,12 @@ class ResultCollector:
 
 
 class _WorkerOutput:
-    """Registered only when xdist is loaded: its hook does not exist otherwise."""
+    """What xdist workers report on shutdown. Its hook exists only with xdist."""
 
     def __init__(self, collector: ResultCollector):
         self._collector = collector
 
+    @pytest.hookimpl(optionalhook=True)
     def pytest_testnodedown(self, node, error):
         _output = getattr(node, 'workeroutput', None) or {}
         self._collector.add_deselected(_output.get(plugin.DESELECTED_KEY) or ())

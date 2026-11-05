@@ -412,7 +412,7 @@ class TestRunComparesWithTheBaseline:
         suite(tmp_path, self.AFTER, 'test_fee_suite.py')
         report = build(run(path, persist=False, quiet=True))
         html = to_html(report)
-        assert '判定变化' in html and 'fee &lt;= 1000' in html and 'PASS · 判定变弱' in html
+        assert '判定变化' in html and 'fee &lt;= 1000' in html and '通过，但需要复核' in html and 'data-verdict="review"' in html
         assert report.to_dict()['weakened'] == 2
         assert 'name="ipandora.judgements.weakened" value="2"' in to_junit(report)
 

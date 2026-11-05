@@ -44,4 +44,6 @@ python -m playwright install --with-deps chromium
 
 ## 报告
 
+CI 的容器每次都是新的，没有本机存档可比。想在报告里看到"比主分支新失败了哪些"，就把主分支上次运行的 `report.json` 下载下来，用 `--compare-with` 传进去；不传也没关系，"对比基线"这一栏不依赖任何历史，见[报告](reports.md#和什么比基线以及可选的一次运行)。
+
 每次运行都会写出 HTML 报告、JSON 和 JUnit XML。在 CI 里把报告目录（`$IPANDORA_REPORTS_DIR`，默认 `~/.ipandora/reports`）作为制品上传，失败的截图、trace、基准图对比都在里面。
