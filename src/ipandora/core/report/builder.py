@@ -12,6 +12,9 @@ from typing import Any, Dict
 from ipandora.core.report.model import ReportCase, ReportData, Status
 from ipandora.core.report.redact import redact, redact_body
 
+EMBEDDED = ('screenshot', 'golden', 'actual', 'diff')
+"""Artifact kinds shown as images in the report."""
+
 MAX_EMBEDDED_SCREENSHOT = 2 * 1024 * 1024
 """Bytes. Larger screenshots are linked by path instead of embedded."""
 from ipandora.core.triage import triage as run_triage
@@ -59,7 +62,8 @@ def _artifact(artifact: dict) -> dict:
     _kind = artifact.get('kind', '')
     _path = artifact.get('path', '')
     _out = {'kind': _kind, 'path': _path, 'src': '', 'command': ''}
-    if _kind == 'screenshot':
+    _out['group'] = artifact.get('group', '')
+    if _kind in EMBEDDED:
         try:
             if os.path.getsize(_path) <= MAX_EMBEDDED_SCREENSHOT:
                 with open(_path, 'rb') as _f:

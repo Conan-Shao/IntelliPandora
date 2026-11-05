@@ -38,6 +38,7 @@ AI 写测试之后，最后这个问题变成了关键：允许修改测试时�
 | TLS | 强制 `verify=False` | 默认开启 |
 | 并行执行 | `pytest -n 4` 快了，但每条用例都成了零判定 | `--workers 4`：判定、报告、基线比对与串行逐字节一致；`@pytest.mark.resource` 防止共用账号的用例撞车 |
 | Web 自动化 | 只用 `expect` 写的 Playwright 用例在判定上是空的；选择器找不到元素时，分不清是用例过时还是按钮真没了 | `expect` 计入判定清单；失败自动附截图和 trace；按元素的角色和名称复查页面，区分"选择器过时"和"待确认：可能是产品缺陷" |
+| 图像判定 | Python 版 Playwright 没有截图比对；自己写的比对，在抗锯齿差异上会误报，换掉基准图也没人发现 | `that(screenshot).matches_golden('checkout')`：只有成块的差异才算数，报告里并排展示基准图、实际截图和差异图，基准图被换掉会被门禁拦下 |
 | 并发场景 | 自己开线程：新线程没有登录态，请求也不进报告 | `concurrently()`：同时起跑、带登录态、每个请求都在证据里，还会判断并发是否真的发生了 |
 
 ## 安装
@@ -49,6 +50,7 @@ pip install intellipandora[mcp]       # 可选：agent 入口
 pip install intellipandora[system]    # 可选：系统信息工具（psutil）
 pip install intellipandora[parallel]  # 可选：并行执行 --workers、单条用例超时 --timeout
 pip install intellipandora[web]       # 可选：Web 自动化（Playwright），之后 python -m playwright install chromium
+pip install intellipandora[visual]    # 可选：图像判定 matches_golden()
 ```
 
 ## 用起来

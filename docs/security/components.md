@@ -34,6 +34,8 @@
 | pytest-timeout | extra:parallel | >=2.4,<3 | `--timeout` 单条用例超时 | MIT | 用信号或看门狗线程中断超时用例。pytest-dev 组织维护；2.4.0 发布于 2025-05，超过 12 个月无新版，理由同 pytest-xdist | 2026-11-05 |
 | playwright | extra:web | >=1.64,<2 | Web 自动化驱动 | Apache-2.0 | **运行时下载浏览器**（`python -m playwright install chromium`），默认从微软 CDN 下载，可用 `PLAYWRIGHT_DOWNLOAD_HOST` 指向内部镜像；浏览器版本由 Playwright 版本锁定（1.64.0 → Chromium 1248）。也可以用 `--browser-channel chrome` 改用系统 Chrome。驱动是随包附带的 Node 进程，经管道通信。依赖 greenlet、pyee | 2026-11-05 |
 | pytest-playwright | extra:web | >=0.10,<0.11 | `page` / `browser` fixture、失败截图与 trace | Apache-2.0 | 每次会话开始时清空 `--output` 目录（框架为每次运行单独指定一个）。还是 0.x，锁到一个次版本，并有集成测试检查我们依赖的 fixture 和选项。传递依赖 text-unidecode 为 Artistic / GPL 双许可，按 Artistic 使用，见 `scripts/check_components.py` 的 REVIEWED_LICENSES | 2026-11-05 |
+| pillow | extra:visual | >=12,<14 | 读写图片、遮罩、差异图 | MIT-CMU | 只解码测试自己产生的截图和仓库里的基准图。**图像解析历史上漏洞多**（`15` §7），每日扫描重点关注；13.x 要求 Python ≥ 3.11，3.10 上解析到 12.x | 2026-11-05 |
+| pixelmatch | extra:visual | >=0.4,<0.5 | 逐像素比对：抗锯齿识别、YIQ 色差 | ISC | 纯 Python，无依赖，不联网。整图比对约 0.7 秒（1280×720），只在差异包围盒上运行，局部变化时为毫秒级，计数与整图一致（有测试） | 2026-11-05 |
 | httpretty | extra:test | >=1.1,<2 | 测试里模拟 HTTP 响应 | MIT | 只在测试中替换 socket | 2026-11-05 |
 
 ## 构建与工具链

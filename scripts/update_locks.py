@@ -41,8 +41,9 @@ LOCKS = {
     # `parallel` in both, so the parallel tests run in every CI job, with and
     # without ai/.
     'ci.txt': (['setup.py', 'requirements/build.in'],
-               ['ai', 'mcp', 'parallel', 'system', 'test', 'web']),
-    'ci-noai.txt': (['setup.py', 'requirements/build.in'], ['mcp', 'parallel', 'test', 'web']),
+               ['ai', 'mcp', 'parallel', 'system', 'test', 'visual', 'web']),
+    'ci-noai.txt': (['setup.py', 'requirements/build.in'],
+                    ['mcp', 'parallel', 'test', 'visual', 'web']),
     'tools.txt': (['requirements/tools.in'], []),
 }
 

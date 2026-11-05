@@ -79,6 +79,9 @@ setup(
         # minor. Browsers are a separate download pinned by the Playwright
         # version: python -m playwright install chromium.
         'web': ['playwright>=1.64,<2', 'pytest-playwright>=0.10,<0.11'],
+        # Image verdicts, matches_golden() (docs/design/14 §4). Pillow 13 needs
+        # Python 3.11, so 12 stays allowed for 3.10.
+        'visual': ['pillow>=12,<14', 'pixelmatch>=0.4,<0.5'],
         # >=2: core/mcp/server.py imports mcp.server.mcpserver.MCPServer, which
         # only 2.x has. This said <2 from 1.11.0 on, so `pip install
         # intellipandora[mcp]` resolved to mcp 1.x and `ipandora mcp` failed

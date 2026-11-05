@@ -157,6 +157,9 @@ class ResultCollector:
             case.exchanges.extend(_payload.get('exchanges') or [])
             case.locators.update(_payload.get('locators') or {})
             case.locator_failures.extend(_payload.get('locator_failures') or [])
+            for _artifact in _payload.get('artifacts') or []:
+                if _artifact not in case.artifacts:
+                    case.artifacts.append(_artifact)
             case.judgeable = bool(_payload.get('judgeable', case.judgeable))
             if 'dims' in _payload:
                 case.dims = dict(_payload['dims'])

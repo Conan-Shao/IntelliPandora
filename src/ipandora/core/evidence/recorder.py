@@ -96,6 +96,10 @@ class CaseEvidence:
     """Web: selector -> what it pointed at (role, accessible name). See core/web.py."""
     locator_failures: List[Dict[str, Any]] = field(default_factory=list)
     """Web: selectors that found nothing, with the stale / missing verdict."""
+    artifacts: List[Dict[str, str]] = field(default_factory=list)
+    """Files the case produced for the report: golden / actual / diff images."""
+    context: Dict[str, str] = field(default_factory=dict)
+    """Where the case lives: its file, and the browser it ran in (core/runner/plugin.py)."""
 
     def to_dict(self) -> Dict[str, Any]:
         return {'checks': list(self.checks), 'exchanges': list(self.exchanges)}
@@ -119,8 +123,9 @@ class Recorder:
 
     # -- lifecycle ---------------------------------------------------------
 
-    def begin(self, nodeid: str) -> None:
-        self._local.current = CaseEvidence(nodeid=nodeid)
+    def begin(self, nodeid: str, **context) -> None:
+        self._local.current = CaseEvidence(
+            nodeid=nodeid, context={_k: str(_v) for _k, _v in context.items() if _v})
 
     def end(self, nodeid: str) -> Optional[CaseEvidence]:
         """
