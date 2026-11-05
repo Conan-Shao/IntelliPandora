@@ -1,0 +1,134 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="900" viewBox="0 0 1200 900" font-family="'PingFang SC','Microsoft YaHei','WenQuanYi Zen Hei',sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#5b6472"/>
+    </marker>
+    <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2f6fd6"/>
+    </marker>
+    <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1f8a5b"/>
+    </marker>
+  </defs>
+  <rect width="1200" height="900" fill="#ffffff"/>
+
+  <text x="600" y="44" text-anchor="middle" font-size="26" font-weight="700" fill="#1d2330">用 MCP 和不用 MCP：只是换了个调用者</text>
+  <text x="600" y="74" text-anchor="middle" font-size="15" fill="#5b6472">两条路最终调的是同一个函数，测试能力完全一样；区别在谁来调、拿回什么、闭环靠谁</text>
+
+  <!-- ============ LEFT: without MCP ============ -->
+  <rect x="30" y="100" width="550" height="440" rx="14" fill="#f6f7f9" stroke="#d5d9e0"/>
+  <text x="56" y="134" font-size="19" font-weight="700" fill="#1d2330">不用 MCP：命令行 / CI</text>
+  <text x="56" y="158" font-size="13.5" fill="#5b6472">人或 CI 流水线直接敲命令，一次一跑</text>
+
+  <!-- caller -->
+  <rect x="56" y="178" width="230" height="64" rx="10" fill="#ffffff" stroke="#9aa3b2"/>
+  <text x="171" y="205" text-anchor="middle" font-size="16" font-weight="600" fill="#1d2330">人 / CI 流水线</text>
+  <text x="171" y="227" text-anchor="middle" font-size="12.5" fill="#5b6472">GitHub Actions、Jenkins、终端</text>
+
+  <!-- command -->
+  <rect x="320" y="178" width="236" height="64" rx="10" fill="#ffffff" stroke="#9aa3b2"/>
+  <text x="438" y="203" text-anchor="middle" font-size="13" font-family="Menlo,Consolas,'WenQuanYi Zen Hei Mono',monospace" fill="#1d2330">ipandora run tests</text>
+  <text x="438" y="224" text-anchor="middle" font-size="13" font-family="Menlo,Consolas,'WenQuanYi Zen Hei Mono',monospace" fill="#1d2330">-e staging</text>
+  <line x1="286" y1="210" x2="316" y2="210" stroke="#5b6472" stroke-width="2" marker-end="url(#a)"/>
+
+  <!-- outputs -->
+  <text x="56" y="290" font-size="14" font-weight="600" fill="#1d2330">拿回来的东西</text>
+  <rect x="56" y="302" width="160" height="70" rx="10" fill="#ffffff" stroke="#d5d9e0"/>
+  <text x="136" y="330" text-anchor="middle" font-size="14" fill="#1d2330">终端文字</text>
+  <text x="136" y="352" text-anchor="middle" font-size="12.5" fill="#5b6472">PASS 5 / FAIL 1</text>
+  <rect x="228" y="302" width="160" height="70" rx="10" fill="#ffffff" stroke="#d5d9e0"/>
+  <text x="308" y="330" text-anchor="middle" font-size="14" fill="#1d2330">退出码</text>
+  <text x="308" y="352" text-anchor="middle" font-size="12.5" fill="#5b6472">0 过 / 1 不过，给 CI 判</text>
+  <rect x="400" y="302" width="156" height="70" rx="10" fill="#ffffff" stroke="#d5d9e0"/>
+  <text x="478" y="330" text-anchor="middle" font-size="14" fill="#1d2330">报告文件</text>
+  <text x="478" y="352" text-anchor="middle" font-size="12.5" fill="#5b6472">HTML / JSON / JUnit</text>
+
+  <!-- loop -->
+  <rect x="56" y="398" width="500" height="118" rx="10" fill="#fff7e8" stroke="#e8c27a"/>
+  <text x="76" y="426" font-size="14" font-weight="600" fill="#8a5a00">闭环靠人</text>
+  <text x="76" y="452" font-size="13.5" fill="#4a3a1a">跑 → 人打开报告看哪条红了 → 人去翻 traceback</text>
+  <text x="76" y="476" font-size="13.5" fill="#4a3a1a">→ 人改代码 → 人再跑一次</text>
+  <text x="76" y="502" font-size="12.5" fill="#8a6a2a">适合：门禁、定时回归、人自己在本地调试</text>
+
+  <!-- ============ RIGHT: with MCP ============ -->
+  <rect x="620" y="100" width="550" height="440" rx="14" fill="#f2f7ff" stroke="#bcd3f5"/>
+  <text x="646" y="134" font-size="19" font-weight="700" fill="#1d2330">用 MCP：给 AI agent 调</text>
+  <text x="646" y="158" font-size="13.5" fill="#5b6472">框架自己就是 MCP server，agent 是 client，不用另装</text>
+
+  <!-- agent -->
+  <rect x="646" y="178" width="230" height="64" rx="10" fill="#ffffff" stroke="#2f6fd6"/>
+  <text x="761" y="205" text-anchor="middle" font-size="16" font-weight="600" fill="#1d2330">AI agent（MCP client）</text>
+  <text x="761" y="227" text-anchor="middle" font-size="12.5" fill="#5b6472">Claude Code、Cursor 等</text>
+
+  <!-- server -->
+  <rect x="910" y="178" width="236" height="64" rx="10" fill="#ffffff" stroke="#2f6fd6"/>
+  <text x="1028" y="203" text-anchor="middle" font-size="13" font-family="Menlo,Consolas,'WenQuanYi Zen Hei Mono',monospace" fill="#1d2330">ipandora mcp</text>
+  <text x="1028" y="225" text-anchor="middle" font-size="12.5" fill="#5b6472">常驻进程，agent 拉起</text>
+  <line x1="880" y1="203" x2="906" y2="203" stroke="#2f6fd6" stroke-width="2" marker-end="url(#ab)"/>
+  <line x1="906" y1="219" x2="880" y2="219" stroke="#2f6fd6" stroke-width="2" marker-end="url(#ab)"/>
+  <text x="893" y="262" text-anchor="middle" font-size="11.5" fill="#2f6fd6">stdio JSON</text>
+
+  <!-- tools -->
+  <text x="646" y="290" font-size="14" font-weight="600" fill="#1d2330">agent 可调的 4 个工具，回的是结构化 JSON</text>
+  <rect x="646" y="302" width="245" height="34" rx="8" fill="#ffffff" stroke="#bcd3f5"/>
+  <text x="658" y="324" font-size="12.5" font-family="Menlo,Consolas,'WenQuanYi Zen Hei Mono',monospace" fill="#2f6fd6">run_tests</text>
+  <text x="742" y="324" font-size="12.5" fill="#1d2330">失败名 + 断言 + 归因</text>
+  <rect x="901" y="302" width="245" height="34" rx="8" fill="#ffffff" stroke="#bcd3f5"/>
+  <text x="913" y="324" font-size="12.5" font-family="Menlo,Consolas,'WenQuanYi Zen Hei Mono',monospace" fill="#2f6fd6">explain_failure</text>
+  <text x="1036" y="324" font-size="12.5" fill="#1d2330">按需取 traceback</text>
+  <rect x="646" y="342" width="245" height="34" rx="8" fill="#ffffff" stroke="#bcd3f5"/>
+  <text x="658" y="364" font-size="12.5" font-family="Menlo,Consolas,'WenQuanYi Zen Hei Mono',monospace" fill="#2f6fd6">list_runs</text>
+  <text x="742" y="364" font-size="12.5" fill="#1d2330">历史运行，比较回归</text>
+  <rect x="901" y="342" width="245" height="34" rx="8" fill="#ffffff" stroke="#bcd3f5"/>
+  <text x="913" y="364" font-size="12.5" font-family="Menlo,Consolas,'WenQuanYi Zen Hei Mono',monospace" fill="#2f6fd6">build_report</text>
+  <text x="1012" y="364" font-size="12.5" fill="#1d2330">给人看的报告</text>
+
+  <!-- loop -->
+  <rect x="646" y="398" width="500" height="118" rx="10" fill="#eaf7f0" stroke="#8fd1b0"/>
+  <text x="666" y="426" font-size="14" font-weight="600" fill="#1f6b48">闭环由 agent 自己走</text>
+  <text x="666" y="452" font-size="13.5" fill="#1a3a2b">run_tests → 读失败摘要 → explain_failure 取细节</text>
+  <text x="666" y="476" font-size="13.5" fill="#1a3a2b">→ 改代码 → 再 run_tests，人只看最后结果</text>
+  <text x="666" y="502" font-size="12.5" fill="#2f7a55">适合：让 agent 写用例、修 bug、改完自测</text>
+
+  <!-- ============ shared core ============ -->
+  <path d="M438,540 L438,586" stroke="#5b6472" stroke-width="2" fill="none" marker-end="url(#a)"/>
+  <path d="M1028,540 L1028,566 Q1028,576 1018,576 L780,576 Q770,576 770,586" stroke="#2f6fd6" stroke-width="2" fill="none" marker-end="url(#ab)"/>
+
+  <rect x="30" y="590" width="1140" height="118" rx="14" fill="#1d2330"/>
+  <text x="600" y="624" text-anchor="middle" font-size="18" font-weight="700" fill="#ffffff">同一个执行入口：core.runner.run(selector, env)</text>
+  <g font-size="13.5" fill="#d9dee7" text-anchor="middle">
+    <rect x="70" y="644" width="230" height="44" rx="8" fill="#2c3445"/>
+    <text x="185" y="671">pytest 进程内执行</text>
+    <rect x="320" y="644" width="250" height="44" rx="8" fill="#2c3445"/>
+    <text x="445" y="671">Check 断言，一次报全部失败</text>
+    <rect x="590" y="644" width="250" height="44" rx="8" fill="#2c3445"/>
+    <text x="715" y="671">规则归因：缺陷 / 契约 / 环境…</text>
+    <rect x="860" y="644" width="270" height="44" rx="8" fill="#2c3445"/>
+    <text x="995" y="671">运行归档 ~/.ipandora/runs</text>
+  </g>
+
+  <!-- ============ comparison table ============ -->
+  <g font-size="13.5">
+    <rect x="30" y="728" width="1140" height="152" rx="12" fill="#ffffff" stroke="#d5d9e0"/>
+    <line x1="30" y1="764" x2="1170" y2="764" stroke="#d5d9e0"/>
+    <line x1="30" y1="802" x2="1170" y2="802" stroke="#eceef2"/>
+    <line x1="30" y1="840" x2="1170" y2="840" stroke="#eceef2"/>
+    <line x1="230" y1="728" x2="230" y2="880" stroke="#eceef2"/>
+    <line x1="700" y1="728" x2="700" y2="880" stroke="#eceef2"/>
+    <text x="50" y="752" font-weight="700" fill="#1d2330">差别在哪</text>
+    <text x="250" y="752" font-weight="700" fill="#1d2330">不用 MCP</text>
+    <text x="720" y="752" font-weight="700" fill="#2f6fd6">用 MCP</text>
+
+    <text x="50" y="789" fill="#5b6472">失败细节</text>
+    <text x="250" y="789" fill="#1d2330">一次性全打出来，人自己挑</text>
+    <text x="720" y="789" fill="#1d2330">先给摘要，细节按 run_id 再取，不撑爆 agent 上下文</text>
+
+    <text x="50" y="827" fill="#5b6472">要装什么</text>
+    <text x="250" y="827" fill="#1d2330">pip install intellipandora</text>
+    <text x="720" y="827" fill="#1d2330">pip install intellipandora[mcp]，在 agent 里配一行启动命令</text>
+
+    <text x="50" y="865" fill="#5b6472">是否必需</text>
+    <text x="250" y="865" fill="#1d2330">框架本体，单独就能用</text>
+    <text x="720" y="865" fill="#1d2330">可选。不接 agent 就完全用不到</text>
+  </g>
+</svg>
