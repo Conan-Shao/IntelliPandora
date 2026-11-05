@@ -45,7 +45,7 @@ run()
 
 | 目录 | 职责 |
 |---|---|
-| `core/assertion/` | 判定：`Check` 是值不是异常；`field()` / `that()` 用 Python 运算符严格比较；`assert_all` 一次报出全部失败；`require()` 是前置条件；`visual.py` 做图像判定 |
+| `core/assertion/` | 判定：`Check` 是值不是异常；`field()` / `that()` 用 Python 运算符严格比较；`assert_all` 一次报出全部失败；`require()` 是前置条件；`eventually()`（`wait.py`）在截止时间内反复读，判定最终一致；`visual.py` 做图像判定 |
 | `core/runner/` | 执行：`api.py` 入口，`plugin.py` 在用例进程里记录，`collector.py` 在主进程组装，`inventory.py` 判定清单与基线，`store.py` 存档 |
 | `core/evidence/` | 每条用例的证据槽，按线程区分；`concurrently()` 会把它绑定到自己启动的线程 |
 | `core/protocol/http/` | HTTP 层：传输策略（超时、重试、TLS）、响应解析 |

@@ -185,6 +185,45 @@ def fee_within_cap(resp, cap):
 - **不要抛异常。** 字段缺失、body 不是 JSON，都应该返回 `ok=False` 的 Check。一旦抛出，`assert_all` 就退化成"第一个失败就停"，失去了意义 —— 所以用 `json_value` 而不是 `body['fee']`。
 - **`expr` 要写足证据。** 失败时应该不用翻日志就能看懂。
 
+## 等待最终一致：eventually()
+
+写到一个节点、从另一个节点读回；支付后订单状态要等队列消费者处理完才变成 `PAID`。这类判定不要写 `time.sleep(3)`：短了，慢的那天就失败；长了，每天都慢；出错时也说不清读到了什么。
+
+`eventually()` 在截止时间内反复读，直到判定成立或时间用完。它返回一个 Check，和其他判定一起交给 `assert_all`：
+
+<!-- run -->
+```python
+import itertools
+from ipandora.core.assertion import assert_all, eventually, that
+
+reads = itertools.count()          # 模拟复制延迟：第 3 次读才读到新状态
+
+def order_status():
+    return 'PAID' if next(reads) >= 2 else 'PENDING'
+
+checks = assert_all(
+    eventually(lambda: that(order_status(), 'order.status') == 'PAID', within=2, every=0.05),
+)
+print(checks[0].expr)   # 第 3 次读到成立，用时 0.1 s（上限 2 s）；之前读到：order.status = 'PENDING' (expected 'PAID')
+```
+
+真实用例里，`lambda` 里放的是请求加判定，每次读都会重新发请求：
+
+```python
+from ipandora.core.assertion import assert_all, eventually, field, status_ok
+
+assert_all(
+    status_ok(order_api.pay(7)),
+    eventually(lambda: field(replica_api.get_order(7), 'data.status') == 'PAID', within=10),
+)
+```
+
+- **证据**：成立时写明第几次读到、用了多久；不成立时写明读了几次、依次读到了什么，例如 `CREATED → PENDING`。这能区分"卡住了"和"只是慢"。
+- **一次读出错不算结束**：读的时候抛异常（节点还没起来、连接被拒），记为这次没成立，继续读；到截止时间仍然出错，判定失败并给出最后的异常。
+- **探针必须返回 Check**：返回 `True` 或一个没有比较的 `field()` 是用例写错了，会立刻报 `TypeError`，不会白等到截止时间。
+- **`within` 进入判定清单**：把等待时间从 10 秒放宽到 60 秒，是一次"改变"，`--fail-on-weakened` 会拦下。等得越久，越容易把延迟上的回归藏起来。
+- **报告里只记一条判定**，不是每次读一条。每次读发出的请求会出现在这条用例的 HTTP 证据里。
+
 ## 判定清单与基线：这次通过可不可信
 
 pytest 只告诉你有没有失败。`ipandora run` 还会记下**每条用例实际做了哪些判定**，并和基线比对。
