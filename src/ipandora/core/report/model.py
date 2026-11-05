@@ -56,7 +56,8 @@ INCONCLUSIVE = frozenset({Status.SKIPPED, Status.BLOCKED, Status.GAP, Status.ERR
 
 
 VERDICT_LABEL = {
-    'pass': '可以放行',
+    # bandit B105: a verdict name, not a password
+    'pass': '可以放行',  # nosec B105
     'review': '通过，但需要复核',
     'fail': '不能放行',
     'error': '没有跑起来',
