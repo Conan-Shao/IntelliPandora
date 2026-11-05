@@ -63,9 +63,12 @@ def build_from_run(result, title: str = None, include_triage: bool = True) -> Re
         _cases.append(ReportCase(
             name=_case.name,
             nodeid=_case.nodeid,
-            status=OUTCOME_STATUS.get(_case.outcome, Status.ERROR),
+            status=(Status.UNVERIFIED if getattr(_case, 'unverified', False)
+                    else OUTCOME_STATUS.get(_case.outcome, Status.ERROR)),
             duration=round(_case.duration, 3),
-            message=redact(_case.message or ''),
+            message=redact(_case.message or (
+                '通过了，但没有任何判定：没有 Check、没有成立的 assert、没有 pytest.raises'
+                if getattr(_case, 'unverified', False) else '')),
             category=_finding.category if _finding else '',
             reason=redact(_finding.reason) if _finding else '',
             next_step=_finding.next_step if _finding else '',
@@ -91,7 +94,10 @@ def build_from_run(result, title: str = None, include_triage: bool = True) -> Re
         cases=_cases,
         triage=redact(_report.to_dict()) if _report else {},
         coverage=list(getattr(result, 'coverage', []) or []),
-        collect_error=redact(getattr(result, 'collect_error', '')))
+        collect_error=redact(getattr(result, 'collect_error', '')),
+        baseline=getattr(result, 'baseline', '') or '',
+        # claims quote expected values, which can be anything a test compared
+        judgement_changes=redact(list(getattr(result, 'judgement_changes', []) or [])))
 
 
 def build_from_dict(data: Dict[str, Any]) -> ReportData:
@@ -104,7 +110,9 @@ def build_from_dict(data: Dict[str, Any]) -> ReportData:
         generated=data.get('generated', ''),
         duration=data.get('duration', 0.0),
         triage=data.get('triage', {}),
-        collect_error=data.get('collect_error', ''))
+        collect_error=data.get('collect_error', ''),
+        baseline=data.get('baseline', ''),
+        judgement_changes=list(data.get('judgement_changes', []) or []))
     # to_dict emits derived fields (checks_passed, gaps, ...) that are not
     # constructor arguments; drop them rather than have a round-trip fail.
     _fields = {_f.name for _f in dataclasses.fields(ReportCase)}

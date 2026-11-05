@@ -1,8 +1,10 @@
 # IntelliPandora
 
-> A general-purpose test framework for the AI era, built on pytest: **agents write the tests, the framework judges them, people review.**
+> The **verdict layer** for testing in the AI era, built on pytest: **agents write the tests, the framework judges them, people review.**
 >
-> HTTP API testing today; UI automation (Web / App) is planned. Nothing here is tied to a business domain — flows, environments and data live in the user's own repository.
+> pytest answers "did anything fail?". IntelliPandora answers "can this pass be trusted?" — what was verified, what was not, what is verified less than last time, and whose fault each failure is.
+>
+> HTTP API testing today; UI automation (Web / App) is planned. Nothing here is tied to a business domain.
 
 The full documentation is in Chinese: [README.md](README.md).
 

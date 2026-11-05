@@ -45,7 +45,7 @@ h1{font-weight:600;font-size:clamp(22px,4vw,31px);letter-spacing:-.015em;margin:
 .stack{display:grid;gap:14px;min-width:0}
 .stamp{color:var(--verdict);border:2px solid currentColor;border-radius:10px;
   padding:18px 22px;text-align:center;min-width:190px}
-.stamp.good{--verdict:var(--pass)} .stamp.bad{--verdict:var(--fail)}
+.stamp.good{--verdict:var(--pass)} .stamp.bad{--verdict:var(--fail)} .stamp.warn{--verdict:var(--warn)}
 .stamp .big{font-weight:700;font-size:36px;line-height:1;letter-spacing:-.02em}
 .stamp .verdict{font-weight:700;font-size:18px;letter-spacing:.12em;margin-top:6px}
 .stamp .rule{height:1px;background:currentColor;opacity:.45;margin:11px 0}
@@ -116,7 +116,7 @@ details.case>summary:hover{background:var(--panel-2)}
 details.case>summary:focus-visible{outline:2px solid var(--meta);outline-offset:-2px}
 .st{font-family:var(--mono);font-size:14px;font-weight:700}
 .case.PASS .st{color:var(--pass)} .case.FAIL .st,.case.ERROR .st{color:var(--fail)}
-.case.SKIPPED .st,.case.BLOCKED .st,.case.GAP .st{color:var(--warn)}
+.case.SKIPPED .st,.case.BLOCKED .st,.case.GAP .st,.case.UNVERIFIED .st{color:var(--warn)}
 .ct{font-size:14px}
 .cid{font-family:var(--mono);font-size:11.5px;color:var(--meta);margin-top:3px;word-break:break-all}
 .pills{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
@@ -220,6 +220,14 @@ details.raw[open]>summary::before{content:'▾ '}
 .row .rs{font-family:var(--mono);font-size:11.5px;color:var(--dim);margin-top:2px;display:block}
 .row .tag{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
   color:var(--warn);white-space:nowrap}
+.chg{background:var(--panel);display:grid;grid-template-columns:78px 1fr;gap:14px;
+  padding:10px 16px;align-items:baseline}
+.chg .k{font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--dim);white-space:nowrap}
+.chg.weak .k{color:var(--fail)}
+.chg .c{font-size:13px}
+.chg .w{font-family:var(--mono);font-size:12px;color:var(--text);margin-top:3px;display:block;word-break:break-all}
+.chg .w .from{color:var(--dim);text-decoration:line-through}
+.chg .n{font-family:var(--mono);font-size:11px;color:var(--faint);margin-top:2px;display:block}
 
 .banner{padding:11px 15px;border-radius:8px;margin:22px 0 0;font-size:13.5px;
   border:1px solid var(--line-strong)}
@@ -252,7 +260,7 @@ footer{margin-top:50px;padding-top:16px;border-top:1px solid var(--line);
 <body>
 <div class="wrap">
 
-{%- set marks = {'PASS':'✓','FAIL':'✗','ERROR':'✗','SKIPPED':'–','BLOCKED':'–','GAP':'!'} %}
+{%- set marks = {'PASS':'✓','FAIL':'✗','ERROR':'✗','SKIPPED':'–','BLOCKED':'–','GAP':'!','UNVERIFIED':'?'} %}
 
 <div class="eyebrow">
   <span>{{ run_id or 'run' }}</span><span class="sep">/</span>
@@ -321,17 +329,45 @@ footer{margin-top:50px;padding-top:16px;border-top:1px solid var(--line);
 
   </div>
 
-  <div class="stamp {{ 'good' if ok else 'bad' }}">
+  <div class="stamp {{ ('warn' if weakened else 'good') if ok else 'bad' }}">
     <div class="big">{{ totals.passed }}/{{ totals.total }}</div>
-    <div class="verdict">{{ 'PASS' if ok else 'FAIL' }}</div>
+    <div class="verdict">{{ ('PASS · 判定变弱' if weakened else 'PASS') if ok else 'FAIL' }}</div>
     <div class="rule"></div>
     <div class="line">通过率 {{ pass_rate }}</div>
     {%- if totals.failed or totals.error %}<div class="line">{{ totals.failed + totals.error }} failed</div>{% endif %}
     {%- if inconclusive %}<div class="line">{{ inconclusive|length }} 无结论</div>{% endif %}
     {%- if check_totals.gap %}<div class="line">{{ check_totals.gap }} 处未覆盖</div>{% endif %}
+    {%- if weakened %}<div class="line">{{ weakened }} 处判定变弱</div>{% endif %}
     <div class="line">{{ '%.2f'|format(duration) }}s wall</div>
   </div>
 </div>
+
+{% if judgement_changes %}
+<section>
+  <div class="sec-head">
+    <h2>判定变化</h2>
+    <span class="tally">{{ weakened }} 处变弱 · 共 {{ judgement_changes|length }} 处</span>
+  </div>
+  <p class="sec-note">
+    和基线 <code>{{ baseline }}</code> 比，这次运行实际执行的判定有哪些不同。比的是运行时的判定，不是源码文本。
+    {%- if weakened %} <strong>变弱的那几处要有人看过</strong>：确认无误后用 <code>ipandora run --update-baseline</code> 接受，否则恢复它们。{% endif %}
+  </p>
+  <div class="rows">
+    {%- for c in judgement_changes %}
+    <div class="chg {{ 'weak' if c.weakening else '' }}">
+      <span class="k">{{ c.label }}</span>
+      <span>
+        <span class="c">{{ c.case }}</span>
+        <span class="w">
+          {%- if c.before and c.after %}<span class="from">{{ c.before }}</span> → {{ c.after }}
+          {%- else %}{{ c.before or c.after }}{% endif %}</span>
+        {%- if c.note %}<span class="n">{{ c.note }}</span>{% endif %}
+      </span>
+    </div>
+    {%- endfor %}
+  </div>
+</section>
+{% endif %}
 
 {% if triage and triage.headline %}
 <section>
@@ -557,7 +593,7 @@ document.addEventListener("click", function (ev) {
     b.setAttribute("aria-pressed", String(b === btn));
   });
   var mode = btn.getAttribute("data-filter");
-  var inconclusive = ["SKIPPED", "BLOCKED", "GAP", "ERROR"];
+  var inconclusive = ["SKIPPED", "BLOCKED", "GAP", "ERROR", "UNVERIFIED"];
   document.querySelectorAll("details.case").forEach(function (el) {
     var st = el.getAttribute("data-status");
     var show = mode === "all"

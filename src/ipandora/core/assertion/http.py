@@ -4,6 +4,7 @@
 @File  : http.py
 @Time  : 2026-08-01
 """
+import hashlib
 import json
 from typing import Any, Optional
 
@@ -85,7 +86,7 @@ def status_is(response: Any, expected: int, name: str = None) -> Check:
         name=name or '状态码为 {}'.format(expected),
         ok=_actual == expected,
         expr='status = {} (expected {})'.format(_actual, expected),
-        src=Source.API)
+        src=Source.API, claim='status == {}'.format(expected))
 
 
 def status_ok(response: Any, name: str = None) -> Check:
@@ -101,7 +102,7 @@ def status_ok(response: Any, name: str = None) -> Check:
         name=name or '请求成功 (2xx)',
         ok=_ok,
         expr='status = {}'.format(_actual),
-        src=Source.API)
+        src=Source.API, claim='status is 2xx')
 
 
 def header_is(response: Any, header: str, expected: str, name: str = None) -> Check:
@@ -111,7 +112,7 @@ def header_is(response: Any, header: str, expected: str, name: str = None) -> Ch
         name=name or '响应头 {} 为 {}'.format(header, expected),
         ok=_actual == expected,
         expr='{} = {} (expected {})'.format(header, brief(_actual), brief(expected)),
-        src=Source.API)
+        src=Source.API, claim='header {} == {}'.format(header, brief(expected, 60)))
 
 
 # --------------------------------------------------------------------------
@@ -126,20 +127,21 @@ def json_has(response: Any, path: str, name: str = None) -> Check:
         name=_label,
         ok=_value is not MISSING,
         expr='{} present'.format(path) if _value is not MISSING else _reason,
-        src=Source.SCHEMA)
+        src=Source.SCHEMA, claim='{} exists'.format(path))
 
 
 def json_equals(response: Any, path: str, expected: Any, name: str = None) -> Check:
     """Assert a field equals an exact value."""
-    _label = name or '{} == {}'.format(path, brief(expected, 60))
+    _claim = '{} == {}'.format(path, brief(expected, 60))
+    _label = name or _claim
     _value, _reason = json_value(response, path)
     if _value is MISSING:
-        return Check(name=_label, ok=False, expr=_reason, src=Source.API)
+        return Check(name=_label, ok=False, expr=_reason, src=Source.API, claim=_claim)
     return Check(
         name=_label,
         ok=same(_value, expected),
         expr='{} = {} (expected {})'.format(path, brief(_value), brief(expected)),
-        src=Source.API)
+        src=Source.API, claim=_claim)
 
 
 def field(response: Any, path: str, name: str = None) -> Field:
@@ -172,25 +174,29 @@ def schema_conforms(response: Any, schema: dict, name: str = None) -> Check:
     the spec changes.
     """
     _label = name or '响应符合 schema'
+    # the schema's own fingerprint, so a loosened schema shows up as a changed
+    # judgement in the inventory instead of the same 'conforms' line
+    _claim = 'body conforms to schema {}'.format(hashlib.sha1(
+        json.dumps(schema, sort_keys=True, default=str).encode('utf-8')).hexdigest()[:10])
     try:
         import jsonschema
     except ImportError:
         return Check(name=_label, ok=False,
                      expr="jsonschema is not installed (pip install jsonschema)",
-                     src=Source.SCHEMA)
+                     src=Source.SCHEMA, claim=_claim)
 
     _body, _err = json_body(response)
     if _err:
-        return Check(name=_label, ok=False, expr=_err, src=Source.SCHEMA)
+        return Check(name=_label, ok=False, expr=_err, src=Source.SCHEMA, claim=_claim)
 
     try:
         jsonschema.validate(instance=_body, schema=schema)
     except jsonschema.ValidationError as exc:
         _where = '/'.join(str(_p) for _p in exc.absolute_path) or '<root>'
         return Check(name=_label, ok=False,
-                     expr='at {}: {}'.format(_where, exc.message), src=Source.SCHEMA)
+                     expr='at {}: {}'.format(_where, exc.message), src=Source.SCHEMA, claim=_claim)
     except jsonschema.SchemaError as exc:
         return Check(name=_label, ok=False,
-                     expr='invalid schema: {}'.format(exc.message), src=Source.SCHEMA)
+                     expr='invalid schema: {}'.format(exc.message), src=Source.SCHEMA, claim=_claim)
 
-    return Check(name=_label, ok=True, expr='conforms', src=Source.SCHEMA)
+    return Check(name=_label, ok=True, expr='conforms', src=Source.SCHEMA, claim=_claim)

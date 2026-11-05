@@ -52,7 +52,7 @@
   * **core**: 核心能力
     * **protocol**: 协议层。目前只有 `http/`——传输策略、响应解析。UI（Web / App）规划中
     * **assertion**: 断言层。`Check` / `assert_all` / `require` / `gap`
-    * **runner**: 库可调用的执行入口；CLI 与 MCP 都是它的薄壳
+    * **runner**: 库可调用的执行入口；CLI 与 MCP 都是它的薄壳。`inventory.py` 是判定清单与基线比对
     * **report**: ReportData → HTML / JSON / JUnit XML + 历史归档
     * **triage**: 失败归因，规则优先，LLM 可选
     * **evidence**: 请求响应证据采集

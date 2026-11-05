@@ -14,7 +14,7 @@ SAMPLE_SUITE = '''
     import pytest
 
     def test_that_passes():
-        assert True
+        assert 1 + 1 == 2
 
     def test_that_fails():
         assert 1 == 2, "one is not two"
@@ -37,7 +37,7 @@ def sample_suite(tmp_path):
 @pytest.fixture
 def passing_suite(tmp_path):
     _file = tmp_path / 'test_passing_suite.py'
-    _file.write_text('def test_ok():\n    assert True\n', encoding='utf-8')
+    _file.write_text('def test_ok():\n    assert 1 + 1 == 2\n', encoding='utf-8')
     return str(_file)
 
 

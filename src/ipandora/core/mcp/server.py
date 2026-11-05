@@ -32,6 +32,17 @@ def run_tests(selector: str = '', env: str = '') -> dict:
     product defect, a contract change, an environment problem, missing test
     data, or a broken test. Full tracebacks are NOT included -- call
     explain_failure(run_id) when you actually need them.
+
+    Two more verdicts can come back, and both matter even when ok is true:
+
+    unverified: cases that passed without judging anything -- no assertion
+        held. Add real assertions, or declare gap() if that is deliberate.
+    judgements_weakened / judgement_changes: what this run judges compared
+        with the committed baseline (conf/judgements.json): assertions removed,
+        bounds loosened, expected values changed, cases newly skipped. Do not
+        make a failing test pass by weakening it. If a change is genuinely
+        intended, say so plainly to the person you are working with; they
+        accept it with `ipandora run --update-baseline`, not you.
     """
     # quiet=True is not optional here: on stdio transport, anything pytest
     # prints would land in the middle of this server's JSON-RPC stream.

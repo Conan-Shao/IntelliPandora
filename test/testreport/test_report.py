@@ -27,7 +27,14 @@ def run_with(*cases, **kwargs):
                      cases=list(cases))
 
 
+# A real passing case has judged something; one that has not is UNVERIFIED.
+A_CHECK = {'name': 'status is 2xx', 'ok': True, 'kind': 'assert', 'expr': '',
+           'src': 'api', 'claim': 'status is 2xx'}
+
+
 def case(nodeid='suite_a.py::test_x', outcome='passed', message='', **kwargs):
+    if outcome == 'passed':
+        kwargs.setdefault('checks', [A_CHECK])
     return CaseResult(nodeid=nodeid, outcome=outcome, message=message, **kwargs)
 
 

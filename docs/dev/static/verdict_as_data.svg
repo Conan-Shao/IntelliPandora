@@ -1,0 +1,116 @@
+<svg xml:space="preserve" xmlns="http://www.w3.org/2000/svg" width="1200" height="940" viewBox="0 0 1200 940" font-family="'PingFang SC','Microsoft YaHei','WenQuanYi Zen Hei',sans-serif">
+  <style>text{white-space:pre}</style>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#5b6472"/>
+    </marker>
+    <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2f6fd6"/>
+    </marker>
+  </defs>
+  <rect width="1200" height="940" fill="#ffffff"/>
+
+  <text x="600" y="44" text-anchor="middle" font-size="26" font-weight="700" fill="#1d2330">差异的根源：判定是数据，不是异常</text>
+  <text x="600" y="74" text-anchor="middle" font-size="15" fill="#5b6472">pytest 只记得有没有抛异常；IntelliPandora 把每一次判定都记下来，通过的也记</text>
+
+  <!-- ============ LEFT: pytest ============ -->
+  <rect x="30" y="98" width="550" height="452" rx="14" fill="#f6f7f9" stroke="#d5d9e0"/>
+  <text x="56" y="132" font-size="19" font-weight="700" fill="#1d2330">pytest：断言是异常</text>
+  <text x="56" y="156" font-size="13.5" fill="#5b6472">第一个失败抛出后，测试就停了；通过的断言不留任何记录</text>
+
+  <rect x="56" y="174" width="498" height="112" rx="10" fill="#1d2330"/>
+  <g font-family="Menlo,Consolas,'WenQuanYi Zen Hei Mono',monospace" font-size="13.5">
+    <text x="74" y="204" fill="#d9dee7">assert r.status == 200</text>
+    <text x="74" y="236" fill="#d9dee7">assert r.fee &lt;= 100</text>
+    <text x="74" y="268" fill="#7f8796">assert len(r.items) &gt; 0</text>
+  </g>
+  <g font-size="13">
+    <text x="360" y="204" fill="#8fd1b0">✓ 通过，不留记录</text>
+    <text x="360" y="236" fill="#f19a9a">✗ 抛异常，测试停止</text>
+    <text x="360" y="268" fill="#7f8796">· 没机会执行</text>
+  </g>
+
+  <line x1="305" y1="290" x2="305" y2="318" stroke="#5b6472" stroke-width="2" marker-end="url(#a)"/>
+  <rect x="56" y="322" width="498" height="62" rx="10" fill="#ffffff" stroke="#d5d9e0"/>
+  <text x="76" y="348" font-size="14" font-weight="600" fill="#b42318" font-family="Menlo,Consolas,'WenQuanYi Zen Hei Mono',monospace">FAILED test_order</text>
+  <text x="76" y="370" font-size="13" fill="#5b6472" font-family="Menlo,Consolas,'WenQuanYi Zen Hei Mono',monospace">AssertionError: assert 150 &lt;= 100</text>
+
+  <text x="56" y="414" font-size="14" font-weight="600" fill="#1d2330">跑完能回答</text>
+  <text x="56" y="438" font-size="13.5" fill="#1d2330">有没有测试抛了异常</text>
+  <text x="56" y="470" font-size="14" font-weight="600" fill="#b42318">回答不了</text>
+  <text x="56" y="494" font-size="13.5" fill="#1d2330">· 一个通过的测试到底验证了什么</text>
+  <text x="56" y="516" font-size="13.5" fill="#1d2330">· 一个 assert 都没写的测试，为什么也是绿的</text>
+  <text x="56" y="538" font-size="13.5" fill="#1d2330">· 这次比上次少验证了什么</text>
+
+  <!-- ============ RIGHT: IntelliPandora ============ -->
+  <rect x="620" y="98" width="550" height="452" rx="14" fill="#f2f7ff" stroke="#bcd3f5"/>
+  <text x="646" y="132" font-size="19" font-weight="700" fill="#1d2330">IntelliPandora：判定是数据</text>
+  <text x="646" y="156" font-size="13.5" fill="#5b6472">每条判定都记下来：实际值、期望值、来源、结果，通过的也记</text>
+
+  <rect x="646" y="174" width="498" height="112" rx="10" fill="#1d2330"/>
+  <g font-family="Menlo,Consolas,'WenQuanYi Zen Hei Mono',monospace" font-size="13.5" fill="#d9dee7">
+    <text x="664" y="204">assert_all(status_ok(r),</text>
+    <text x="664" y="236">           field(r, 'fee') &lt;= 100,</text>
+    <text x="664" y="268">           field(r, 'items').len() &gt; 0)</text>
+  </g>
+
+  <line x1="895" y1="290" x2="895" y2="318" stroke="#2f6fd6" stroke-width="2" marker-end="url(#ab)"/>
+  <!-- ledger -->
+  <rect x="646" y="322" width="498" height="140" rx="10" fill="#ffffff" stroke="#bcd3f5"/>
+  <g font-size="12.5" fill="#5b6472" font-weight="600">
+    <text x="664" y="346">判定</text><text x="840" y="346">实际</text><text x="915" y="346">期望</text><text x="1000" y="346">来源</text><text x="1080" y="346">结果</text>
+  </g>
+  <line x1="656" y1="356" x2="1134" y2="356" stroke="#e3e8f0"/>
+  <g font-size="13" fill="#1d2330">
+    <text x="664" y="380" font-family="Menlo,Consolas,'WenQuanYi Zen Hei Mono',monospace">status 2xx</text><text x="840" y="380">200</text><text x="915" y="380">2xx</text><text x="1000" y="380">api</text><text x="1080" y="380" fill="#1f8a5b" font-weight="700">通过</text>
+    <text x="664" y="410" font-family="Menlo,Consolas,'WenQuanYi Zen Hei Mono',monospace">fee &lt;= 100</text><text x="840" y="410" fill="#b42318">150</text><text x="915" y="410">≤ 100</text><text x="1000" y="410">api</text><text x="1080" y="410" fill="#b42318" font-weight="700">失败</text>
+    <text x="664" y="440" font-family="Menlo,Consolas,'WenQuanYi Zen Hei Mono',monospace">len(items) &gt; 0</text><text x="840" y="440">3</text><text x="915" y="440">&gt; 0</text><text x="1000" y="440">api</text><text x="1080" y="440" fill="#1f8a5b" font-weight="700">通过</text>
+  </g>
+  <text x="646" y="494" font-size="13.5" fill="#1d2330">一次报出全部失败；每个结论都有证据</text>
+  <text x="646" y="520" font-size="13" fill="#2f6fd6">原有的 pytest assert 也能记下来（借 pytest 的 assertion-pass 钩子）</text>
+  <text x="646" y="540" font-size="13" fill="#2f6fd6">存量用例一行不改，就能得到这份清单</text>
+
+  <!-- ============ bottom: four questions ============ -->
+  <path d="M895,550 L895,578 Q895,588 885,588 L610,588 Q600,588 600,598 L600,604" stroke="#2f6fd6" stroke-width="2" fill="none" marker-end="url(#ab)"/>
+  <rect x="30" y="610" width="1140" height="310" rx="14" fill="#1d2330"/>
+  <text x="600" y="646" text-anchor="middle" font-size="18" font-weight="700" fill="#ffffff">有了这份判定清单，才回答得了 pytest 回答不了的四个问题</text>
+
+  <g>
+    <rect x="54" y="668" width="264" height="232" rx="10" fill="#2c3445"/>
+    <text x="72" y="698" font-size="15.5" font-weight="700" fill="#ffffff">① 这次通过验证了什么</text>
+    <text x="72" y="726" font-size="13" fill="#d9dee7">每条判定的实际值、期望值</text>
+    <text x="72" y="748" font-size="13" fill="#d9dee7">一次报全，失败不用重跑才知道</text>
+    <text x="72" y="784" font-size="12.5" fill="#8fd1b0">✅ 已有</text>
+    <line x1="72" y1="800" x2="300" y2="800" stroke="#3d4659"/>
+    <text x="72" y="824" font-size="12" fill="#9aa3b2">pytest 生态：pytest-check 能一次报全，</text>
+    <text x="72" y="844" font-size="12" fill="#9aa3b2">但通过的判定仍不留记录</text>
+
+    <rect x="332" y="668" width="264" height="232" rx="10" fill="#2c3445"/>
+    <text x="350" y="698" font-size="15.5" font-weight="700" fill="#ffffff">② 什么没验证</text>
+    <text x="350" y="726" font-size="13" fill="#d9dee7">gap 显式声明的未覆盖点</text>
+    <text x="350" y="748" font-size="13" fill="#d9dee7">一条判定都没有的用例记为零判定</text>
+    <text x="350" y="784" font-size="12.5" fill="#8fd1b0">✅ 已有（gap + 零判定检测）</text>
+    <line x1="350" y1="800" x2="578" y2="800" stroke="#3d4659"/>
+    <text x="350" y="824" font-size="12" fill="#9aa3b2">pytest 生态：没有找到对应插件。</text>
+    <text x="350" y="844" font-size="12" fill="#9aa3b2">空测试和 assert True 都是 PASSED</text>
+
+    <rect x="610" y="668" width="264" height="232" rx="10" fill="#33405a" stroke="#5b8def"/>
+    <text x="628" y="698" font-size="15.5" font-weight="700" fill="#ffffff">③ 比上次少验证了什么</text>
+    <text x="628" y="726" font-size="13" fill="#d9dee7">与基线文件比对判定清单：删掉、</text>
+    <text x="628" y="748" font-size="13" fill="#d9dee7">放宽、改成 skip 都会被标出</text>
+    <text x="628" y="784" font-size="12.5" fill="#8fd1b0">✅ 已有 · AI 时代的核心差异</text>
+    <line x1="628" y1="800" x2="856" y2="800" stroke="#4a5a7a"/>
+    <text x="628" y="824" font-size="12" fill="#9aa3b2">现有工具都是静态比对 diff 里的</text>
+    <text x="628" y="844" font-size="12" fill="#9aa3b2">assert 行数，&lt;= 100 改成 &lt;= 1000</text>
+    <text x="628" y="864" font-size="12" fill="#9aa3b2">它们看不出来</text>
+
+    <rect x="888" y="668" width="258" height="232" rx="10" fill="#2c3445"/>
+    <text x="906" y="698" font-size="15.5" font-weight="700" fill="#ffffff">④ 失败该谁修</text>
+    <text x="906" y="726" font-size="13" fill="#d9dee7">按判定来源归因：产品缺陷 /</text>
+    <text x="906" y="748" font-size="13" fill="#d9dee7">契约 / 环境 / 数据 / 用例自身</text>
+    <text x="906" y="784" font-size="12.5" fill="#8fd1b0">✅ 已有</text>
+    <line x1="906" y1="800" x2="1128" y2="800" stroke="#3d4659"/>
+    <text x="906" y="824" font-size="12" fill="#9aa3b2">Allure：按失败/异常状态分，</text>
+    <text x="906" y="844" font-size="12" fill="#9aa3b2">细分要自己写正则去匹配报错文本</text>
+  </g>
+</svg>

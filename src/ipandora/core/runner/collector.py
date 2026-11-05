@@ -4,11 +4,95 @@
 @File  : collector.py
 @Time  : 2026-08-01
 """
+import ast
 import textwrap
 from typing import Dict, List
 
+from ipandora.core.assertion.check import Check, Source
 from ipandora.core.evidence import recorder
 from ipandora.core.runner.result import CaseResult, ERROR, FAILED, PASSED, SKIPPED
+
+# Items whose checks are not `assert` statements: unittest's assertEqual and
+# doctest's expected output. The runner cannot see their judgements, so it
+# must not call them unverified.
+OPAQUE_ITEMS = ('TestCaseFunction', 'DoctestItem', 'DoctestTextfile')
+
+
+def _names(expected) -> str:
+    if isinstance(expected, tuple):
+        return ' | '.join(getattr(_e, '__name__', repr(_e)) for _e in expected)
+    return getattr(expected, '__name__', repr(expected))
+
+
+def _constant(source: str) -> bool:
+    """
+    Whether an assert's expression is a literal -- `assert True`, `assert 1`.
+
+    Such an assert cannot fail, so it judges nothing. Recording it would let
+    `assert True` turn an empty test into a "verified" one, which is precisely
+    the shortcut the unverified status exists to expose.
+    """
+    try:
+        ast.literal_eval(source.strip())
+    except (ValueError, SyntaxError, TypeError, MemoryError, RecursionError):
+        return False
+    return True
+
+
+def _record_judgement(claim: str, ok: bool = True, expr: str = '') -> None:
+    recorder.add_checks([Check(name=claim, ok=ok, expr=expr or claim,
+                               src=Source.ASSERT, claim=claim)])
+
+
+class _Recording:
+    """
+    Wraps the context manager pytest.raises / pytest.warns returns, and
+    records the judgement once it has held.
+
+    Recorded on a clean exit only. When the expected exception never comes,
+    pytest's own __exit__ raises and the case fails -- there is no passed
+    judgement to record. When a different exception escapes, __exit__ returns
+    False and nothing is recorded either.
+    """
+
+    def __init__(self, inner, claim: str):
+        self._inner = inner
+        self._claim = claim
+
+    def __enter__(self):
+        return self._inner.__enter__()
+
+    def __exit__(self, *exc):
+        _handled = self._inner.__exit__(*exc)
+        if _handled or exc[0] is None:
+            _record_judgement(self._claim)
+        return _handled
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
+def _recording(original, verb: str):
+    """
+    A drop-in for pytest.raises / pytest.warns that records a judgement.
+
+    `with pytest.raises(ValueError): f()` checks something real, but it is not
+    an `assert` statement, so the assertion-pass hook never sees it. Without
+    this, every test written that way would read as unverified.
+    """
+    def _wrapped(expected, *args, **kwargs):
+        _claim = '{} {}'.format(verb, _names(expected))
+        if kwargs.get('match'):
+            _claim += ' match {!r}'.format(kwargs['match'])
+        if args and callable(args[0]):
+            # function form: pytest.raises(E, func, *args) -- returns only on success
+            _info = original(expected, *args, **kwargs)
+            _record_judgement(_claim)
+            return _info
+        return _Recording(original(expected, *args, **kwargs), _claim)
+    _wrapped.__wrapped__ = original
+    _wrapped.__doc__ = original.__doc__
+    return _wrapped
 
 
 def skip_reason(report) -> str:
@@ -69,6 +153,7 @@ class ResultCollector:
         self.coverage = []  # type: List[Dict]
         self._coverage_seen = set()
         self.deselected = []  # type: List[str]
+        self.rootdir = ''
 
     def _slot(self, nodeid: str) -> CaseResult:
         if nodeid not in self.cases:
@@ -79,6 +164,15 @@ class ResultCollector:
     # -- evidence ----------------------------------------------------------
 
     def pytest_configure(self, config):
+        # Patched for the duration of the run, restored in pytest_unconfigure.
+        # A module that did `from pytest import raises` during this run keeps
+        # the wrapper afterwards, which is harmless: outside a case it records
+        # nothing and behaves exactly like the original.
+        import pytest
+        self.rootdir = str(getattr(config, 'rootpath', '') or '')
+        self._patched = {'raises': pytest.raises, 'warns': pytest.warns}
+        pytest.raises = _recording(self._patched['raises'], 'raises')
+        pytest.warns = _recording(self._patched['warns'], 'warns')
         config.addinivalue_line(
             'markers',
             'dims(**axes): place this case in the coverage matrix, '
@@ -88,6 +182,45 @@ class ResultCollector:
             'flaky(reason): this case is known-unstable. The reason is '
             'required -- a bare marker is how a failure gets parked forever. '
             'Run with --exclude-flaky to keep these out of a gate.')
+
+    def pytest_unconfigure(self, config):
+        import pytest
+        for _name, _original in getattr(self, '_patched', {}).items():
+            setattr(pytest, _name, _original)
+        self._patched = {}
+
+    # -- judgements pytest does not hand over by itself ---------------------
+
+    def pytest_assertion_pass(self, item, lineno, orig, expl):
+        """
+        A plain `assert` that held.
+
+        pytest only calls this with enable_assertion_pass_hook, which run()
+        sets. `orig` is the source text -- `r['fee'] <= 100` -- and is what
+        the inventory compares; `expl` carries the values it saw.
+        """
+        if _constant(orig):
+            return
+        _expr = (expl or '').splitlines()[0] if expl else orig
+        _record_judgement('assert {}'.format(orig), ok=True, expr=_expr)
+
+    def pytest_runtest_makereport(self, item, call):
+        """
+        A plain `assert` that failed. The pass hook only sees successes, so
+        without this a case failing on a bare assert would show no failed
+        judgement at all. assert_all records its own failures first, so a
+        case that already has one is left alone.
+        """
+        _excinfo = getattr(call, 'excinfo', None)
+        if call.when != 'call' or _excinfo is None \
+                or not _excinfo.errisinstance(AssertionError):
+            return None
+        if any(not _c.get('ok') for _c in recorder.current_checks()):
+            return None
+        _lines = [_l for _l in str(_excinfo.value).splitlines() if _l.strip()]
+        _expr = ' / '.join(_lines[:2]) or 'AssertionError'
+        _record_judgement('assert (failed)', ok=False, expr=_expr)
+        return None
 
     def pytest_runtest_setup(self, item):
         """
@@ -116,6 +249,7 @@ class ResultCollector:
         the coverage matrix, and what it is for.
         """
         _case = self._slot(item.nodeid)
+        _case.judgeable = type(item).__name__ not in OPAQUE_ITEMS
 
         _marker = item.get_closest_marker('dims')
         if _marker is not None:

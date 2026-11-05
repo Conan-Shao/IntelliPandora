@@ -151,7 +151,13 @@ class Recorder:
                 'kind': getattr(_check, 'kind', 'assert'),
                 'expr': getattr(_check, 'expr', ''),
                 'src': getattr(_check, 'src', ''),
+                'claim': getattr(_check, 'claim', '') or getattr(_check, 'name', ''),
             })
+
+    def current_checks(self) -> List[Dict[str, Any]]:
+        """The checks recorded so far for this thread's case; [] outside one."""
+        _current = getattr(self._local, 'current', None)
+        return list(_current.checks) if _current is not None else []
 
     def add_exchange(self, exchange: Exchange) -> None:
         _current = getattr(self._local, 'current', None)

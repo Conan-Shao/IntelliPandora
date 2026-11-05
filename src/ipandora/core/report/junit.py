@@ -68,12 +68,14 @@ _OUTCOME = {
     Status.SKIPPED: ('skipped', 'precondition'),
     Status.BLOCKED: ('skipped', 'blocked'),
     Status.GAP: ('skipped', 'gap'),
+    Status.UNVERIFIED: ('skipped', 'unverified'),
 }
 
 _SKIP_NOTE = {
     Status.SKIPPED: '前置条件不满足，本条没有对产品做出任何判断',
     Status.BLOCKED: '上游失败导致本条未被执行（JUnit 无此状态，记为 skipped）',
     Status.GAP: '声明了应有而缺失的断言（JUnit 无此状态，记为 skipped）',
+    Status.UNVERIFIED: '通过了但没有任何判定，只说明没有抛异常（JUnit 无此状态，记为 skipped）',
 }
 
 
@@ -208,7 +210,8 @@ def _counts(cases: List[ReportCase], collect_error: bool) -> Dict[str, str]:
     _failures = sum(1 for _c in cases if _c.status == Status.FAIL)
     _errors = sum(1 for _c in cases if _c.status == Status.ERROR)
     _skipped = sum(1 for _c in cases
-                   if _c.status in (Status.SKIPPED, Status.BLOCKED, Status.GAP))
+                   if _c.status in (Status.SKIPPED, Status.BLOCKED, Status.GAP,
+                                    Status.UNVERIFIED))
     return {
         'tests': str(len(cases) + (1 if collect_error else 0)),
         'failures': str(_failures),
@@ -224,6 +227,14 @@ def to_junit(report: ReportData, indent: bool = True) -> str:
         name=clean(report.title or 'IntelliPandora'),
         time='{:.3f}'.format(report.duration or 0.0),
         **_counts(report.cases, _collect_error)))
+    if report.judgement_changes:
+        # JUnit has nowhere to put "this pass is weaker than the last one";
+        # a property keeps it in the artifact for anything that looks.
+        _props = ET.SubElement(_root, 'properties')
+        ET.SubElement(_props, 'property', {
+            'name': 'ipandora.judgements.weakened', 'value': str(len(report.weakened))})
+        ET.SubElement(_props, 'property', {
+            'name': 'ipandora.judgements.changed', 'value': str(len(report.judgement_changes))})
 
     # One <testsuite> per suite, so CI groups the way the source is organised.
     _groups = report.by_suite if report.cases else {}

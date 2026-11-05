@@ -6,6 +6,7 @@
 """
 import io
 import os
+import sys
 import time
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
@@ -13,7 +14,7 @@ from typing import List, Optional, Sequence
 
 from ipandora.core.runner.collector import ResultCollector
 from ipandora.core.runner.result import RunResult
-from ipandora.core.runner import store
+from ipandora.core.runner import inventory, store
 from ipandora.core.schedule import config as _config
 from ipandora.core.schedule.runtime import Runtime
 from ipandora.core.triage import hooks, triage
@@ -28,7 +29,12 @@ from ipandora.utils.log import logger
 # another test_api.py aborts collection with "import file mismatch". Since
 # run() is meant to be called repeatedly in one process (that is the whole
 # point of not shelling out), the default mode is unusable here.
-BASE_ARGS = ('-q', '--no-header', '-p', 'no:cacheprovider', '--import-mode=importlib')
+#
+# enable_assertion_pass_hook makes pytest report every plain `assert` that
+# held, which is how a suite written with bare asserts still gets a judgement
+# inventory. See _bytecode_cache() for the catch.
+BASE_ARGS = ('-q', '--no-header', '-p', 'no:cacheprovider', '--import-mode=importlib',
+             '-o', 'enable_assertion_pass_hook=true')
 
 # pytest exit codes that mean the run did not happen properly. 0 (all passed)
 # and 1 (tests failed) are the two where the case results tell the story;
@@ -66,8 +72,53 @@ def _apply_env(env: str):
     return _before, _file
 
 
+def _forget_project_modules(before: set, rootdir: str) -> None:
+    """
+    Drop the modules this run imported from the project under test.
+
+    Only files under pytest's rootdir, and never the framework, the standard
+    library or anything installed: those are shared with the caller, and
+    re-importing them would split class identities -- a Check from before and
+    a Check from after would no longer be the same type.
+    """
+    if not rootdir:
+        return
+    import pytest
+    import ipandora
+    _root = os.path.abspath(rootdir) + os.sep
+    _shared = [os.path.abspath(_p) + os.sep for _p in (
+        os.path.dirname(ipandora.__file__), os.path.dirname(pytest.__file__),
+        sys.prefix, sys.base_prefix)]
+    for _name in set(sys.modules) - before:
+        _file = getattr(sys.modules.get(_name), '__file__', None)
+        if not _file:
+            continue
+        _path = os.path.abspath(_file)
+        if not _path.startswith(_root) or 'site-packages' in _path \
+                or any(_path.startswith(_s) for _s in _shared):
+            continue
+        sys.modules.pop(_name, None)
+
+
+def _bytecode_cache() -> str:
+    """
+    Where rewritten test modules are cached during a run.
+
+    The assertion-pass hook is compiled into the rewritten bytecode. pytest
+    caches that bytecode in __pycache__ and reuses it without checking which
+    options produced it, so a module first run by plain `pytest` keeps the
+    hook-less version and its asserts silently go unrecorded -- every case
+    would then read as unverified. Verified on pytest 9.2. A separate cache
+    keeps the two from ever sharing a file.
+    """
+    _dir = os.environ.get('IPANDORA_PYCACHE_DIR') or os.path.join(
+        os.path.dirname(store.runs_dir()), 'pycache')
+    os.makedirs(_dir, exist_ok=True)
+    return _dir
+
+
 def run(selector: str = '', env: str = '', extra_args: Sequence[str] = (),
-        persist: bool = True, quiet: bool = False) -> RunResult:
+        persist: bool = True, quiet: bool = False, baseline: Optional[str] = None) -> RunResult:
     """
     Execute tests and return a structured result.
 
@@ -86,12 +137,18 @@ def run(selector: str = '', env: str = '', extra_args: Sequence[str] = (),
                      caller is speaking a protocol over stdout -- an MCP stdio
                      server would otherwise interleave pytest's progress dots
                      into its JSON-RPC stream and break the connection.
+    :param baseline: judgement inventory to compare against (inventory.py).
+                     None uses conf/judgements.json when it exists; '' turns
+                     the comparison off. Comparing never changes `ok` -- a
+                     weaker pass is reported in `judgement_changes`, and
+                     gating on it is the caller's decision.
 
-    Note: pytest runs in-process, so test modules are imported into this
-    interpreter and stay imported. Repeated runs therefore reuse module-level
-    state; where a test suite depends on being freshly imported, use a new
-    process. (Module *name* collisions between runs are handled -- see
-    BASE_ARGS.)
+    Note: pytest runs in-process. The project modules a run imports -- test
+    files, conftest.py, the suite's own helpers -- are dropped from
+    sys.modules when it ends, so the next run imports them afresh. Without
+    that, a long-lived caller kept executing the first version of every test
+    file: an agent editing a test through the MCP server and re-running it
+    got the old result back. See _forget_project_modules.
     """
     try:
         import pytest
@@ -106,6 +163,9 @@ def run(selector: str = '', env: str = '', extra_args: Sequence[str] = (),
     logger.info('run %s: pytest %s', _run_id, ' '.join(_args))
     _start = time.perf_counter()
     _sink = io.StringIO()
+    _prefix_before = sys.pycache_prefix
+    sys.pycache_prefix = _bytecode_cache()
+    _modules_before = set(sys.modules)
     try:
         if quiet:
             with redirect_stdout(_sink), redirect_stderr(_sink):
@@ -113,6 +173,8 @@ def run(selector: str = '', env: str = '', extra_args: Sequence[str] = (),
         else:
             _exit = pytest.main(list(_args), plugins=[_collector])
     finally:
+        sys.pycache_prefix = _prefix_before
+        _forget_project_modules(_modules_before, _collector.rootdir)
         _duration = time.perf_counter() - _start
         if _env_file:
             Runtime.settings = _settings_before
@@ -138,9 +200,33 @@ def run(selector: str = '', env: str = '', extra_args: Sequence[str] = (),
         deselected=list(_collector.deselected),
         collect_error=_collect_error)
 
+    _compare_with_baseline(_result, baseline)
+
     if persist:
         store.save(_result)
     return _result
+
+
+def _compare_with_baseline(result: RunResult, baseline: Optional[str]) -> None:
+    _path = inventory.default_path() if baseline is None else baseline
+    if not _path:
+        return
+    try:
+        _base = inventory.load(_path)
+    except (OSError, ValueError) as exc:
+        # an unreadable baseline must not pass for "nothing changed"
+        logger.warning('judgement baseline %s unreadable: %s', _path, exc)
+        result.baseline = _path
+        result.judgement_changes = [inventory.Finding(
+            inventory.CHANGED, '<baseline>', before=str(exc),
+            note='基线文件无法读取').to_dict()]
+        return
+    if _base is None:
+        if baseline:
+            logger.warning('judgement baseline %s does not exist', _path)
+        return
+    result.baseline = _path
+    result.judgement_changes = [_f.to_dict() for _f in inventory.compare(_base, result)]
 
 
 def looks_like_path(selector: str) -> bool:

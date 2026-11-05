@@ -285,6 +285,58 @@ def fee_within_cap(resp, cap):
 - **不要抛异常。** 字段缺失、body 不是 JSON，都应该返回 `ok=False` 的 Check。一旦抛出，`assert_all` 就退化成"第一个失败就停"，失去了意义 —— 所以用 `json_value` 而不是 `body['fee']`。
 - **`expr` 要写足证据。** 失败时应该不用翻日志就能看懂。
 
+#### 2.1.5 判定清单与基线：这次通过可不可信
+
+pytest 只告诉你有没有失败。`ipandora run` 还会记下**每条用例实际做了哪些判定**，并和基线比对。
+
+**哪些算判定**（运行时自动记录，不用改用例）：
+
+| 来源 | 记成什么 |
+|---|---|
+| `assert_all` / `field` / `that` / `status_ok` 等 | 判定本身：`data.fee <= 100` |
+| 成立的原生 `assert`，包括辅助函数里的 | 源码表达式加实际值：`assert fee <= 100`（`50 <= 100`） |
+| `pytest.raises` / `pytest.warns`，上下文和函数两种写法 | `raises KeyError` |
+| `assert True`、`assert 1` 这类字面量 | **不算**：它不可能失败 |
+
+**零判定。** 用例通过了，却一条判定都没有，状态记为 `UNVERIFIED`（"?"），不计入通过率；命令行、报告、MCP 都会点名，JUnit 里写成 `skipped type="unverified"`。确实不需要断言的用例（比如只验证"不崩"），写一句 `gap('…', '理由')` 说明即可。unittest / doctest 风格的用例不做这个判断，因为它们的 `assertEqual` 不是 assert 语句，框架看不见。
+
+**基线与门禁：**
+
+```shell
+ipandora run tests --update-baseline     # 接受这次的判定，写入 conf/judgements.json
+git add conf/judgements.json             # 和用例一起提交
+
+ipandora run tests --fail-on-weakened    # CI：判定比基线弱就失败
+```
+
+和基线比，会标出这些变化：
+
+```
+判定变化（对比 conf/judgements.json）：4 处变弱，1 处其他变化
+  ~ 放宽  test_fee  assert fee <= 100 → assert fee <= 1000
+  - 删除  test_items  data.items[*].price > 0
+  → 改为跳过  test_refund  原本通过  (环境不稳定)
+  ○ 零判定  test_cancel  通过，但没有任何判定  (基线里有 1 条判定)
+  + 新用例  test_new  1 条判定
+```
+
+| 变化 | `--fail-on-weakened` 拦不拦 |
+|---|---|
+| 删除、放宽（数值上下限变宽）、改变（期望值不同）、改为跳过、被 `-m` 排除、零判定、用例删除 | 拦 |
+| 收紧、新增判定、新用例 | 不拦 |
+
+"改变"也拦，是因为 `== 100` 改成 `== 200` 可能是需求变了，也可能是有人为了让测试通过，把期望值改成了错误的输出，只有人能判断是哪一种。确认是有意的改动后，跑一次 `--update-baseline`，基线文件的 diff 会和用例改动一起出现在 PR 里，评审人看这几行就知道判定变了什么。
+
+**建议给 `conf/judgements.json` 设 CODEOWNERS。** 这样 agent 仍然可以随便改用例，但没法在没人看见的情况下把判定改弱。
+
+其他说明：
+
+- 失败的用例不参与比对：它中途就停了，没执行到的判定不能算"删除"
+- 只跑一部分用例（`ipandora run tests/test_a.py`）时，不会把没跑到的用例报成"删除"
+- 判定写在测试目录之外的普通模块里时，pytest 不会改写那个模块的 assert，所以看不到。用 `pytest.register_assert_rewrite('your.module')` 注册一下即可
+- 关掉比对：`--no-baseline`；指定别的基线文件：`--baseline PATH`
+- MCP 的 `run_tests` 返回里带 `unverified`、`judgements_weakened`、`judgement_changes` 三个字段
+
 ### 2.2 辅助功能
 
 #### 2.2.1 测试数据注入
