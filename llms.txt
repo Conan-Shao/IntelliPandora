@@ -12,7 +12,7 @@ Documentation is Markdown in the repository and is the single source. The refere
 
 ## Guide
 
-- [Judgements, unverified cases and the baseline](docs/guide/judgements.md): assert_all, field(), that(), require(), conf/judgements.json, --fail-on-weakened
+- [Judgements, unverified cases and the baseline](docs/guide/judgements.md): assert_all, field(), that(), require(), eventually(), conf/judgements.json, --fail-on-weakened
 - [HTTP](docs/guide/http.md): API classes, responses, timeouts, retries, TLS
 - [Parallel and concurrent](docs/guide/parallel.md): --workers, @pytest.mark.resource, --timeout, concurrently()
 - [Web](docs/guide/web.md): Playwright as is; expect() as judgements; stale selector vs missing element

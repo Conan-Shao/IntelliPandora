@@ -22,6 +22,9 @@ everything that is wrong:
 
 Preconditions use `require` instead, which skips rather than fails -- "the
 fixture had no data" must not look like "the code is broken".
+
+Something that becomes true later -- a replica catching up, a queue consumer
+finishing -- is judged with `eventually(probe, within=...)`, not with sleep.
 """
 from ipandora.core.assertion.check import (Check, Kind, Source, brief, failed, gap,
                                            passed)
@@ -31,11 +34,12 @@ from ipandora.core.assertion.http import (field, header_is, json_body, json_equa
                                           json_value, raw_response,
                                           schema_conforms, status_code, status_is, status_ok)
 from ipandora.core.assertion.jsonpath import MISSING, resolve
+from ipandora.core.assertion.wait import eventually
 
 __all__ = [
     'Kind', 'gap', 'brief',
     'Check', 'Source', 'passed', 'failed',
-    'assert_all', 'require',
+    'assert_all', 'require', 'eventually',
     'status_ok', 'status_is', 'header_is',
     'json_has', 'json_equals', 'field', 'that', 'Field', 'schema_conforms',
     # building blocks for custom checks
