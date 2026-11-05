@@ -275,7 +275,7 @@ class TestEvidenceReachesTheResult:
     def test_checks_survive_the_run(self, evidence_suite):
         result = run(evidence_suite, persist=False, quiet=True)
         case = next(c for c in result.cases if 'test_documented' in c.nodeid)
-        assert [c['name'] for c in case.checks] == ['状态正确', '余额实际增加']
+        assert [c['name'] for c in case.checks] == ['状态正确', '订单实际落库']
         assert case.checks[0]['src'] == 'api'
 
     def test_a_declared_gap_arrives_as_a_gap(self, evidence_suite):
@@ -316,8 +316,8 @@ class TestEvidenceReachesTheResult:
         report = build(run(evidence_suite, persist=False, quiet=True))
         assert report.check_totals == {'passed': 2, 'failed': 1, 'gap': 1}
         assert report.coverage_matrix[0]['filled'] == 2
-        assert [g['name'] for g in report.gaps] == ['余额实际增加']
-        assert '余额实际增加' in to_html(report)
+        assert [g['name'] for g in report.gaps] == ['订单实际落库']
+        assert '订单实际落库' in to_html(report)
 
 
 class TestArgumentAssembly:

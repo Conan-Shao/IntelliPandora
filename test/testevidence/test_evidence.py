@@ -66,9 +66,9 @@ class TestEvidenceIsAttributedCorrectly:
 
     def test_require_records_its_checks_too(self, collecting):
         with pytest.raises(BaseException):
-            require(failed('账号有余额', 'balance = 0'))
+            require(failed('测试账号已开通', 'provisioned = false'))
         evidence = recorder.end('t::case')
-        assert evidence.checks[0]['name'] == '账号有余额'
+        assert evidence.checks[0]['name'] == '测试账号已开通'
 
     def test_evidence_does_not_leak_across_threads(self):
         """
@@ -157,27 +157,27 @@ class TestGapsAreNotJudgements:
     """
 
     def test_a_gap_cannot_fail_a_run(self):
-        assert_all(passed('a'), gap('余额实际增加', '未校验'))
+        assert_all(passed('a'), gap('订单实际落库', '未校验'))
 
     def test_a_gap_is_not_counted_as_passed(self):
         with pytest.raises(AssertionError) as exc:
-            assert_all(failed('b', 'x'), gap('余额实际增加', '未校验'))
+            assert_all(failed('b', 'x'), gap('订单实际落库', '未校验'))
         message = str(exc.value)
         assert '1/1 checks failed' in message, message
-        assert '余额实际增加' not in message.split('passed:')[-1].split('not covered:')[0]
+        assert '订单实际落库' not in message.split('passed:')[-1].split('not covered:')[0]
 
     def test_a_gap_is_named_in_the_failure_text(self):
         with pytest.raises(AssertionError) as exc:
-            assert_all(failed('b', 'x'), gap('余额实际增加', '未校验'))
-        assert 'not covered: 余额实际增加' in str(exc.value)
+            assert_all(failed('b', 'x'), gap('订单实际落库', '未校验'))
+        assert 'not covered: 订单实际落库' in str(exc.value)
 
     def test_a_run_of_only_gaps_does_not_look_like_a_pass(self):
         # 0/0 rather than a cheerful count of nothing
         assert_all(gap('a'), gap('b'))
 
     def test_gap_carries_its_dimension(self):
-        check = gap('链上余额', 'balanceOf 未校验', src=Source.ONCHAIN)
-        assert check.is_gap and check.src == Source.ONCHAIN
+        check = gap('权限被正确拒绝', '未校验越权访问', src=Source.AUTHZ)
+        assert check.is_gap and check.src == Source.AUTHZ
         assert str(check).startswith('[GAP]')
 
     def test_ordinary_checks_are_not_gaps(self):

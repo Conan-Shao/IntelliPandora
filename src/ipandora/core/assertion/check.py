@@ -12,14 +12,22 @@ class Source:
     """
     Where a judgement came from. Lets a report group failures by kind, and
     makes it obvious when a suite only ever checks one dimension.
+
+    These are the dimensions any system has. `Check.src` is a plain string and
+    is never validated against this list, so a business suite can tag its own
+    -- `src='onchain'`, `src='ledger'` -- and the report groups by it all the
+    same. That is where domain dimensions belong: in the suite that knows the
+    domain, not in the framework. ONCHAIN used to live here, a Web3 concept
+    hardcoded into a general-purpose assertion layer.
     """
     API = 'api'
+    """The interface answered as expected: status, envelope."""
     SCHEMA = 'schema'
+    """The response has the agreed shape."""
     DERIVED = 'derived'
+    """The business result is right -- the value, not just its presence."""
     AUTHZ = 'authz'
-    ONCHAIN = 'onchain'
-    DIFF = 'diff'
-    """Compared against a recorded baseline rather than against a rule."""
+    """Who may do what: the request was allowed or refused correctly."""
 
 
 class Kind:
@@ -142,8 +150,7 @@ def gap(name: str, expr: str = '', src: str = Source.DERIVED) -> Check:
         assert_all(
             status_ok(r),
             json_equals(r, 'data.status', 'SUCCESS'),
-            gap('收款方余额实际增加', 'balanceOf(recipient) 前后差值 —— 未校验',
-                src=Source.ONCHAIN),
+            gap('订单实际落库', '只校验了接口返回，没有查数据库里的记录'),
         )
 
     Passing a gap to assert_all is safe: it cannot fail the run. It exists so

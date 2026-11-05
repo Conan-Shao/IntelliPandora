@@ -8,15 +8,20 @@
 > ***CHANGELOG*** 内按格式添加版本内容
 
 - **编译发布**
-> 本地deploy需配置pypirc, 或者通过ci发布
-  - 编译打包
+> 本地发布需配置 `~/.pypirc`，或者通过 CI 发布。
+
+  **必须先清理再构建，并且在上传前检查 wheel：**
+
     ```shell script
-    python3 setup.py bdist_wheel
+    rm -rf build dist src/*.egg-info
+    python -m build --wheel
+    python scripts/check_packaging.py dist/*.whl     # 不通过就不要上传
+    twine upload dist/*.whl
     ```
-  - 
-    ```shell script
-    twine upload -r local dist/*.whl
-    ```
+
+  > 不要用 `python setup.py bdist_wheel`，也不要跳过清理。setuptools 会把源码复制到 `build/lib`，**但从不删除那里已有的文件**。2026-11 实测：一个旧的 `build/` 目录让新构建的 wheel 带上了 21 个已经从源码删除的模块，包括整个录制回放子系统和数据上报链路。`check_packaging.py` 现在会对比 wheel 与 `src/`，发现源码里没有的文件就失败。
+  >
+  > `twine` 已不是运行时依赖，发布时请单独安装：`pip install build twine`。
 
 ## 2.开发规范
 
@@ -45,11 +50,10 @@
 代码都在 **`src/ipandora`**（注意：包名 `ipandora`，发行名 `intellipandora`）。
 
   * **core**: 核心能力
-    * **protocol**: 协议层。目前只有 `http/`——传输策略、响应解析、回放适配
+    * **protocol**: 协议层。目前只有 `http/`——传输策略、响应解析。UI（Web / App）规划中
     * **assertion**: 断言层。`Check` / `assert_all` / `require` / `gap`
     * **runner**: 库可调用的执行入口；CLI 与 MCP 都是它的薄壳
     * **report**: ReportData → HTML / JSON / JUnit XML + 历史归档
-    * **cassette**: 流量录制回放、差异引擎、HAR/nginx/envoy 导入
     * **triage**: 失败归因，规则优先，LLM 可选
     * **evidence**: 请求响应证据采集
     * **mcp**: agent 入口

@@ -90,8 +90,8 @@ def require(*checks) -> List[Check]:
     system is broken.
 
     Unmet preconditions skip rather than fail. Mixing the two is the single
-    biggest source of noise in a long-running suite -- "the account had no
-    balance" and "the code is wrong" must not look the same on a dashboard.
+    biggest source of noise in a long-running suite -- "the test account was
+    never provisioned" and "the code is wrong" must not look the same on a dashboard.
 
     Skips via pytest when available, otherwise raises PreconditionNotMet.
     """

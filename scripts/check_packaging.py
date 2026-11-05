@@ -55,6 +55,11 @@ def build_wheel(into: str) -> str:
     # original bug did not trip this script.
     for _stale in glob.glob(os.path.join(REPO, 'src', '*.egg-info')):
         shutil.rmtree(_stale, ignore_errors=True)
+    # build/ for the same reason, worse: setuptools copies sources into
+    # build/lib and never deletes what is already there. After core/cassette
+    # was removed from src/, a wheel built over the old build/lib still shipped
+    # all nine of its files -- deleted code, packaged and publishable.
+    shutil.rmtree(os.path.join(REPO, 'build'), ignore_errors=True)
 
     subprocess.run([sys.executable, '-m', 'build', '--wheel', '--outdir', into],
                    cwd=REPO, check=True, capture_output=True)
@@ -77,6 +82,14 @@ def inspect(wheel: str) -> int:
         if _name.lower().endswith(FORBIDDEN_SUFFIXES):
             _problems.append('key material packaged: {}'.format(_name))
 
+    # Nothing in the wheel that is not in the source tree. Cleaning build/
+    # above fixes the one way this is known to happen; this catches the rest,
+    # including a wheel handed in from somewhere else.
+    for _name in sorted(_names):
+        if _name.startswith('ipandora/') and _name.endswith('.py'):
+            if not os.path.isfile(os.path.join(REPO, 'src', _name)):
+                _problems.append('not in src/, yet packaged: {}'.format(_name))
+
     print('{}: {} entries'.format(os.path.basename(wheel), len(_names)))
     for _problem in _problems:
         print('  {}'.format(_problem), file=sys.stderr)
@@ -91,7 +104,7 @@ def inspect(wheel: str) -> int:
               file=sys.stderr)
         return 1
 
-    print('OK: every required data file is in the wheel, no key material')
+    print('OK: every required data file is in the wheel, nothing stale, no key material')
     return 0
 
 

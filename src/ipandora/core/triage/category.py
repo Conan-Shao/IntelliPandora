@@ -25,7 +25,7 @@ class Category:
     """Could not reach or talk to the system. Nothing was tested."""
 
     DATA = 'data'
-    """Preconditions were unmet: no account, no balance, missing fixture data."""
+    """Preconditions were unmet: no test account, no seed data, missing fixture."""
 
     HARNESS = 'harness'
     """The test itself is broken -- setup blew up, a fixture is missing."""

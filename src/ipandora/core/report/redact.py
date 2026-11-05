@@ -73,8 +73,7 @@ def redact_body(body: Any) -> Any:
     A body arrives as text, and text only ever went through the value-shape
     patterns -- so `{"token": "..."}` came out untouched, because the rule that
     knows `token` is a credential only ever looked at dict keys. Bodies are the
-    single largest thing a report or a cassette stores, and once cassettes get
-    imported from production traffic they are the likeliest place for a real
+    single largest thing a report stores, and the likeliest place for a real
     secret to sit. So JSON is parsed, redacted as a structure, and written
     back; anything that will not parse falls back to text redaction.
 
@@ -94,8 +93,7 @@ def redact_body(body: Any) -> Any:
     if _clean == _parsed:
         # Nothing was secret, so hand back the original bytes. Re-serialising
         # anyway would rewrite every body in the archive -- different spacing,
-        # different key order, a different hash -- for no gain. A cassette is
-        # replayed and diffed; gratuitous reformatting is not free there.
+        # different key order, a different hash -- for no gain.
         return body
 
     if '\n' in body:

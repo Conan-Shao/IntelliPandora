@@ -82,7 +82,7 @@ class ResultCollector:
         config.addinivalue_line(
             'markers',
             'dims(**axes): place this case in the coverage matrix, '
-            'e.g. @pytest.mark.dims(chain="56", pay="native")')
+            'e.g. @pytest.mark.dims(role="admin", channel="web")')
         config.addinivalue_line(
             'markers',
             'flaky(reason): this case is known-unstable. The reason is '

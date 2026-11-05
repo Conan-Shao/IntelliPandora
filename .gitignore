@@ -155,14 +155,12 @@ id_ed25519*
 *.ppk
 
 # --- Run artifacts ---------------------------------------------------------
-# Cassettes hold real captured traffic and reports hold request/response
-# evidence. Both default to ~/.ipandora (outside any checkout), but
-# `--cassette-dir .` or IPANDORA_REPORTS_DIR=./reports puts them right here.
-# Redaction at write time removes known credential shapes -- it cannot remove
-# the business data itself.
+# Reports hold request/response evidence. They default to ~/.ipandora
+# (outside any checkout), but IPANDORA_REPORTS_DIR=./reports puts them right
+# here. Redaction at write time removes known credential shapes -- it cannot
+# remove the business data itself.
 .ipandora/
 reports/
-cassettes/
 
 # mutmut works in a copy of the project
 mutants/

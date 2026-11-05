@@ -166,9 +166,9 @@ class TestTheFailureBodyIsUsableFromACiLog:
 
     def test_declared_gaps_appear_too(self):
         _case = case('f', Status.FAIL, message='x', checks=[
-            {'name': '余额未校验', 'ok': False, 'expr': '应查链上余额',
-             'kind': 'gap', 'src': 'onchain'}])
-        assert '余额未校验' in parse(report(_case)).find('.//failure').text
+            {'name': '库存未校验', 'ok': False, 'expr': '应查数据库里的库存',
+             'kind': 'gap', 'src': 'derived'}])
+        assert '库存未校验' in parse(report(_case)).find('.//failure').text
 
     def test_coverage_dimensions_become_properties(self):
         _case = case('p', dims={'scene': 'pay', 'chain': 'bsc'})
