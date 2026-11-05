@@ -8,8 +8,9 @@ import json
 from typing import Any, Optional
 
 from ipandora.core.assertion.check import Check, Source, brief
+from ipandora.core.assertion.field import Field
 from ipandora.core.assertion.jsonpath import MISSING, resolve
-from ipandora.utils.match import Compare
+from ipandora.utils.match import same
 
 _UNSET = object()
 
@@ -136,57 +137,30 @@ def json_equals(response: Any, path: str, expected: Any, name: str = None) -> Ch
         return Check(name=_label, ok=False, expr=_reason, src=Source.API)
     return Check(
         name=_label,
-        ok=_value == expected,
+        ok=same(_value, expected),
         expr='{} = {} (expected {})'.format(path, brief(_value), brief(expected)),
         src=Source.API)
 
 
-def json_matches(response: Any, path: str, condition: dict, name: str = None) -> Check:
+def field(response: Any, path: str, name: str = None) -> Field:
     """
-    Assert a field satisfies a comparator condition.
+    A JSON field to judge with Python operators. Each comparison is a Check:
 
-    Uses the same operators as ResponseHandler.filter:
+        field(r, 'data.total') > 0
+        field(r, 'data.fee') <= 100
+        field(r, 'data.status').is_in(['ok', 'pending'])
+        field(r, 'data.version').matches(r'^\\d+\\.\\d+$')
+        field(r, 'data.items').len() > 0
 
-        $eq $gt $gte $lt $lte    numeric when the operand is a number
-        $in $notIn               membership
-        $contains $startWith     substring (contains is case-insensitive)
-        $regex                   re.search, strings only
-
-        json_matches(resp, 'data.total', {'$gt': 0})
-        json_matches(resp, 'data.fee', {'$gte': 0, '$lte': 100})    # a range
-        json_matches(resp, 'data.version', {'$regex': r'^\\d+\\.\\d+\\.\\d+$'})
-
-    Several operators in one condition must all hold.
-
-    All comparators are deterministic and offline by design -- see
+    See core/assertion/field.py for the comparison rules: strict types, bool
+    is not a number, and anything unjudgeable is a failed Check, never an
+    exception. All of it deterministic and offline -- see
     docs/design/03-LLM接入边界.md.
+
+    `name` replaces the generated check name ('data.fee <= 100') in reports.
     """
-    _label = name or '{} 满足 {}'.format(path, condition)
     _value, _reason = json_value(response, path)
-    if _value is MISSING:
-        return Check(name=_label, ok=False, expr=_reason, src=Source.API)
-
-    for _op, _operand in condition.items():
-        _method = Compare.method_for(_op)
-        _comparator = Compare(a=_value, b=_operand)
-        if not _method:
-            return Check(name=_label, ok=False,
-                         expr='unknown operator {!r}'.format(_op), src=Source.API)
-        try:
-            _held = getattr(_comparator, _method)()
-        except Exception as exc:  # noqa: BLE001 - comparator misuse is a failed check
-            return Check(name=_label, ok=False,
-                         expr='{} {} {} raised {}: {}'.format(
-                             path, _op, brief(_operand), type(exc).__name__, exc),
-                         src=Source.API)
-        if not _held:
-            return Check(name=_label, ok=False,
-                         expr='{} = {}, failed {} {}'.format(
-                             path, brief(_value), _op, brief(_operand)),
-                         src=Source.API)
-
-    return Check(name=_label, ok=True,
-                 expr='{} = {}'.format(path, brief(_value)), src=Source.API)
+    return Field(path, _value, _reason, name=name, src=Source.API)
 
 
 def schema_conforms(response: Any, schema: dict, name: str = None) -> Check:

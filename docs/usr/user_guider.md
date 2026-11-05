@@ -79,10 +79,10 @@ resp.data.user.name        # 嵌套
 ```python
 resp.fetch_all()                      # 全部条目
 resp.fetch_one()                      # 第一个；没有数据时返回 None
-resp.filter(status='ok').fetch_all()  # 过滤后再取
+resp.filter(status='ok').fetch_all()  # 字段等于（严格：'0' 不等于 0）
+resp.filter(lambda x: x['amount'] > 1000).fetch_all()   # 任意条件，直接写 Python
+resp.filter(lambda x: 0 <= x['fee'] <= 100, type='A')   # 两种可以一起用
 ```
-
-`filter` 支持的比较器与断言层一致，见 [2.1.4 断言](#214-断言) 的比较器表。
 
 各种响应形态的行为：
 
@@ -173,30 +173,50 @@ Assertion failed (2/3 checks failed)
 | `header_is(resp, 'Content-Type', 'application/json')` | 响应头 |
 | `json_has(resp, 'data.token')` | 字段存在（值为 null 也算存在） |
 | `json_equals(resp, 'data.id', 1)` | 字段等于 |
-| `json_matches(resp, 'data.total', {'$gt': 0})` | 比较器，见下表 |
+| `field(resp, 'data.total') > 0` | 用 Python 运算符判断字段，见下 |
 | `schema_conforms(resp, schema)` | JSON Schema 校验 |
 
 路径支持点号与下标：`data.items[0].name`、`items[-1].id`。
 
-**比较器**（`json_matches` 与 `filter` 共用）
+**用 `field` 判断字段**
 
-| 运算符 | 含义 | 例 |
-|---|---|---|
-| `$eq` `$gt` `$gte` `$lt` `$lte` | 相等 / 大小；操作数是数字时按数字比 | `{'$gt': 0}` |
-| `$in` `$notIn` | 属于 / 不属于 | `{'$in': ['ok', 'pending']}` |
-| `$contains` | 子串，**不区分大小写** | `{'$contains': 'success'}` |
-| `$startWith` | 前缀 | `{'$startWith': 'ORD-'}` |
-| `$regex` | `re.search`，只匹配字符串；要整值匹配自己加 `^…$` | `{'$regex': r'^\d+\.\d+\.\d+$'}` |
+用例是 Python，判断就直接写 Python 运算符。`field()` 的每次比较返回一个 Check，而不是 `True/False`：
 
-一个条件里写多个运算符表示**同时成立**，区间就这么写：`{'$gte': 0, '$lte': 100}`。
+```python
+from ipandora.core.assertion import assert_all, status_ok, field
 
-比较器**不做猜测**：
-- 数字按 `float` 比，不截断——`5.9` 不等于 `5`，`0.9 > 0` 成立
-- 布尔不当数字：`true` 不等于 `1`；`{'$eq': True}` 只认真正的 `true`，不认 `"false"` 这种非空字符串
-- `$regex` 不把数字转成字符串去匹配
-- 不认识的运算符（包括没写 `$` 的键）
+assert_all(
+    status_ok(r),
+    field(r, 'data.fee') >= 0,
+    field(r, 'data.fee') <= 100,                       # 或者 0 <= field(r, 'data.fee') <= 100
+    field(r, 'data.status').is_in(['ok', 'pending']),
+    field(r, 'data.code').startswith('ORD-'),
+    field(r, 'data.version').matches(r'^\d+\.\d+\.\d+$'),
+    field(r, 'data.items').len() > 0,
+    field(r, 'data.fee', name='手续费不超上限') <= 100,  # 自定义报告里的名字
+)
+```
 
-这些情况都是**失败的 Check，并写明原因**，不会抛异常打断同一次 `assert_all` 里的其他判定。
+| 写法 | 含义 |
+|---|---|
+| `==` `!=` `<` `<=` `>` `>=` | 比较 |
+| `.is_in([...])` `.not_in([...])` | 属于 / 不属于 |
+| `.contains(x)` | 字符串含子串（区分大小写）/ 列表含元素 / 对象含键 |
+| `.startswith(s)` | 前缀 |
+| `.matches(pattern)` | `re.search`；整值匹配自己加 `^…$` |
+| `.len()` | 长度，再接比较：`.len() > 0` |
+
+失败时直接给出证据：`data.fee = 150 (expected <= 100)`；字段不存在时说明路径在哪一层断了。
+
+**比较是严格的**——测试框架替你"猜"，就会把契约变化藏起来：
+
+- 按值本来的类型比：JSON 里的字符串 `"12"` 不会被当成数字 12。接口把数字改成了字符串，这本身就是要发现的问题
+- 布尔不是数字：Python 里 `True == 1`，这里不算相等（`json_equals` 同样如此）
+- 数字不截断：`5.9` 不等于 `5`
+- 不能比较的情况（字段缺失、类型不符、正则写错）都是**失败的 Check 并写明原因**，不会抛异常打断同一次 `assert_all` 里的其他判定
+- `field(...)` 本身不能当布尔用：`if field(r, 'x'):` 会直接报错，避免写出永远为真的判断
+
+更复杂的判断，用 `json_value` 取值后自己构造 `Check`，见下文。
 
 **前置条件用 `require`，不用 `assert_all`**
 

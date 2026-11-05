@@ -39,7 +39,7 @@ import pytest
 
 from ipandora.core import api
 from ipandora.core.assertion import (assert_all, header_is, json_equals, json_has,
-                                     json_matches, json_value, require,
+                                     field, json_value, require,
                                      schema_conforms, status_is, status_ok)
 from ipandora.core.base.data.markdata import MarkData
 from ipandora.core.plugin.interface.endpointsinterface import EndPointsInterface
@@ -144,7 +144,7 @@ class TestNestedJson:
             json_equals(r, 'info.name', 'requests'),
             json_has(r, 'info.version'),
             json_has(r, 'releases'),
-            json_matches(r, 'info.summary', {'$contains': 'HTTP'}),
+            field(r, 'info.summary').contains('HTTP'),
             schema_conforms(r, {
                 'type': 'object',
                 'required': ['info', 'releases'],
@@ -217,7 +217,7 @@ class TestFailureMessagesOnUnfamiliarData:
                 status_is(r, 201),                               # fails
                 json_equals(r, 'info.name', 'flask'),            # fails
                 json_has(r, 'info.no_such_field'),               # fails
-                json_matches(r, 'info.version', {'$startWith': '0.'}),  # fails
+                field(r, 'info.version').startswith('0.'),          # fails
             )
         message = str(exc.value)
         assert '4/5 checks failed' in message
@@ -249,8 +249,8 @@ class TestFailureMessagesOnUnfamiliarData:
         # cannot be addressed at all.
         r = Registries().pypi_package()
         assert_all(json_has(r, "releases['2.32.0'][0].filename"),
-                   json_matches(r, "releases['2.32.0'].0.packagetype",
-                                {'$in': ['sdist', 'bdist_wheel']}))
+                   field(r, "releases['2.32.0'].0.packagetype").is_in(
+                       ['sdist', 'bdist_wheel']))
 
     def test_bare_index_works_the_way_people_write_it(self):
         r = Registries().pypi_package()
@@ -259,7 +259,7 @@ class TestFailureMessagesOnUnfamiliarData:
     def test_assertions_on_a_non_json_body_fail_rather_than_raise(self):
         go = Registries().go_versions()
         for check in (json_has(go, 'x'), json_equals(go, 'x', 1),
-                      json_matches(go, 'x', {'$gt': 1}),
+                      field(go, 'x') > 1,
                       schema_conforms(go, {'type': 'object'})):
             assert check.ok is False
             assert 'not JSON' in check.expr
@@ -286,7 +286,7 @@ class TestRequireIsNotAFailure:
         # rather than through pytest.raises -- which is the point: an unmet
         # precondition does not travel the same path as a failed assertion.
         try:
-            require(json_matches(r, 'info.version', {'$startWith': '99.'}))
+            require(field(r, 'info.version').startswith('99.'))
         except BaseException as exc:  # noqa: BLE001
             assert type(exc).__name__ == 'Skipped', type(exc).__name__
             assert not isinstance(exc, AssertionError)
