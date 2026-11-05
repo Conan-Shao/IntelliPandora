@@ -250,6 +250,12 @@ class ReportData:
     """Whether weaker judgements fail this run (--fail-on-weakened)."""
     view: str = 'tests'
     """Which view renders this report: 'tests'. Agent evaluation adds 'eval'."""
+    shards: List[Dict[str, Any]] = field(default_factory=list)
+    """For a merged report: the runs it was merged from. Empty for a single run. See merge.py."""
+    merge_conflicts: List[Dict[str, Any]] = field(default_factory=list)
+    """Cases whose outcome differed between shards; the merged case took the most severe."""
+    duplicates: int = 0
+    """Copies of a case dropped by the merge because another shard had it too."""
 
     @property
     def weakened(self) -> List[Dict[str, Any]]:
@@ -340,6 +346,9 @@ class ReportData:
             if _unverified:
                 _parts.append('{} 条用例通过了但什么都没判定'.format(_unverified))
                 _reasons.append({'kind': 'unverified', 'count': _unverified})
+            if self.merge_conflicts:
+                _parts.append('{} 条用例在分片之间结论不一致'.format(len(self.merge_conflicts)))
+                _reasons.append({'kind': 'conflict', 'count': len(self.merge_conflicts)})
             _passed = self._count(Status.PASS)
             if not _bad and not _passed:
                 _parts.append('没有一条用例给出结论')
@@ -554,6 +563,12 @@ class ReportData:
             'by_source': self.by_source,
             'gaps': self.gaps,
             'coverage': self.coverage_matrix,
+            # the declarations themselves, so a report rebuilt from this JSON
+            # -- a merge of several -- can draw the matrix again
+            'coverage_axes': self.coverage,
+            'shards': self.shards,
+            'merge_conflicts': self.merge_conflicts,
+            'duplicates': self.duplicates,
             'flaky': [{'name': _c.name, 'nodeid': _c.nodeid,
                        'status': _c.status, 'reason': _c.flaky}
                       for _c in self.flaky],

@@ -27,6 +27,7 @@ from ipandora.core.report.junit import to_junit
 from ipandora.core.report.model import INCONCLUSIVE, ReportCase, ReportData, Status
 from ipandora.core.report.redact import MASK, redact, redact_text
 from ipandora.core.report.render import to_html, to_json, write
+from ipandora.core.report.merge import merge, merge_files
 
 # the common case
 build = build_from_run
@@ -34,6 +35,6 @@ build = build_from_run
 __all__ = [
     'build', 'build_from_run', 'build_from_dict',
     'ReportData', 'ReportCase', 'Status', 'INCONCLUSIVE',
-    'to_html', 'to_json', 'to_junit', 'write',
+    'to_html', 'to_json', 'to_junit', 'write', 'merge', 'merge_files',
     'redact', 'redact_text', 'MASK',
 ]

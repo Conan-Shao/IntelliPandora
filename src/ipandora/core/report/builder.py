@@ -149,7 +149,11 @@ def build_from_dict(data: Dict[str, Any]) -> ReportData:
         judgement_changes=list(data.get('judgement_changes', []) or []),
         against_baseline=dict(data.get('against_baseline', {}) or {}),
         against_run=dict(data.get('against_run', {}) or {}),
-        view=data.get('view', 'tests') or 'tests')
+        view=data.get('view', 'tests') or 'tests',
+        coverage=list(data.get('coverage_axes', []) or []),
+        shards=list(data.get('shards', []) or []),
+        merge_conflicts=list(data.get('merge_conflicts', []) or []),
+        duplicates=int(data.get('duplicates', 0) or 0))
     # to_dict emits derived fields (checks_passed, gaps, ...) that are not
     # constructor arguments; drop them rather than have a round-trip fail.
     _fields = {_f.name for _f in dataclasses.fields(ReportCase)}

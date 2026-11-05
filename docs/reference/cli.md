@@ -22,6 +22,21 @@ start the MCP server exposing IntelliPandora capabilities to AI clients
 |---|---|---|
 | `-t`, `--transport` `TRANSPORT` |  | MCP transport protocol. Default: value from conf/config.yaml (mcp.transport) |
 
+## `ipandora merge`
+
+merge the report.json of every shard into one report and one verdict
+
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `REPORT` |  | report.json files, or run directories holding one, one per shard |
+| `-o`, `--out` `DIR` |  | where the merged report.html, report.json and report.xml go |
+| `--title` `TITLE` |  | report title. Default: the first shard's |
+| `--junit-xml` `PATH` |  | also write the merged JUnit XML here |
+| `--fail-on-weakened` |  | exit non-zero when any shard judged less than the baseline |
+| `--baseline` `PATH` |  | the judgement baseline (conf/judgements.json) the shards together cover. Every case it holds as passing that no shard reported is a deleted judgement -- this is what catches a shard whose report never arrived. Only pass it when the shards are the whole suite |
+| `--compare-with` `REPORT` |  | an earlier (merged) report.json to compare failures with |
+| `--allow-mixed-env` |  | merge shards that ran against different environments. Refused by default: one verdict over dev and staging is usually a mistake |
+
 ## `ipandora run`
 
 run a suite and write its HTML report into the run history

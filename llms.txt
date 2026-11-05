@@ -19,7 +19,7 @@ Documentation is Markdown in the repository and is the single source. The refere
 - [Images](docs/guide/visual.md): matches_golden(), what pixel comparison can and cannot see
 - [Configuration](docs/guide/config.md): conf/, per-environment overlays, Runtime
 - [Reports and triage](docs/guide/reports.md): HTML/JSON/JUnit, failure categories, calling run() from Python
-- [CI](docs/guide/ci.md): exit codes, --fail-on-weakened, baseline review, browsers and goldens in CI
+- [CI](docs/guide/ci.md): exit codes, --fail-on-weakened, baseline review, sharding and `ipandora merge`, browsers and goldens in CI
 - [Agents](docs/guide/agents.md): MCP tools run_tests / explain_failure / list_runs / build_report
 
 ## Reference
