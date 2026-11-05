@@ -126,6 +126,19 @@ def licenses(python: str):
     return json.loads(_proc.stdout)
 
 
+def locked(lock: str):
+    """Names a lock file pins. The report lists these and nothing else: an
+    environment also holds what created it -- the venv's own pip, at whatever
+    version that machine's Python seeds -- and a report that listed it would
+    change with the machine that ran the scan, not with the code."""
+    _out = set()
+    for _line in open(os.path.join(REPO, lock), encoding='utf-8'):
+        _m = re.match(r'^([A-Za-z0-9][A-Za-z0-9._-]*)==', _line)
+        if _m:
+            _out.add(check_components.norm(_m.group(1)))
+    return _out
+
+
 def tool_versions():
     _out = {}
     for _line in open(os.path.join(REPO, 'requirements', 'tools.txt'), encoding='utf-8'):
@@ -179,12 +192,18 @@ def assess(runtime_python: str, today: datetime.date):
                               'annotation is not in the expected form'.format(
                                   _skipped, len(_s['annotations'])))
 
-    _s['licenses'] = {'runtime': licenses(runtime_python), 'tools': licenses(sys.executable)}
-    for _env, _dists in _s['licenses'].items():
+    # Every distribution in either environment is checked; only the locked
+    # ones (and the framework itself) are listed, see locked().
+    _s['licenses'] = {}
+    for _env, _python, _lock in (('runtime', runtime_python, 'requirements/ci.txt'),
+                                 ('tools', sys.executable, 'requirements/tools.txt')):
+        _dists = licenses(_python)
         for _name, _d in _dists.items():
             if not _d['allowed']:
                 _s['blocking'].append('license not on the allowlist ({}): {} {} ({})'.format(
                     _env, _name, _d['version'], _d['license'] or 'none stated'))
+        _keep = locked(_lock) | {'intellipandora'}
+        _s['licenses'][_env] = {_n: _d for _n, _d in _dists.items() if _n in _keep}
 
     _s['registry'] = check_components.check_registry()
     _s['components'] = len(check_components.declared())
