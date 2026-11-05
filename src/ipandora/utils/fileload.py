@@ -37,9 +37,3 @@ class FileLoad(object):
         except (yaml.YAMLError, json.JSONDecodeError) as e:
             raise FileError("Failed to load {} file: {}".format(file_type, e))
 
-
-if __name__ == '__main__':
-    _c_path = '/ipandora/conf/generator/robot_gen_config.yaml'
-    result = FileLoad(_c_path).load_yaml()
-    a = result.get('data').get('suites')
-    print(a)

@@ -4,6 +4,7 @@
 @File  : test_ai_provider.py
 @Time  : 2026-08-01
 """
+import importlib.util
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -17,6 +18,13 @@ import pytest
 # imported earlier than any test module, and pulling ipandora in that early
 # binds the console log handler to a different sys.stdout than the tests see.
 pytest.importorskip('ipandora.ai', reason='optional ai/ package is absent')
+
+# This guard watches `ipandora.ai`, which is a package-level import and so
+# succeeds or fails for *any* reason -- including the framework being broken.
+# It once skipped this whole module because utils/log.py could not import
+# robot.api, which is not "ai/ is absent" and should never have read as it.
+# A guard that swallows unrelated breakage is a guard that hides it, so the
+# provider's own optional dependency is checked separately, below.
 
 from ipandora.ai.aifactory import AIProviderFactory  # noqa: E402
 from ipandora.ai.anthropicprovider import AnthropicProvider  # noqa: E402
@@ -50,7 +58,15 @@ class TestAIProviderFactory(unittest.TestCase):
             AIProviderFactory.get_provider('unknown')
 
 
+@pytest.mark.skipif(importlib.util.find_spec('anthropic') is None,
+                    reason='the anthropic SDK is an optional extra')
 class TestAnthropicProvider(unittest.TestCase):
+    """
+    These patch `anthropic.Anthropic`, so they need the SDK present. It ships
+    only with `pip install intellipandora[ai]`; the rest of this module tests
+    the factory and the mock provider and runs without it.
+    """
+
     @patch('anthropic.Anthropic')
     def test_chat_returns_text(self, mock_anthropic_cls):
         mock_client = MagicMock()

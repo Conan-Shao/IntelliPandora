@@ -70,125 +70,6 @@ class Runtime(object):
         def user(self, value):
             self._user = value
 
-    class Mysql(metaclass=ClassPropertyMeta):
-        _host = ''
-        _username = ''
-        _password = ''
-        _port = 3306
-        _database = ''
-
-        @classproperty
-        def host(self):
-            if not self._host:
-                self._host = DictUtils.safe_get(Runtime.settings, 'mysql', 'host')
-            return self._host
-
-        @host.set
-        def host(self, value):
-            self._host = value
-
-        @classproperty
-        def username(self):
-            if not self._username:
-                self._username = DictUtils.safe_get(Runtime.settings, 'mysql', 'username')
-            return self._username
-
-        @username.set
-        def username(self, value):
-            self._username = value
-
-        @classproperty
-        def password(self):
-            if not self._password:
-                self._password = DictUtils.safe_get(Runtime.settings, 'mysql', 'password')
-                if self._password and StringAction.is_base64_encoded(self._password):
-                    self._password = CryptoFactory().aes.decrypt(self._password)
-            return self._password
-
-        @password.set
-        def password(self, value):
-            self._password = value
-
-        @classproperty
-        def port(self):
-            if not self._port:
-                self._port = DictUtils.safe_get(Runtime.settings, 'mysql', 'port')
-            return self._port
-
-        @port.set
-        def port(self, value):
-            self._port = value
-
-        @classproperty
-        def database(self):
-            if not self._database:
-                self._database = DictUtils.safe_get(Runtime.settings, 'mysql', 'database')
-            return self._database
-
-        @database.set
-        def database(self, value):
-            self._database = value
-
-    class Email(metaclass=ClassPropertyMeta):
-        _host = ''
-        _username = ''
-        _password = ''
-        _port = 465
-        _recipients = []
-
-        @classproperty
-        def host(self):
-            if not self._host:
-                self._host = DictUtils.safe_get(Runtime.settings, 'email', 'host')
-            return self._host
-
-        @host.set
-        def host(self, value):
-            self._host = value
-
-        @classproperty
-        def username(self):
-            if not self._username:
-                self._username = DictUtils.safe_get(Runtime.settings, 'email', 'username')
-            return self._username
-
-        @username.set
-        def username(self, value):
-            self._username = value
-
-        @classproperty
-        def password(self):
-            if not self._password:
-                self._password = DictUtils.safe_get(Runtime.settings, 'email', 'password')
-            if self._password and StringAction.is_base64_encoded(self._password):
-                self._password = CryptoFactory().aes.decrypt(self._password)
-            return self._password
-
-        @password.set
-        def password(self, value):
-            self._password = value
-
-        @classproperty
-        def port(self):
-            if not self._port:
-                self._port = DictUtils.safe_get(Runtime.settings, 'email', 'port')
-            return self._port
-
-        @port.set
-        def port(self, value):
-            self._port = value
-
-        @classproperty
-        def recipients(self):
-            if not self._recipients:
-                _tmp = DictUtils.safe_get(Runtime.settings, 'addressesTo', 'recipients')
-                self._recipients = _tmp if _tmp else []
-            return self._recipients
-
-        @recipients.set
-        def recipients(self, value):
-            self._recipients = value
-
     class Http(metaclass=ClassPropertyMeta):
         """
         Transport reliability settings. See core/protocol/http/transport.py.
@@ -424,24 +305,6 @@ class Runtime(object):
 
         ip = socket.gethostbyname(socket.gethostname())
 
-    class Host(metaclass=ClassPropertyMeta):
-        """
-        Reporting endpoint. Credentials must never be hardcoded here -- put
-        them in conf/config.yaml (AES-encrypted, same as mysql/email) and read
-        them through a classproperty.
-        """
-        _report_host = ''
-
-        @classproperty
-        def report_host(self):
-            if not self._report_host:
-                self._report_host = DictUtils.safe_get(Runtime.settings, 'report', 'host') or ''
-            return self._report_host
-
-        @report_host.set
-        def report_host(self, value):
-            self._report_host = value
-
     class Case(metaclass=ClassPropertyMeta):
         """
         Per-case step recording.
@@ -506,7 +369,6 @@ class Runtime(object):
     class Option(metaclass=ClassPropertyMeta):
 
         _project_name = None
-        _only_api = False
 
         @classproperty
         def project_name(self):
@@ -521,12 +383,9 @@ class Runtime(object):
             if option is None:
                 return default
             try:
-                if Runtime.Frame.is_rf:
-                    return Runtime.settings \
-                        .get('suite_config', {}) \
-                        .get('metadata', {}) \
-                        .get(option, default)
-                elif Runtime.Frame.is_pytest:
+                # The Robot branch that used to come first read the option out
+                # of suite_config.metadata. It went with the Robot adapter.
+                if Runtime.Frame.is_pytest:
                     return Runtime.settings.get(option, default)
                 else:
                     return Runtime.settings.get(option, default)
@@ -591,14 +450,6 @@ class Runtime(object):
         def remote(cls):
             return cls.getMetaData(option='remote', default='')
 
-        @classproperty
-        def only_api(self):
-            return self._only_api \
-                or self.getMetaData(option='only_api', default=False)
-
-        @only_api.set
-        def only_api(self, v: bool = False):
-            self._only_api = v
 
     class Frame(metaclass=ClassPropertyMeta):
 
@@ -606,21 +457,7 @@ class Runtime(object):
 
         _is_locust = False
 
-        @classproperty
-        def is_rf(self):
-            try:
-                from robot.running import EXECUTION_CONTEXTS
-                if EXECUTION_CONTEXTS.current:
-                    return True
-            except ImportError:
-                return False
 
-            return False
-
-        @classproperty
-        def is_pytest_upload_case(self):
-            return Runtime.Option \
-                .getMetaData(option='pandora_upload_case', default=False)
 
         @classproperty
         def is_pytest(self):

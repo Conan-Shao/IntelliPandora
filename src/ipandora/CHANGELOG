@@ -1,3 +1,21 @@
+v1.11.0
+==============
+* BREAKING: data reporting is gone. The upload path collected every response, batched it on a background thread and then discarded it -- the request itself was commented out and called into `pandora_user`, which does not exist in this repo. Removed MultiHandle, UploadApiInfo, InnerPlugin, Runtime.Host/Mysql/Email, Option.only_api, and the mysql/file/email/addressesTo/report config sections
+* BREAKING: Robot Framework support removed. utils/log.py imported `robot.api` unguarded, which made robotframework a hard requirement for importing the package at all, long after the adapter was archived. Also removed robotlogparser, the get_test_report MCP tool, Runtime.Frame.is_rf and the Robot branches in utils/variable.py
+* BREAKING: removed orphan modules with no consumer -- common/uuidutils.py (UUIDFactory), common/timeutils.py, utils/filewriter.py, utils/niceline.py, core/base/classwrap/{singleton,attrvaluesplit}.py, core/base/repository/, common/mysqlaction.py
+* BREAKING: eight dependencies that nothing imported are no longer installed -- websockets, bs4, six, tabulate, retrying, assertpy, pymysql, twine. pendulum went with timeutils; psutil is now the optional `system` extra and imported lazily
+* every remaining dependency is version-bounded on both sides: a dependency that silently moves across a major makes a run's result depend on when it was installed
+* add JUnit XML output, rendered from the same ReportData as the HTML report. `ipandora run` writes report.xml beside every report; --junit-xml puts a copy where CI expects it
+* a collection failure now emits a real failing testcase in the XML: `tests="0" failures="0"` is indistinguishable from a clean run to every CI there is
+* BLOCKED and GAP have no JUnit equivalent and are written as <skipped>, with the real status kept in the type attribute, the message and a property
+* strip characters XML 1.0 forbids -- they cannot be escaped, and one stray byte in one assertion message would cost the whole run its report
+* add @pytest.mark.flaky(reason=...) and `ipandora run --exclude-flaky`. Excluded cases are still named in the summary: a flaky marker nobody is reminded of is a failure that has been parked
+* add scripts/mutation.py -- mutation testing, scoped to one module and its tests, with a score and --min-score for gating
+* smoke_import now passes against a minimal install, excusing only the modules whose optional extra is genuinely missing
+* fix: the crypto key landed inside the tracked package tree and three separate gates failed to recognise it; it now lives in ~/.ipandora/crypto at 0700/0600
+* fix: AESCryptographer held a base64 str where AES wants raw bytes after generating a key, so the first run of a fresh install always raised
+* fix: MANIFEST.in named the distribution instead of the package path; scripts/check_packaging.py now checks the built wheel, because whether data files reach it depends on the setuptools version doing the build
+
 v1.10.0
 ==============
 * add core/report: build report data from a run, then render it -- HTML and JSON come from the same model

@@ -1,23 +1,10 @@
-mysql:
-  host: localhost
-  username: root
-  password:
-  database: TestCaseDB
-file:
-  host: localhost
-  username: root
-  password:
-  directory: /var/data/test_case_attachments
-email:
-  host:
-  port:
-  username:
-  password:
-addressesTo:
-  recipients:
-    - xxx@gmail.com
-report:
-  host:
+# The framework runs standalone: it reads this file, runs the suite, writes a
+# report next to itself. There is no result upload, no results database and no
+# mail step, so there is nothing here to point at a server.
+#
+# The `mysql`, `file`, `email`, `addressesTo` and `report` sections that used
+# to sit above are gone with the code that read them.
+#
 # Transport reliability. verify defaults to true -- only turn it off for a
 # specific throwaway environment, and never repo-wide.
 http:

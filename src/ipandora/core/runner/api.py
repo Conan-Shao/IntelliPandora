@@ -137,6 +137,7 @@ def run(selector: str = '', env: str = '', extra_args: Sequence[str] = (),
         exit_code=int(_exit),
         cases=_collector.results(),
         coverage=list(_collector.coverage),
+        deselected=list(_collector.deselected),
         collect_error=_collect_error)
 
     if persist:

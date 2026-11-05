@@ -8,7 +8,6 @@ import threading
 
 import pytest
 
-from ipandora.core.base.classwrap.multihandle import MultiHandle
 from ipandora.core.schedule.runtime import Runtime
 
 
@@ -170,91 +169,8 @@ class TestRuntimeReset:
             Runtime.reset('NoSuchSection')
 
     def test_known_sections_were_snapshotted(self):
-        assert {'Http', 'Ai', 'Mcp', 'Mysql', 'Email'} <= set(Runtime._config_defaults)
+        assert {'Http', 'Ai', 'Mcp'} <= set(Runtime._config_defaults)
 
     def test_threading_local_is_not_snapshotted(self):
         # restoring a threading.local would break per-thread isolation
         assert '_local' not in Runtime._config_defaults.get('Case', {})
-
-
-class _Batcher(MultiHandle):
-    """Records every batch that gets flushed, so tests can count items."""
-
-    def __init__(self):
-        self.flushed = []
-        self._flushed_lock = threading.Lock()
-        super().__init__()
-
-    def handleItem(self):
-        pass
-
-    def uploadItem(self, force=False):
-        with self._lock:
-            if force:
-                _items, self._data_list = self._data_list, []
-            elif len(self._data_list) >= self.max_items_upload:
-                _items = self._data_list[:self.max_items_upload]
-                self._data_list = self._data_list[self.max_items_upload:]
-            else:
-                return False
-        if _items:
-            with self._flushed_lock:
-                self.flushed.extend(_items)
-        return True
-
-
-class TestMultiHandleBuffering:
-    """
-    The buffer was a class attribute shared by every instance and mutated from
-    both the producer and the background thread with no lock.
-    """
-
-    def test_buffer_is_per_instance(self):
-        a, b = _Batcher(), _Batcher()
-        try:
-            a.put({'i': 1})
-            assert b.current_item is None
-            assert a.current_item == {'i': 1}
-        finally:
-            a.stop()
-            b.stop()
-
-    def test_concurrent_puts_lose_nothing(self):
-        batcher = _Batcher()
-        batcher.max_items_upload = 20  # let the background thread flush too
-        threads_count, per_thread = 4, 50
-        try:
-            def produce(idx):
-                for n in range(per_thread):
-                    batcher.put({'t': idx, 'n': n})
-
-            threads = [threading.Thread(target=produce, args=(i,))
-                       for i in range(threads_count)]
-            [t.start() for t in threads]
-            [t.join() for t in threads]
-            batcher.uploadItem(force=True)
-
-            # every produced item must appear exactly once across all batches
-            assert len(batcher.flushed) == threads_count * per_thread
-            assert len({(i['t'], i['n']) for i in batcher.flushed}) == \
-                threads_count * per_thread
-        finally:
-            batcher.stop()
-
-    def test_force_flush_drains_the_buffer(self):
-        batcher = _Batcher()
-        batcher.max_items_upload = 10 ** 6
-        try:
-            batcher.put({'i': 1})
-            batcher.put({'i': 2})
-            batcher.uploadItem(force=True)
-            assert batcher.current_item is None
-        finally:
-            batcher.stop()
-
-    def test_thread_is_stoppable(self):
-        batcher = _Batcher()
-        assert batcher.is_alive()
-        batcher.stop()
-        batcher.join(timeout=5)
-        assert not batcher.is_alive()

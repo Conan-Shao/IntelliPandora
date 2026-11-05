@@ -1,94 +1,125 @@
 # IntelliPandora
 
-## 一、概要
+> AI 时代的接口测试框架内核：**agent 负责写，框架负责执行。**
 
-> IntelliPandora 是Python开发以提供通用能力测试框架
->
-> 框架将提供API、UI、算法等业务自动化测试的能力
->
-> 同时提供数据上报、开元测试框架(工具)适配、工程(代码)自动生成等基础功能
-> 
-> 可适配Pytest、RobotFramework等执行框架
->
-> 提供测试智能化的能力：可插拔AI Provider、MCP能力暴露、语义智能断言，详见 [AI化路线图](docs/dev/AI_Framework_Design.md)
+AI 写得出用例，但用例不能只有 agent 才跑得起来——那样 CI 接不上，别人很难直接跑，agent 参与执行还会把不确定性带进结果。
 
-## 二、使用
+IntelliPandora 是被拆出来的那一半：**一个确定性的、独立运行的执行器**。人、CI、agent 三个入口调用同一套 runner，跑出来的结果一致。
 
-### 安装下载
+![架构](docs/dev/static/architecture.svg)
 
-- 下载、安装
-```shell script
-pip install intellipandora
+## 它解决什么
+
+| | 之前 | 现在 |
+|---|---|---|
+| 状态码 | 500 静默通过——`status_code` 只用来给日志上色 | 断言层判定，不看就是 `gap` |
+| 断言失败 | 第一个失败就停 | `Check` 是值不是异常，`assert_all` 一次报全部 |
+| 失败原因 | 自己翻日志 | 归因到 defect / contract / environment / data / harness |
+| 跑完的结果 | 控制台一段文字 | HTML + JSON + **JUnit XML**，可直接进 CI 门禁 |
+| 依赖真实环境 | 环境不通就跑不了 | `--record` 录一次，`--replay` 之后不出网 |
+| 超时 | 默认无，一个挂起的接口挂死整个套件 | 连接 10s / 读取 30s，每个请求都有界 |
+| TLS | 强制 `verify=False` | 默认开启 |
+
+## 安装
+
+```shell
+pip install intellipandora            # 内核，依赖只有 8 个
+pip install intellipandora[ai]        # 可选：失败归因接 LLM
+pip install intellipandora[mcp]       # 可选：agent 入口
 ```
 
-### 脚手架能力
-- 基础能力使用(命令行)
-```shell script
-ipandora -h
+## 用起来
+
+```shell
+ipandora run test/api                        # 跑完出 HTML + JSON + JUnit XML
+ipandora run test/api --junit-xml out.xml    # 给 CI 的那份放到指定位置
+ipandora run test/api --exclude-flaky        # 门禁模式：已知不稳定的用例不参与判定
+ipandora run test/api --record --cassette v1 # 录一盘磁带
+ipandora run test/api --replay --cassette v1 # 离线回放，不出网
+ipandora run test/api --verify --cassette v1 # 打真实系统，报告它与基线的差异
+ipandora cassette list                       # 磁带管理
+ipandora mcp                                 # 以 MCP server 方式供 agent 调用
 ```
 
-### 使用手册(待添加)
-> 包含了框架使用，例如http如何调用，用于接口自动化测试
-* [IntelliPandora使用手册](docs/usr/user_guider.md)
+写一条用例：
 
+```python
+from ipandora.core import api
+from ipandora.core.assertion import assert_all, json_equals, status_ok
 
-## 三、设计与开发
+class OrderService:
+    @api.http.post(path="api/order/create")
+    def create(self, amount):
+        return dict(json={"amount": amount})
 
-### 3.1 设计说明
+def test_create_order():
+    """下单成功，金额与请求一致"""
+    r = OrderService().create(100)
+    assert_all(
+        status_ok(r),
+        json_equals(r, 'data.amount', 100),
+    )
+```
 
-#### 3.1.1 目标
-* **_实现测试系统的自动化；_**
-* **_提升自动化的效率、稳定性、通用性；_**
-* **_自动化使用的便捷性和可维护性_**
+📖 [使用手册](docs/usr/user_guider.md)
 
-#### 3.1.2 设计思路
-* **分层架构**： 
-  * 测试用例层：编写和管理具体的测试用例，封装业务操作和验证逻辑
-  * 驱动层：与被测系统进行直接交互，如API调用、UI操作、系统操作、模型算法调用等。 
-  * 数据层：管理测试数据，包括数据准备、数据清理、数据加载等。
-  * 工程组件层: 提供框架运行所需的辅助工具和通用功能，包括配置管理、数据处理、报告生成和分布式执行等。
-* **模块化设计**： 
-  * 引擎模块：包括用例生成、测试执行引擎、报告分析、智能化应用等核心功能。
-  * 协议模块：处理不同类型的协议，如 HTTP、WebSocket、SSH等。
-  * 公共模块：包含常用的工具类库，如日志、配置管理、数据库操作等。 
-  * 工具模块：提供命令行工具、调试工具、错误处理等。
-* **扩展性与可维护性**：
-  * 插件机制：允许用户扩展框架功能，如自定义报告格式、新的协议支持等。 
-  * 数据和环境管理：支持数据驱动、环境配置等功能，提高测试用例的复用性。
-  * 集成化工作流：将测试框架集成到CI/CD管道中，实现自动化的持续测试和部署。
+## 日常工作流
 
-### 3.2 设计实现
-> 整体自动化方案从 **_工程视角_** 分为两个主要仓库：_用例仓库_ 和 _测试框架仓库_。
-> 
-> 优势1: 满足框架通用性要求，可以支持不同的业务和产品线，同时提供统一的测试框架和工具。
-> 
-> 优势2: 满足架构分层，用例和数据在用例仓库；驱动和组件能力在测试框架仓库。不同业务和产品用例独立
-> 
+![工作流](docs/dev/static/workflow.svg)
 
+失败之后第一件事是**分清是用例错还是产品错**——这两件事是不同的人该去修的。归因层做的就是这个判定，`blames_system_under_test` 为假时，报告不会把它算成产品缺陷。
 
-#### 3.2.1 框架结构介绍
-> [IntelliPandora开发说明](docs/dev/IntelliPandora_Dev.md)
-> 
-> 代码都在***src/intellipandora***
-* **core**: 提供自动化核心能力接口。
-  * **base**: 基础类(基类)，如SingletonClass、BaseRepository等
-  * **protocol**: 提供协议能力，支持与被测对象交互/通信。如http、grpc、websocket等
-  * **engine**: 提供执行引擎，提供框架核心功能，如自动生成、加密、分布式执行处理等
-* **common**: 基础方法封装，支持自动化测试断言、数据准备、数据处理等
-* **run**: 框架的命令行模块
-* **utils**: 框架基础功能，如log、error...
-* **conf**: 配置文件
+## LLM 的成本边界
 
-#### 3.2.2 框架设计
+**LLM 只出现在「编写时」和「运行后」，绝不出现在「运行时」。**
 
-* **架构图**
-  ![IntelliPandora架构图](./docs/dev/static/framework_architecture.jpg)
+| 时机 | 是否用 LLM | 成本随什么增长 |
+|---|---|---|
+| 运行时（执行用例） | ❌ 绝不 | **恒为 0** |
+| 编写时（起草用例） | ✅ 外部 agent 写文件 | 人 × 编写次数 |
+| 运行后（失败归因、报告摘要） | ⚠️ 可选，默认关 | 失败数，可设上限 |
 
-* **业务流程图**
-![IntelliPandora业务流程图](./docs/dev/static/business_flow.png)
+一天跑 10000 次用例，LLM 调用 0 次。这不是约定，是四条结构性保证：默认安装不含任何 LLM SDK；`ai.enabled: false`；`core/` 不得 import `ai/`（CI 用 AST 检查）；**`rm -rf src/ipandora/ai && pytest` 必须全绿**（CI 里真的在跑）。
 
+📖 [`docs/design/03-LLM接入边界.md`](docs/design/03-LLM接入边界.md)
 
-## GitHub Feature
+## 代码结构
 
-1. You can use Readme\_XXX.md to support different languages, such as Readme\_en.md, Readme\_zh.md
-2. Explore open source project [IntelliPandora](https://github.com/Conan-Shao/IntelliPandora)
+代码在 `src/ipandora/`：
+
+| | |
+|---|---|
+| `core/protocol` | 协议层。传输策略、响应解析、回放适配 |
+| `core/assertion` | 断言层。`Check` / `assert_all` / `require` / `gap` |
+| `core/runner` | 库可调用的执行入口。CLI 和 MCP 都是它的薄壳 |
+| `core/report` | ReportData → HTML / JSON / JUnit XML + 历史归档 |
+| `core/cassette` | 流量录制回放、差异引擎、HAR/nginx/envoy 导入 |
+| `core/triage` | 失败归因（规则优先，LLM 可选） |
+| `core/evidence` | 请求响应证据采集 |
+| `core/mcp` | agent 入口 |
+| `ai/` | 可选 LLM 支持，可整包删除 |
+
+## 设计文档
+
+全部决策与返工记录在 [`docs/design/`](docs/design/)：
+
+- [`README.md`](docs/design/README.md) — 索引与一页纸结论
+- [`09-对齐新规划的现状复核.md`](docs/design/09-对齐新规划的现状复核.md) — 现状逐项对照架构图
+- [`10-迭代方案.md`](docs/design/10-迭代方案.md) — 整改、能力拓展、agent 评测、安全两条线
+
+## 开发
+
+```shell
+pytest                               # 全部密闭，零网络依赖
+python scripts/smoke_import.py       # 每个模块都 import 得进来
+python scripts/check_layering.py     # core/ 不得依赖 ai/
+python scripts/check_secrets.py $(git ls-files)
+python scripts/check_packaging.py    # 必需数据文件要真的进 wheel
+python scripts/mutation.py core/report/junit.py   # 变异测试：故意改坏，看测试抓不抓得住
+```
+
+📖 [开发手册](docs/dev/IntelliPandora_Dev.md)
+
+## License
+
+Apache License 2.0

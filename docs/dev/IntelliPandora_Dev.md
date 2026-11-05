@@ -2,7 +2,7 @@
 
 ## 1.基础
 - **语言**
-> **PYTHON3.7+**
+> **PYTHON 3.10+**（代码用了 PEP 604 的 `int | list[int]`，3.7 从来跑不起来）
 
 - **版本管理**
 > ***CHANGELOG*** 内按格式添加版本内容
@@ -24,35 +24,52 @@
 ```shell
 .
 ├── src
-│   └── intellipandora
-│       ├── CHANGELOG
-│       ├── __init__.py
-│       ├── common
-│       ├── conf
-│       ├── core
-│       ├── run
-│       ├── utils
-│       └── version.py
+│   └── ipandora                # 包名是 ipandora，发行名才是 intellipandora
+│       ├── CHANGELOG
+│       ├── ai/                 # 可选 LLM 支持，可整包删除
+│       ├── common/
+│       ├── conf/               # config.yaml 与报告模板
+│       ├── core/
+│       ├── run/                # 命令行
+│       ├── utils/
+│       └── version.py
+├── scripts                     # 门禁：smoke_import / layering / secrets / packaging / mutation
+├── docs
+│   ├── design/                 # 设计与返工记录
+│   ├── dev/
+│   └── usr/
 └── test
-    └── __init__.py
 ```
 
 ###  **说明**
-    > 代码都在***src/intellipandora***
-  * **core**: 提供自动化核心能力接口。
-    * **base**: 基础类(基类)，如SingletonClass、BaseRepository等
-    * **protocol**: 提供协议能力，支持与被测对象交互/通信。如http、grpc、websocket等
-    * **engine**: 提供执行引擎，提供框架核心功能，如自动生成、加密、分布式执行处理等
-  * **common**: 基础方法封装，支持自动化测试断言、数据准备、数据处理等
-  * **run**: 框架的命令行模块
-  * **utils**: 框架基础功能，如log、error...
-  * **conf**: 配置文件
+代码都在 **`src/ipandora`**（注意：包名 `ipandora`，发行名 `intellipandora`）。
+
+  * **core**: 核心能力
+    * **protocol**: 协议层。目前只有 `http/`——传输策略、响应解析、回放适配
+    * **assertion**: 断言层。`Check` / `assert_all` / `require` / `gap`
+    * **runner**: 库可调用的执行入口；CLI 与 MCP 都是它的薄壳
+    * **report**: ReportData → HTML / JSON / JUnit XML + 历史归档
+    * **cassette**: 流量录制回放、差异引擎、HAR/nginx/envoy 导入
+    * **triage**: 失败归因，规则优先，LLM 可选
+    * **evidence**: 请求响应证据采集
+    * **mcp**: agent 入口
+    * **plugin** / **schedule**: 插件注册、Runtime 配置
+    * **engine/crypto**: 配置加密；密钥存放在 `~/.ipandora/crypto`，不在包内
+  * **common** / **utils**: 工具
+  * **run**: 命令行
+  * **conf**: 配置与报告模板
 
 ### 框架设计
 
-* 架构图
-* ![IntelliPandora架构图](./static/framework_architecture.jpg)
-* ![IntelliPandora业务流程图](./static/business_flow.png)
+* 架构（入口 / 执行 / 资产 / 评测四层）
+
+![架构](./static/architecture.svg)
+
+* 日常工作流
+
+![工作流](./static/workflow.svg)
+
+> 旧的 `framework_architecture.jpg` 与 `business_flow.png` 已删除：它们画的是还有平台数据上报、还有 pandora runner、还有代码自动生成的时代，那三样都已归档。
 
 ### **开发手册**
   * [IntelliPandora开发手册(完善中)](./Python_Dev_Standard.md)

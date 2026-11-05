@@ -16,8 +16,8 @@ from ipandora.core import api
 
 class EventTrackService(object):
 
-    @api.mark(module='unionPlatform')
-    @api.http.post(path="api/union/event/queryAutoCaseCheckResult")
+    @api.mark(module='eventPlatform')
+    @api.http.post(path="api/event/track/queryCheckResult")
     def get_event_track_result(self, device_id, id_count_map, start_time, end_time):
         _data = {"deviceId": device_id, "startTime": start_time, "endTime": end_time,
                  "idCountMap": id_count_map}
@@ -50,8 +50,8 @@ from ipandora.core import api
 
 class ReportService(object):
 
-    @api.mark(module='unionPlatform')
-    @api.http.post(path='api/union/test/s3/upload')
+    @api.mark(module='eventPlatform')
+    @api.http.post(path='api/event/file/upload')
     def upload_point_log(self, _params, _file_items = {}):
         _file_params = {}
         if _file_items:
@@ -225,9 +225,9 @@ from ipandora.core.plugin.interface.endpointsinterface import EndPointsInterface
 
 # 端点地址可以写死，凭据不行：仓库是公开的。
 ENDPOINTS = {
-    "unionPlatform": {"url": "https://api.example.com",
-                      "token": os.environ["UNION_PLATFORM_TOKEN"],
-                      "user": os.environ["UNION_PLATFORM_USER"]}
+    "eventPlatform": {"url": "https://api.example.com",
+                      "token": os.environ["EVENT_PLATFORM_TOKEN"],
+                      "user": os.environ["EVENT_PLATFORM_USER"]}
 }
 
 

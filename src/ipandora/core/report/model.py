@@ -70,6 +70,8 @@ class ReportCase:
     """What the case is for, in a sentence. From its docstring."""
     dims: Dict[str, str] = field(default_factory=dict)
     """Where the case sits in the coverage matrix."""
+    flaky: str = ''
+    """Why this case is known-unstable. Empty means it is not."""
     checks: List[Dict[str, Any]] = field(default_factory=list)
     """Every judgement, as the assertion layer made it -- not re-parsed text."""
     exchanges: List[Dict[str, Any]] = field(default_factory=list)
@@ -180,6 +182,16 @@ class ReportData:
     def inconclusive(self) -> List[ReportCase]:
         """Cases that told us nothing -- the ones a summary tends to hide."""
         return [_c for _c in self.cases if _c.status in INCONCLUSIVE]
+
+    @property
+    def flaky(self) -> List[ReportCase]:
+        """
+        Cases declared known-unstable, whatever they did this time.
+
+        Listed even when they pass: a case that is green today and red
+        tomorrow is the thing being tracked, so one green run is not news.
+        """
+        return [_c for _c in self.cases if _c.flaky]
 
     @property
     def by_suite(self) -> Dict[str, List[ReportCase]]:
@@ -299,5 +311,8 @@ class ReportData:
             'by_source': self.by_source,
             'gaps': self.gaps,
             'coverage': self.coverage_matrix,
+            'flaky': [{'name': _c.name, 'nodeid': _c.nodeid,
+                       'status': _c.status, 'reason': _c.flaky}
+                      for _c in self.flaky],
             'cases': [_c.to_dict() for _c in self.cases],
         }

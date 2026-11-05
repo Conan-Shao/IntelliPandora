@@ -4,7 +4,6 @@
 @File  : pluginmanager.py
 @Time  : 2024-04-19
 """
-from ipandora.core.plugin.innerplugin import InnerPlugin
 from ipandora.core.plugin.specificationsbuilder import SpecificationsManager
 from ipandora.core.plugin.interface.endpointsinterface import EndPointsInterface
 from ipandora.core.plugin.interface.httpregisterinterface import HttpPluginInterface
@@ -15,7 +14,16 @@ class PluginManager(object):
 
     @classmethod
     def init(cls):
-        cls.register(InnerPlugin())
+        """
+        Create the registry so plugins can be added to it.
+
+        This used to also register an InnerPlugin whose only job was to feed
+        every response into a batcher that POSTed it to a reporting host. The
+        framework runs standalone now -- nothing is sent anywhere -- so the
+        plugin, the batcher and the host config are gone. Only the registry
+        the user's own plugins go into is set up here.
+        """
+        cls.get_builder()
 
     @classmethod
     def http(cls, reg: HttpPluginInterface = None):

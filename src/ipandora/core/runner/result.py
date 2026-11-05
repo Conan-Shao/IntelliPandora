@@ -32,6 +32,8 @@ class CaseResult:
     exchanges: List[Dict[str, Any]] = field(default_factory=list)
     """Every HTTP call the case made, request and response."""
     dims: Dict[str, str] = field(default_factory=dict)
+    flaky: str = ''
+    """Why this case is known-unstable. Empty means it is not."""
     """Coverage coordinates, from @pytest.mark.dims."""
     title: str = ''
     """Human-readable intent, from the test's docstring."""
@@ -56,6 +58,8 @@ class RunResult:
     coverage: List[Dict[str, Any]] = field(default_factory=list)
     """Coverage axes declared by the suite, for the matrix. See COVERAGE."""
     collect_error: str = ''
+    deselected: List[str] = field(default_factory=list)
+    """Cases a -m expression removed, e.g. --exclude-flaky."""
     """Set when pytest could not even collect the selector."""
 
     def _count(self, outcome: str) -> int:

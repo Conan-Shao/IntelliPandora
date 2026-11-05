@@ -126,7 +126,14 @@ class TestHistoryAccumulates:
         assert ipandora('run', suite, reports=reports).returncode == 1
 
         newest = json.loads((reports / 'index.json').read_text(encoding='utf-8'))[0]
-        assert newest['new_failures'] == ['test_same.py::test_ok2']
+        # endswith, not equality: a pytest nodeid is relative to the rootdir it
+        # resolved, so the same run invoked from a different directory records
+        # the same case under a longer path. Pinning the exact string ties this
+        # case to where the suite happens to be run from -- the same
+        # nodeid-is-not-stable trap that once made the evidence recorder
+        # collide two runs of the same file.
+        assert len(newest['new_failures']) == 1
+        assert newest['new_failures'][0].endswith('test_same.py::test_ok2')
 
 
 class TestFlags:
