@@ -3,630 +3,706 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
 <title>{{ title }}</title>
 <style>
 :root{
-  --ink:#0D1420; --panel:#131C2C; --panel-2:#182337; --code:#0F1724;
-  --line:rgba(228,234,242,.10); --line-strong:rgba(228,234,242,.20);
-  --text:#E4EAF2; --dim:#8C9AB0; --faint:#5C6A80;
-  --pass:#5FD3A6; --fail:#FF7060; --warn:#F0B152; --meta:#A78BFA; --none:#3E4A5E;
-  --jk:#7FB2FF; --js:#8FD9B6; --jn:#F0B152; --jb:#C39BFF;
-  --sans:'IBM Plex Sans','PingFang SC','Microsoft YaHei',system-ui,-apple-system,sans-serif;
-  --mono:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;
+  --bg:#F4F5F7; --panel:#FFFFFF; --panel-2:#F8F9FA; --line:#DDE1E6; --line-soft:#EEF0F3;
+  --text:#16191D; --text-2:#374151; --muted:#4B5563; --link:#1D4ED8;
+  --fail:#9F1D14; --fail-bg:#FDECEA; --fail-row:#FDF3F1; --fail-mark:#C0392B;
+  --pass:#1D5FAD; --pass-bg:#DCE8F7; --pass-ink:#123E73; --pass-mark:#1D5FAD;
+  --warn:#7A4700; --warn-bg:#FFF4E0; --warn-line:#F0D19B; --warn-mark:#D98A00;
+  --skip-mark:#9AA3AF; --chip:#EEF0F3; --solid-fail:#9F1D14; --on-solid:#FFFFFF;
+  --jk:#1E5FBF; --js:#12704F; --jn:#8A5A0B; --jb:#6D45D4;
+  --sans:-apple-system,'PingFang SC','Noto Sans SC','Microsoft YaHei',system-ui,sans-serif;
+  --mono:ui-monospace,'SFMono-Regular',Menlo,Consolas,'Liberation Mono',monospace;
 }
-@media (prefers-color-scheme:light){
-  /* The row tints are re-stated rather than inherited: 7% of a colour over a
-     dark panel reads as tinted, the same 7% over white reads as dirty grey --
-     which is exactly the shade a reader ignores. */
-  .check.bad,.why,.errline{background:#FDECEA !important}
-  .check.gap,.why.warn{background:#FDF3E2 !important}
+@media (prefers-color-scheme:dark){
   :root{
-    --ink:#F4F7FA; --panel:#FFFFFF; --panel-2:#EEF2F7; --code:#F7F9FC;
-    --line:rgba(13,20,32,.10); --line-strong:rgba(13,20,32,.20);
-    --text:#16202F; --dim:#5A6779; --faint:#8793A5;
-    --pass:#12855F; --fail:#C8372A; --warn:#8A5A0B; --meta:#6D45D4; --none:#C3CCDA;
-    --jk:#1E5FBF; --js:#12855F; --jn:#8A5A0B; --jb:#6D45D4;
+    --bg:#0F1216; --panel:#171B21; --panel-2:#1D222A; --line:#2C333D; --line-soft:#242A33;
+    --text:#E6E9EE; --text-2:#C4CAD3; --muted:#9AA3AF; --link:#8AB4FF;
+    --fail:#FF9A8C; --fail-bg:#3A1D1A; --fail-row:#2A1917; --fail-mark:#E05A4A;
+    --pass:#8DB8F2; --pass-bg:#1C2C44; --pass-ink:#B9D3F7; --pass-mark:#5B8FD6;
+    --warn:#F2BD6B; --warn-bg:#33270F; --warn-line:#5C4518; --warn-mark:#D98A00;
+    --skip-mark:#6B7280; --chip:#242A33; --solid-fail:#C0392B; --on-solid:#FFFFFF;
+    --jk:#8AB4FF; --js:#7FD3AE; --jn:#F2BD6B; --jb:#C3A6FF;
   }
 }
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
-body{margin:0;padding:40px 24px 80px;background:var(--ink);color:var(--text);
-  font-family:var(--sans);font-size:14px;line-height:1.55}
-.wrap{max-width:1140px;margin:0 auto}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.55}
+a{color:var(--link)} a:hover{text-decoration:none}
+code,.mono{font-family:var(--mono)}
+code{overflow-wrap:anywhere}
+.row>*{min-width:0;overflow-wrap:anywhere}
+.wrap{max-width:1280px;margin:0 auto;padding:0 24px}
+header.top{background:var(--panel);border-bottom:1px solid var(--line)}
+header.top .wrap{padding-top:14px;padding-bottom:14px;display:flex;flex-wrap:wrap;align-items:center;gap:10px 24px}
+.brand{font-weight:700;font-size:16px}
+.meta{font-family:var(--mono);font-size:13px;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 16px}
+main.wrap{padding-top:28px;padding-bottom:48px;display:flex;flex-direction:column;gap:24px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:20px 24px}
+h1,h2,h3{margin:0}
+h2{font-size:17px}
+h3{font-size:15px}
+.sub{font-size:13px;color:var(--muted)}
+.row{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 16px}
+.row .end{margin-left:auto}
 
-.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;
-  color:var(--faint);display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center}
-.eyebrow .sep{color:var(--line-strong)}
-.eyebrow .env{color:var(--warn)}
-h1{font-weight:600;font-size:clamp(22px,4vw,31px);letter-spacing:-.015em;margin:14px 0 4px}
-.runid{font-family:var(--mono);font-size:12.5px;color:var(--dim);word-break:break-all}
+.verdict{display:flex;flex-wrap:wrap;gap:24px 48px;align-items:flex-start;padding:28px 32px}
+.verdict .main{flex:999 1 560px;min-width:0;display:flex;flex-direction:column;gap:14px}
+.verdict h1{font-size:clamp(20px,3vw,26px);line-height:1.4}
+.verdict ul{margin:0;padding-left:20px;color:var(--text-2);display:flex;flex-direction:column;gap:4px}
+.verdict dl{flex:1 1 300px;margin:0;display:grid;grid-template-columns:auto 1fr;gap:8px 16px;font-size:13px;color:var(--muted)}
+.verdict dd{margin:0;color:var(--text);min-width:0;overflow-wrap:anywhere}
+.verdict dd .sub{display:block}
+.stamp{display:inline-flex;align-self:flex-start;align-items:center;gap:8px;border-radius:999px;padding:4px 14px 4px 10px;font-weight:700}
+.stamp.fail,.stamp.error{background:var(--fail-bg);color:var(--fail)}
+.stamp.review{background:var(--warn-bg);color:var(--warn)}
+.stamp.pass{background:var(--pass-bg);color:var(--pass-ink)}
+.collect{margin:0;background:var(--panel-2);border:1px solid var(--line-soft);border-radius:6px;padding:10px 12px;font-family:var(--mono);font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere;max-height:240px;overflow:auto}
 
-.hero{margin-top:28px;display:grid;grid-template-columns:1fr auto;gap:22px;align-items:start}
-.stack{display:grid;gap:14px;min-width:0}
-.stamp{color:var(--verdict);border:2px solid currentColor;border-radius:10px;
-  padding:18px 22px;text-align:center;min-width:190px}
-.stamp.good{--verdict:var(--pass)} .stamp.bad{--verdict:var(--fail)} .stamp.warn{--verdict:var(--warn)}
-.stamp .big{font-weight:700;font-size:36px;line-height:1;letter-spacing:-.02em}
-.stamp .verdict{font-weight:700;font-size:18px;letter-spacing:.12em;margin-top:6px}
-.stamp .rule{height:1px;background:currentColor;opacity:.45;margin:11px 0}
-.stamp .line{font-family:var(--mono);font-size:10px;letter-spacing:.12em;
-  text-transform:uppercase;color:var(--dim)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:16px}
+.tile{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:8px;color:var(--text);text-decoration:none;min-width:0}
+a.tile:hover{border-color:var(--muted)}
+.tile .k{font-size:13px;color:var(--muted)}
+.tile .v{display:flex;align-items:baseline;gap:8px}
+.tile .v b{font-size:30px;line-height:1.2}
+.tile .v span{font-weight:600}
+.tile .d{font-size:13px;color:var(--text-2)}
+.tile .s{font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+.v.fail b{color:var(--fail)} .v.warn b{color:var(--warn)}
+.stack{display:flex;gap:2px;height:10px}
+.stack i{display:block;height:100%}
+.stack i:first-child{border-radius:4px 0 0 4px} .stack i:last-child{border-radius:0 4px 4px 0}
+.stack i:only-child{border-radius:4px}
+.stack .p{background:var(--pass-mark)} .stack .f{background:var(--fail-mark)}
+.stack .u{background:var(--warn-mark)} .stack .k{background:var(--skip-mark)}
+.flag{display:inline-flex;align-self:flex-start;align-items:center;gap:6px;border-radius:6px;padding:2px 8px;font-size:13px;font-weight:600}
+.flag.warn{background:var(--warn-bg);color:var(--warn)}
+.flag.ok{background:var(--chip);color:var(--text-2)}
+.mini{border-collapse:separate;border-spacing:3px;font-size:12px;color:var(--text-2)}
+.mini th{font-weight:500;text-align:left;padding-right:6px}
+.mini td{text-align:center;border-radius:4px;padding:2px 10px;white-space:nowrap}
+.mini td.hit{background:var(--pass-bg);color:var(--pass-ink)}
+.mini td.miss{background:var(--chip);color:var(--muted)}
 
-.card{border:1px solid var(--line);border-radius:14px;background:var(--panel);padding:18px 20px}
-.card h3{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;
-  color:var(--dim);margin:0 0 3px;font-weight:600}
-.card p.note{font-size:12px;color:var(--faint);margin:0 0 14px}
+.compare{display:flex;flex-wrap:wrap;gap:24px}
+.compare>div{flex:1 1 420px;min-width:0;display:flex;flex-direction:column;gap:12px}
+.compare>div+div{border-left:1px solid var(--line-soft);padding-left:24px}
+.nums{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.num{border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.num .l{font-size:13px;color:var(--muted);font-weight:600}
+.num b{font-size:22px}
+.num.hot{border-color:var(--fail-bg);background:var(--fail-row)}
+.num.hot .l,.num.hot b{color:var(--fail)}
+.list{margin:0;padding:0;list-style:none}
+.list li{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:baseline;padding:8px 0;border-top:1px solid var(--line-soft);min-width:0}
+.list li>*{min-width:0;overflow-wrap:anywhere}
+.tag{font-size:11px;font-weight:700;border-radius:4px;padding:1px 6px;white-space:nowrap}
+.tag.new{background:var(--solid-fail);color:var(--on-solid)}
+.tag.plain{border:1px solid var(--skip-mark);color:var(--text-2)}
+.tag.source{background:var(--chip);color:var(--text-2);font-weight:500}
+
+.groups{display:flex;flex-direction:column;gap:18px}
+.group{display:flex;flex-direction:column;gap:8px}
+.badge{font-weight:700;border-radius:6px;padding:2px 10px;white-space:nowrap}
+.badge.sut{background:var(--fail-bg);color:var(--fail)}
+.badge.ours{background:var(--chip);color:var(--text-2)}
+.badge.untrusted{background:var(--warn-bg);color:var(--warn)}
+.scroll{overflow-x:auto;border:1px solid var(--line-soft);border-radius:8px}
+table.t{width:100%;border-collapse:collapse;font-size:13px}
+table.t th{background:var(--panel-2);color:var(--muted);text-align:left;font-weight:600;padding:8px 12px}
+table.t td{border-top:1px solid var(--line-soft);padding:10px 12px;vertical-align:top}
+table.t td .sub{font-family:var(--mono);font-size:12px;overflow-wrap:anywhere}
+table.t .fx{font-family:var(--mono);font-size:12.5px;overflow-wrap:anywhere}
+table.t .fx div+div{margin-top:2px}
+.wide{min-width:760px}
+
+.changes{display:flex;flex-direction:column}
+.chg{display:grid;grid-template-columns:96px 1fr;gap:14px;padding:10px 0;border-top:1px solid var(--line-soft);align-items:baseline}
+.chg .k{font-size:12px;font-weight:700;border-radius:4px;padding:1px 8px;justify-self:start;white-space:nowrap}
+.chg.weak .k{background:var(--warn-bg);color:var(--warn)}
+.chg:not(.weak) .k{background:var(--chip);color:var(--text-2)}
+.chg .c{font-family:var(--mono);font-size:13px;font-weight:600;overflow-wrap:anywhere}
+.chg .w{font-family:var(--mono);font-size:12.5px;display:block;margin-top:3px;overflow-wrap:anywhere}
+.chg .w .from{color:var(--muted);text-decoration:line-through}
+.chg .n{font-size:12px;color:var(--muted);display:block;margin-top:2px}
 
 .matrix{overflow-x:auto}
-table{border-collapse:collapse;width:100%;min-width:420px}
-th,td{text-align:left;padding:8px 12px;vertical-align:middle}
-thead th{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
-  color:var(--faint);font-weight:500;border-bottom:1px solid var(--line)}
-thead th:first-child{width:180px}
-tbody th{font-weight:500;font-size:12.5px;color:var(--text);
-  border-bottom:1px solid var(--line);font-family:var(--mono)}
-tbody td{border-bottom:1px solid var(--line)}
-tbody tr:last-child th,tbody tr:last-child td{border-bottom:none}
-.cell{display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:12px}
+.matrix table{border-collapse:collapse;min-width:420px;font-size:13px}
+.matrix th,.matrix td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--line-soft)}
+.matrix thead th{color:var(--muted);font-weight:600}
+.cell{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;text-decoration:none;color:var(--text)}
 .dot{width:9px;height:9px;border-radius:50%;flex:none}
-.cell.pass .dot{background:var(--pass)}
-.cell.fail .dot{background:var(--fail)} .cell.fail{color:var(--fail)}
-.cell.skip .dot{background:var(--warn)} .cell.skip{color:var(--warn)}
-.cell.none .dot{background:none;border:1px dashed var(--none)} .cell.none{color:var(--none)}
-a.cell{text-decoration:none;color:inherit;border:0}
-a.cell:hover{color:var(--meta)}
-
-.mix{display:grid;gap:9px}
-.mixrow{display:grid;grid-template-columns:96px 1fr 112px;gap:12px;align-items:center}
-.mixrow .k{font-family:var(--mono);font-size:11px;letter-spacing:.1em;
-  text-transform:uppercase;color:var(--dim)}
-.mixrow .n{font-family:var(--mono);font-size:11.5px;color:var(--faint);text-align:right}
-.bar{display:flex;height:9px;border-radius:3px;overflow:hidden;background:rgba(140,154,176,.14)}
-.bar i{display:block;height:100%}
-.bar .ok{background:var(--pass)} .bar .bad{background:var(--fail)} .bar .gp{background:var(--warn)}
-
-section{margin-top:40px}
-.sec-head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;
-  border-bottom:1px solid var(--line);padding-bottom:8px;margin-bottom:14px;flex-wrap:wrap}
-.sec-head h2{font-family:var(--mono);font-weight:600;font-size:12px;letter-spacing:.18em;
-  text-transform:uppercase;color:var(--dim);margin:0}
-.sec-head .tally{font-family:var(--mono);font-size:12px;color:var(--faint)}
-.sec-note{color:var(--faint);font-size:12.5px;margin:-4px 0 14px}
-.sec-note code{font-family:var(--mono);font-size:11.5px;color:var(--dim)}
-.band{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;
-  color:var(--faint);margin:24px 0 10px;display:flex;align-items:center;gap:12px}
-.band::after{content:'';flex:1;height:1px;background:var(--line)}
+.cell.pass .dot{background:var(--pass-mark)} .cell.fail .dot{background:var(--fail-mark)}
+.cell.fail{color:var(--fail)} .cell.skip .dot{background:var(--warn-mark)} .cell.skip{color:var(--warn)}
+.cell.none{color:var(--muted)} .cell.none .dot{border:1px dashed var(--skip-mark)}
+.problem{background:var(--warn-bg);color:var(--warn);border-radius:6px;padding:8px 12px;font-size:13px;overflow-wrap:anywhere}
+.mix{display:grid;gap:9px;margin-top:12px}
+.mixrow{display:grid;grid-template-columns:96px 1fr 120px;gap:12px;align-items:center;font-size:13px}
+.mixrow .n{font-family:var(--mono);font-size:12px;color:var(--muted);text-align:right}
+.bar{display:flex;gap:2px;height:9px}
+.bar i{display:block;height:100%;border-radius:2px}
+.bar .ok{background:var(--pass-mark)} .bar .bad{background:var(--fail-mark)} .bar .gp{background:var(--warn-mark)}
 
 .filters{display:flex;gap:8px;flex-wrap:wrap}
-.filters button{font-family:var(--mono);font-size:11.5px;letter-spacing:.08em;
-  text-transform:uppercase;background:none;border:1px solid var(--line-strong);
-  color:var(--dim);padding:5px 12px;border-radius:20px;cursor:pointer}
-.filters button:hover{color:var(--text);border-color:var(--dim)}
-.filters button[aria-pressed="true"]{background:var(--text);color:var(--ink);border-color:var(--text)}
-.filters button:focus-visible{outline:2px solid var(--meta);outline-offset:2px}
-
-.cases{display:grid;gap:8px}
-details.case{border:1px solid var(--line);border-radius:11px;background:var(--panel);
-  overflow:hidden;scroll-margin-top:20px}
-details.case[open]{border-color:var(--line-strong)}
-details.case>summary{list-style:none;cursor:pointer;padding:14px 18px;
-  display:grid;grid-template-columns:22px 1fr auto auto;gap:16px;align-items:center}
+.filters button{font:inherit;font-size:13px;background:var(--panel);border:1px solid var(--line);color:var(--text-2);min-height:36px;padding:0 12px;border-radius:999px;cursor:pointer}
+.filters button[aria-pressed="true"]{background:var(--text);color:var(--panel);border-color:var(--text)}
+button:focus-visible,summary:focus-visible,a:focus-visible{outline:2px solid var(--link);outline-offset:2px}
+.band{font-size:12px;font-weight:600;color:var(--muted);margin:18px 0 8px;font-family:var(--mono)}
+.cases{display:flex;flex-direction:column;gap:8px}
+details.case{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden;scroll-margin-top:16px}
+details.case>summary{list-style:none;cursor:pointer;padding:12px 18px;display:grid;grid-template-columns:76px minmax(0,1fr) auto;gap:14px;align-items:center}
 details.case>summary::-webkit-details-marker{display:none}
 details.case>summary:hover{background:var(--panel-2)}
-details.case>summary:focus-visible{outline:2px solid var(--meta);outline-offset:-2px}
-.st{font-family:var(--mono);font-size:14px;font-weight:700}
-.case.PASS .st{color:var(--pass)} .case.FAIL .st,.case.ERROR .st{color:var(--fail)}
-.case.SKIPPED .st,.case.BLOCKED .st,.case.GAP .st,.case.UNVERIFIED .st{color:var(--warn)}
-.ct{font-size:14px}
-.cid{font-family:var(--mono);font-size:11.5px;color:var(--meta);margin-top:3px;word-break:break-all}
-.pills{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
-.pill{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;
-  color:var(--dim);border:1px solid var(--line-strong);padding:3px 9px;border-radius:20px;white-space:nowrap}
-.cms{font-family:var(--mono);font-size:12px;color:var(--faint);text-align:right;white-space:nowrap}
-.body{border-top:1px solid var(--line);background:var(--panel-2);padding:18px}
-
-.why{border-left:2px solid var(--fail);background:rgba(255,112,96,.08);
-  padding:11px 14px;margin:0 0 16px;border-radius:0 6px 6px 0}
-.why .cat{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
-  color:var(--fail);font-weight:600}
-.why .r{font-size:13px;margin-top:3px}
-.why .n{font-size:12.5px;color:var(--dim);margin-top:5px}
-.why.warn{border-left-color:var(--warn);background:rgba(240,177,82,.09)}
-.why.warn .cat{color:var(--warn)}
-
-.sub{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;
-  color:var(--faint);margin:18px 0 9px}
-.body>.sub:first-child{margin-top:0}
-
-.checks{display:grid;gap:1px;background:var(--line);border:1px solid var(--line);
-  border-radius:8px;overflow:hidden}
-.check{background:var(--panel);display:grid;grid-template-columns:20px 1fr auto;
-  gap:12px;padding:9px 14px;align-items:start}
-.check .mark{font-family:var(--mono);font-weight:700;font-size:12.5px}
-.check .name{font-size:13px}
-.check .expr{font-family:var(--mono);font-size:11.5px;color:var(--dim);
-  margin-top:2px;word-break:break-word;display:block}
-.check .src{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;
-  color:var(--faint);white-space:nowrap;padding-top:3px}
-.check.ok .mark{color:var(--pass)}
-.check.bad{background:rgba(255,112,96,.07)} .check.bad .mark{color:var(--fail)}
-.check.gap{background:rgba(240,177,82,.07)} .check.gap .mark,.check.gap .src{color:var(--warn)}
-
-details.step{border:1px solid var(--line);border-radius:8px;background:var(--panel);
-  overflow:hidden;margin-bottom:5px}
-details.step>summary{list-style:none;cursor:pointer;padding:9px 14px;
-  display:grid;grid-template-columns:58px 1fr 110px 46px 66px;gap:12px;align-items:center}
+.st{font-size:12px;font-weight:700;border-radius:4px;padding:1px 6px;text-align:center;white-space:nowrap}
+.st.PASS{background:var(--pass-bg);color:var(--pass-ink)}
+.st.FAIL,.st.ERROR{background:var(--fail-bg);color:var(--fail)}
+.st.UNVERIFIED,.st.GAP{background:var(--warn-bg);color:var(--warn)}
+.st.SKIPPED,.st.BLOCKED{background:var(--chip);color:var(--text-2)}
+.ct{font-weight:600;overflow-wrap:anywhere}
+.cid{font-family:var(--mono);font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+.pills{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;font-size:12px;color:var(--muted)}
+.pills span{border:1px solid var(--line);border-radius:999px;padding:1px 8px;white-space:nowrap}
+.body{border-top:1px solid var(--line-soft);padding:18px;display:flex;flex-direction:column;gap:14px}
+.why{border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:4px}
+.why.bad{background:var(--fail-row)} .why.warn{background:var(--warn-bg)}
+.why .cat{font-size:12px;font-weight:700}
+.why.bad .cat{color:var(--fail)} .why.warn .cat{color:var(--warn)}
+.why .n{font-size:13px;color:var(--text-2)}
+.checks{width:100%;border-collapse:collapse;font-size:13px}
+.checks th{color:var(--muted);text-align:left;font-weight:600;padding:6px 8px}
+.checks td{border-top:1px solid var(--line-soft);padding:8px;vertical-align:top}
+.checks tr.bad td{background:var(--fail-row)} .checks tr.gap td{background:var(--warn-bg)}
+.checks .r{font-weight:700;white-space:nowrap}
+.checks tr.bad .r{color:var(--fail)} .checks tr.ok .r{color:var(--pass)} .checks tr.gap .r{color:var(--warn)}
+.checks .e{font-family:var(--mono);font-size:12.5px;overflow-wrap:anywhere}
+.checks .s{color:var(--muted);font-size:12px;white-space:nowrap}
+.hint{font-size:13px;color:var(--muted)}
+details.step{border:1px solid var(--line-soft);border-radius:8px;overflow:hidden}
+details.step+details.step{margin-top:6px}
+details.step>summary{list-style:none;cursor:pointer;padding:8px 12px;display:grid;grid-template-columns:58px minmax(0,1fr) 54px 72px;gap:12px;align-items:center;font-family:var(--mono);font-size:12.5px}
 details.step>summary::-webkit-details-marker{display:none}
 details.step>summary:hover{background:var(--panel-2)}
-details.step>summary:focus-visible{outline:2px solid var(--meta);outline-offset:-2px}
-.verb{font-family:var(--mono);font-size:10px;letter-spacing:.08em;color:var(--meta);
-  border:1px solid var(--line-strong);border-radius:4px;padding:2px 0;text-align:center}
-.su{font-family:var(--mono);font-size:12px;min-width:0;overflow:hidden;
-  text-overflow:ellipsis;white-space:nowrap}
-.track{position:relative;height:9px;background:rgba(140,154,176,.12);border-radius:3px;overflow:hidden}
-.track i{position:absolute;top:0;bottom:0;background:var(--meta);border-radius:3px;min-width:3px}
-.track i.slow{background:var(--warn)} .track i.err{background:var(--fail)}
-.code-n{font-family:var(--mono);font-size:12px;font-weight:600;text-align:right}
-.code-n.ok{color:var(--pass)} .code-n.bad{color:var(--fail)}
-.sms{font-family:var(--mono);font-size:11.5px;color:var(--faint);text-align:right}
-
-.io{border-top:1px solid var(--line);background:var(--panel-2);padding:14px}
-.reqline{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:12px}
-.reqline .m{font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.08em;
-  background:var(--meta);color:var(--ink);padding:2px 8px;border-radius:4px}
-.reqline .u{font-family:var(--mono);font-size:12px;word-break:break-all;flex:1;min-width:200px}
-.copy{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;
-  background:none;border:1px solid var(--line-strong);color:var(--dim);
-  padding:3px 9px;border-radius:5px;cursor:pointer}
-.copy:hover{color:var(--text);border-color:var(--dim)}
-.copy:focus-visible{outline:2px solid var(--meta);outline-offset:2px}
-.panes{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}
-.panes.single{grid-template-columns:1fr}
-.panes+.panes{margin-top:2px}
+.verb{font-weight:700}
+.url{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.code-n{font-weight:700;text-align:right} .code-n.ok{color:var(--pass)} .code-n.bad{color:var(--fail)}
+.ms{color:var(--muted);text-align:right}
+.io{border-top:1px solid var(--line-soft);background:var(--panel-2);padding:12px;display:flex;flex-direction:column;gap:10px}
+.reqline{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;font-family:var(--mono);font-size:12.5px}
+.reqline .u{flex:1;min-width:200px;overflow-wrap:anywhere}
+.copy{font:inherit;font-size:12px;min-height:32px;padding:0 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--text);cursor:pointer;font-family:var(--sans)}
+.panes{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
 .pane{min-width:0}
-.pane h5{font-family:var(--mono);font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;
-  color:var(--faint);margin:0 0 6px}
-pre{margin:0 0 10px;background:var(--code);border:1px solid var(--line);border-radius:6px;
-  padding:10px 12px;font-family:var(--mono);font-size:11.5px;line-height:1.5;
-  overflow:auto;max-height:300px;color:var(--text);white-space:pre-wrap;word-break:break-word}
-pre.hdr{max-height:132px;color:var(--dim)}
+.pane h5{margin:0 0 4px;font-size:12px;color:var(--muted);font-weight:600}
+pre{margin:0;background:var(--panel);border:1px solid var(--line-soft);border-radius:6px;padding:10px 12px;font-family:var(--mono);font-size:12px;line-height:1.55;overflow:auto;max-height:320px;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--text)}
+pre.hdr{max-height:140px;color:var(--text-2)}
 .jk{color:var(--jk)} .js{color:var(--js)} .jn{color:var(--jn)} .jb{color:var(--jb)}
-.hint{font-family:var(--mono);font-size:11px;color:var(--faint);margin:0 0 10px}
-.shot{display:block;max-width:100%;border:1px solid var(--line, #ddd);border-radius:6px;margin:6px 0 10px}
-.trace{font-family:var(--mono);font-size:11px;margin:0 0 10px;word-break:break-all}
-.visual{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin:6px 0 12px}
-.visual figure{margin:0}.visual figcaption{font-family:var(--mono);font-size:10.5px;color:var(--faint);margin-bottom:4px}
-.visual img{display:block;max-width:100%;border:1px solid var(--line, #ddd);border-radius:6px}
-.errline{border-left:2px solid var(--fail);background:rgba(255,112,96,.09);
-  padding:9px 13px;border-radius:0 6px 6px 0;font-family:var(--mono);font-size:12px;
-  color:var(--fail);margin-bottom:12px;word-break:break-word}
-.timenote{font-size:12px;color:var(--faint);margin-top:9px}
-.timenote b{color:var(--warn);font-family:var(--mono);font-weight:500}
-pre.trace{max-height:340px;color:var(--dim);font-size:11px;margin-top:8px}
-details.raw{margin-top:18px}
-details.raw>summary{list-style:none;cursor:pointer;font-family:var(--mono);font-size:10.5px;
-  letter-spacing:.16em;text-transform:uppercase;color:var(--faint)}
-details.raw>summary::-webkit-details-marker{display:none}
-details.raw>summary:hover{color:var(--dim)}
-details.raw>summary::before{content:'▸ '}
-details.raw[open]>summary::before{content:'▾ '}
+.errline{background:var(--fail-row);color:var(--fail);border-radius:6px;padding:8px 12px;font-family:var(--mono);font-size:12.5px;overflow-wrap:anywhere}
+.timenote{font-size:12px;color:var(--muted)}
+.shot{display:block;max-width:100%;border:1px solid var(--line);border-radius:6px}
+.trace{font-size:13px;display:flex;flex-direction:column;gap:4px;overflow-wrap:anywhere}
+.trace code{font-size:12px;background:var(--panel-2);border:1px solid var(--line-soft);border-radius:6px;padding:6px 8px}
+.visual{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.visual figure{margin:0;display:flex;flex-direction:column;gap:4px}
+.visual figcaption{font-size:12px;color:var(--muted)}
+.visual img{display:block;max-width:100%;border:1px solid var(--line);border-radius:6px}
+details.raw>summary{cursor:pointer;font-size:13px;color:var(--muted)}
+details.raw pre{margin-top:8px}
+.gaps{display:flex;flex-direction:column}
+.gaprow{display:grid;grid-template-columns:1fr auto;gap:14px;padding:10px 0;border-top:1px solid var(--line-soft);align-items:baseline}
+.gaprow .e{font-family:var(--mono);font-size:12px;color:var(--muted);display:block}
+.gaprow .cnt{font-size:12px;color:var(--warn);white-space:nowrap}
+footer{font-size:12px;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 16px}
 
-.gaps,.rows{display:grid;gap:1px;background:var(--line);border:1px solid var(--line);
-  border-radius:10px;overflow:hidden}
-.gaprow{background:var(--panel);display:grid;grid-template-columns:22px 1fr auto;
-  gap:14px;padding:12px 16px;align-items:center}
-.gaprow .mark{font-family:var(--mono);color:var(--warn);font-weight:700}
-.gaprow .name{font-size:13px}
-.gaprow .expr{font-family:var(--mono);font-size:11.5px;color:var(--dim);margin-top:3px;display:block}
-.gaprow .cnt{font-family:var(--mono);font-size:11.5px;color:var(--warn);white-space:nowrap}
-.row{background:var(--panel);display:grid;grid-template-columns:1fr auto;gap:16px;
-  padding:11px 16px;align-items:center}
-.row .nm{font-size:13px}
-.row .rs{font-family:var(--mono);font-size:11.5px;color:var(--dim);margin-top:2px;display:block}
-.row .tag{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
-  color:var(--warn);white-space:nowrap}
-.chg{background:var(--panel);display:grid;grid-template-columns:78px 1fr;gap:14px;
-  padding:10px 16px;align-items:baseline}
-.chg .k{font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--dim);white-space:nowrap}
-.chg.weak .k{color:var(--fail)}
-.chg .c{font-size:13px}
-.chg .w{font-family:var(--mono);font-size:12px;color:var(--text);margin-top:3px;display:block;word-break:break-all}
-.chg .w .from{color:var(--dim);text-decoration:line-through}
-.chg .n{font-family:var(--mono);font-size:11px;color:var(--faint);margin-top:2px;display:block}
-
-.banner{padding:11px 15px;border-radius:8px;margin:22px 0 0;font-size:13.5px;
-  border:1px solid var(--line-strong)}
-.banner.bad{background:rgba(255,112,96,.09);border-color:rgba(255,112,96,.32)}
-a{color:var(--meta);text-decoration:none;border-bottom:1px solid rgba(167,139,250,.35)}
-a:hover{border-bottom-color:var(--meta)}
-footer{margin-top:50px;padding-top:16px;border-top:1px solid var(--line);
-  font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;
-  color:var(--faint);display:flex;flex-wrap:wrap;gap:6px 18px}
-
-@media (max-width:860px){
-  body{padding:26px 14px 60px}
-  .hero{grid-template-columns:1fr}
-  .stamp{justify-self:start}
-  details.case>summary{grid-template-columns:20px 1fr;gap:10px}
-  .pills,.cms{display:none}
-  details.step>summary{grid-template-columns:54px 1fr 60px}
-  .track,.code-n{display:none}
-  .panes{grid-template-columns:1fr}
-  .mixrow{grid-template-columns:78px 1fr 96px}
+@media (max-width:720px){
+  .wrap{padding:0 16px}
+  .verdict{padding:20px}
+  .card{padding:16px}
+  .compare>div+div{border-left:none;padding-left:0;border-top:1px solid var(--line-soft);padding-top:16px}
+  details.case>summary{grid-template-columns:72px minmax(0,1fr)}
+  .pills{display:none}
+  details.step>summary{grid-template-columns:50px minmax(0,1fr) 46px}
+  .ms{display:none}
+  .mixrow{grid-template-columns:72px 1fr 96px}
+  .chg{grid-template-columns:1fr}
 }
 @media print{
-  body{background:#fff;color:#000;padding:0}
-  details{break-inside:avoid}
-  details>summary{cursor:default}
+  body{background:#fff}
   .filters,.copy{display:none}
+  details{break-inside:avoid}
 }
 </style>
 </head>
 <body>
-<div class="wrap">
+{%- set status_label = {'PASS':'通过','FAIL':'失败','ERROR':'出错','SKIPPED':'跳过','BLOCKED':'被阻塞','GAP':'缺口','UNVERIFIED':'未判定'} %}
+{%- set nb = against_baseline or {} %}
+{%- set nr = against_run or {} %}
+{%- set newly_base = nb.get('newly_failing', []) %}
+{%- set newly_run = nr.get('newly_failing', []) %}
 
-{%- set marks = {'PASS':'✓','FAIL':'✗','ERROR':'✗','SKIPPED':'–','BLOCKED':'–','GAP':'!','UNVERIFIED':'?'} %}
+<header class="top">
+  <div class="wrap">
+    <div class="brand">{{ title }}</div>
+    <div class="meta">
+      <span>{{ run_id or 'run' }}</span>
+      {%- if selector %}<span>选择器 {{ selector }}</span>{% endif %}
+      {%- if env %}<span>环境 {{ env }}</span>{% endif %}
+      <span>{{ generated }}</span>
+      <span>耗时 {{ '%.2f'|format(duration) }} s</span>
+    </div>
+  </div>
+</header>
 
-<div class="eyebrow">
-  <span>{{ run_id or 'run' }}</span><span class="sep">/</span>
-  {%- if env %}<span class="env">{{ env }}</span><span class="sep">/</span>{% endif %}
-  <span>{{ totals.total }} cases</span><span class="sep">/</span>
-  <span>{{ check_totals.passed + check_totals.failed }} checks</span>
-</div>
-<h1>{{ title }}</h1>
-<div class="runid">{{ generated }} · {{ '%.2f'|format(duration) }}s{% if selector %} · {{ selector }}{% endif %}</div>
+<main class="wrap">
 
-{% if collect_error %}
-<div class="banner bad"><strong>收集失败 —— 一条用例都没跑起来。</strong> {{ collect_error }}</div>
-{% endif %}
+<section class="card verdict" aria-labelledby="verdict" data-verdict="{{ verdict.status }}">
+  <div class="main">
+    <span class="stamp {{ verdict.status }}">
+      {%- if verdict.status in ('fail', 'error') %}
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M9 9l6 6M15 9l-6 6"></path></svg>
+      {%- elif verdict.status == 'review' %}
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l9 16H3z"></path><path d="M12 10v4M12 17v.5"></path></svg>
+      {%- else %}
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M8 12l3 3 5-6"></path></svg>
+      {%- endif %}
+      {{ verdict.label }}
+    </span>
+    <h1 id="verdict">{{ verdict.sentence }}</h1>
+    <ul>
+      {%- if newly_base or nb.get('no_passing_record') %}
+      <li>{% if newly_base %}其中 {{ newly_base|length }} 条在基线里是通过的，这次新红{% endif %}
+        {%- if newly_base and nb.get('no_passing_record') %}；{% endif %}
+        {%- if nb.get('no_passing_record') %}{{ nb.no_passing_record|length }} 条在基线里没有通过记录{% endif %}。</li>
+      {%- endif %}
+      {%- if totals.unverified %}<li>{{ totals.unverified }} 条用例通过了，但什么都没判定，它的“通过”不代表任何结论。</li>{% endif %}
+      {%- if totals.skipped %}<li>{{ totals.skipped }} 条用例前置条件不满足，没有执行，不计入失败。</li>{% endif %}
+      {%- if weakened and not gate_weakened %}<li>判定变弱不会让这次运行失败；在 CI 里加 <code>--fail-on-weakened</code> 才会拦下。</li>{% endif %}
+      {%- if flaky %}<li>{{ flaky|length }} 条标记为不稳定，无论这次是否通过都列在下面。</li>{% endif %}
+    </ul>
+    {%- if collect_error %}<pre class="collect">{{ collect_error }}</pre>{% endif %}
+  </div>
+  <dl>
+    <dt>对比基线</dt>
+    <dd>{% if baseline %}<code>{{ baseline_display }}</code><span class="sub">随代码提交，本机和 CI 看到的一样</span>{% else %}无<span class="sub">用 <code>--update-baseline</code> 生成并提交</span>{% endif %}</dd>
+    <dt>对比运行</dt>
+    <dd>{% if nr %}<code>{{ nr.run_id or '—' }}</code><span class="sub">{{ '来源：传入的报告' if nr.source == 'argument' else '来源：本机缓存，只在这台机器上有' }}</span>{% else %}无<span class="sub">可用 <code>--compare-with</code> 传入一份 report.json</span>{% endif %}</dd>
+    <dt>退出码</dt>
+    <dd><code>{{ 0 if verdict.releasable else 1 }}</code></dd>
+  </dl>
+</section>
 
-<div class="hero">
-  <div class="stack">
+<section class="tiles" aria-label="可信度指标">
+  {%- set fails = totals.failed + totals.error %}
+  <a class="tile" href="#cases">
+    <span class="k">用例结果 · 共 {{ totals.total }} 条</span>
+    <span class="v {{ 'fail' if fails else '' }}"><b>{{ fails if fails else totals.passed }}</b><span>{{ '失败' if fails else '通过' }}</span></span>
+    {%- if totals.total %}
+    <span class="stack" aria-hidden="true">
+      {%- if totals.passed %}<i class="p" style="flex:{{ totals.passed }}"></i>{% endif %}
+      {%- if fails %}<i class="f" style="flex:{{ fails }}"></i>{% endif %}
+      {%- if totals.unverified %}<i class="u" style="flex:{{ totals.unverified }}"></i>{% endif %}
+      {%- set rest = totals.skipped + totals.blocked + totals.gap %}
+      {%- if rest %}<i class="k" style="flex:{{ rest }}"></i>{% endif %}
+    </span>
+    {%- endif %}
+    <span class="d">{{ totals.passed }} 通过 · {{ fails }} 失败 · {{ totals.unverified }} 未判定 · {{ totals.skipped }} 跳过</span>
+    <span class="s">通过率 {{ pass_rate }}{% if pass_rate_basis.denominator %} = {{ pass_rate_basis.passed }} / {{ pass_rate_basis.denominator }}{% endif %}，跳过与未判定不进分母</span>
+  </a>
 
-    {% for grid in coverage %}
-    <div class="card matrix">
-      <h3>{{ grid.title }} · 覆盖 {{ grid.filled }}/{{ grid.total }}</h3>
-      {% if grid.note %}<p class="note">{{ grid.note }}</p>{% endif %}
-      <table>
-        <thead><tr><th>{{ grid.y_label }}</th>
-          {%- for x in grid.x_labels %}<th>{{ x }}</th>{% endfor %}</tr></thead>
-        <tbody>
-          {%- for row in grid.rows %}
-          <tr><th>{{ row.label }}</th>
-            {%- for cell in row.cells %}
-            <td>
-              {%- if cell.cases %}
-              <a class="cell {{ cell.status }}" href="#{{ cell.cases[0].nodeid }}">
-                <span class="dot"></span>{{ cell.cases|length }} 例</a>
-              {%- else %}
-              <span class="cell none"><span class="dot"></span>无用例</span>
-              {%- endif %}
+  <a class="tile" href="{{ '#changes' if judgement_changes else '#cases' }}">
+    <span class="k">判定强度{% if baseline %} · 对比基线{% endif %}</span>
+    <span class="v"><b>{{ check_totals.passed + check_totals.failed }}</b><span>条判定</span></span>
+    {%- if weakened %}
+    <span class="flag warn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6"></path></svg>{{ weakened }} 处变弱</span>
+    {%- elif baseline %}<span class="flag ok">没有变弱</span>
+    {%- else %}<span class="flag ok">没有基线</span>{% endif %}
+    <span class="d">{{ check_totals.passed }} 成立 · {{ check_totals.failed }} 不成立</span>
+  </a>
+
+  <a class="tile" href="#attention">
+    <span class="k">未判定</span>
+    <span class="v {{ 'warn' if totals.unverified else '' }}"><b>{{ totals.unverified }}</b><span>条</span></span>
+    <span class="d">通过了，但没有任何 Check、成立的 assert 或 pytest.raises</span>
+  </a>
+
+  <a class="tile" href="#gaps">
+    <span class="k">已声明的缺口</span>
+    <span class="v"><b>{{ check_totals.gap }}</b><span>处</span></span>
+    {%- if gap_list %}<span class="d">{{ gap_list[0].name }}{% if gap_list|length > 1 %} 等 {{ gap_list|length }} 类{% endif %}</span>{% else %}<span class="d">没有用例声明 gap()</span>{% endif %}
+  </a>
+
+  {%- for grid in coverage[:1] %}
+  <a class="tile" href="#coverage">
+    <span class="k">维度覆盖{% if grid.title %} · {{ grid.title }}{% endif %}</span>
+    {%- if grid.problem %}
+    <span class="v warn"><b>?</b><span>无法识别</span></span>
+    <span class="s">{{ grid.problem }}</span>
+    {%- else %}
+    <span class="v"><b>{{ grid.filled }} / {{ grid.total }}</b><span>格</span></span>
+    {%- if grid.rows|length <= 4 and grid.x_labels|length <= 4 %}
+    <table class="mini">
+      <thead><tr><th scope="col"></th>{% for x in grid.x_labels %}<th scope="col">{{ x }}</th>{% endfor %}</tr></thead>
+      <tbody>{% for row in grid.rows %}<tr><th scope="row">{{ row.label }}</th>{% for cell in row.cells %}<td class="{{ 'hit' if cell.cases else 'miss' }}">{{ (cell.cases|length ~ ' 条') if cell.cases else '无' }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+    </table>
+    {%- endif %}
+    {%- endif %}
+  </a>
+  {%- else %}
+  <div class="tile">
+    <span class="k">维度覆盖</span>
+    <span class="v"><b>—</b></span>
+    <span class="s">没有声明 COVERAGE，看不出哪些组合没测</span>
+  </div>
+  {%- endfor %}
+</section>
+
+{%- if baseline or nr %}
+<section class="card" aria-labelledby="newred">
+  <h2 id="newred">这次新红的</h2>
+  <div class="compare" style="margin-top:14px">
+    {%- if baseline %}
+    <div>
+      <div class="row"><b>对比基线</b><code class="sub">{{ baseline_display }}</code></div>
+      <div class="nums">
+        <div class="num {{ 'hot' if newly_base else '' }}"><div class="l">基线通过，这次失败</div><b>{{ newly_base|length }}</b></div>
+        <div class="num"><div class="l">基线里无通过记录</div><b>{{ nb.get('no_passing_record', [])|length }}</b></div>
+        <div class="num"><div class="l">新用例</div><b>{{ nb.get('new_cases', [])|length }}</b></div>
+      </div>
+      {%- if newly_base or nb.get('no_passing_record') %}
+      <ul class="list">
+        {%- for nid in newly_base %}{% set c = case_by_id.get(nid) %}
+        <li><span class="tag new">新红</span><a href="#{{ nid }}"><b>{{ c.title or c.name if c else nid }}</b></a>{% if c and c.title %}<code class="sub">{{ c.name }}</code>{% endif %}</li>
+        {%- endfor %}
+        {%- for nid in nb.get('no_passing_record', []) %}{% set c = case_by_id.get(nid) %}
+        <li><span class="tag plain">无通过记录</span><a href="#{{ nid }}"><b>{{ c.title or c.name if c else nid }}</b></a>{% if c and c.title %}<code class="sub">{{ c.name }}</code>{% endif %}</li>
+        {%- endfor %}
+      </ul>
+      {%- endif %}
+    </div>
+    {%- endif %}
+    {%- if nr %}
+    <div>
+      <div class="row"><b>对比运行</b><span class="tag source">{{ '传入的报告' if nr.source == 'argument' else '本机缓存' }}</span><code class="sub">{{ nr.run_id }}{% if nr.generated %} · {{ nr.generated }}{% endif %}</code></div>
+      <div class="nums">
+        <div class="num {{ 'hot' if newly_run else '' }}"><div class="l">新失败</div><b>{{ newly_run|length }}</b></div>
+        <div class="num"><div class="l">仍在失败</div><b>{{ nr.still_failing|length }}</b></div>
+        <div class="num"><div class="l">恢复通过</div><b>{{ nr.recovered|length }}</b></div>
+      </div>
+      {%- if newly_run or nr.recovered %}
+      <ul class="list">
+        {%- for nid in newly_run %}{% set c = case_by_id.get(nid) %}
+        <li><span class="tag new">新失败</span><a href="#{{ nid }}"><b>{{ c.title or c.name if c else nid }}</b></a></li>
+        {%- endfor %}
+        {%- for nid in nr.recovered %}{% set c = case_by_id.get(nid) %}
+        <li><span class="tag plain">恢复</span><a href="#{{ nid }}">{{ c.title or c.name if c else nid }}</a></li>
+        {%- endfor %}
+      </ul>
+      {%- endif %}
+      {%- if nr.selector != selector or nr.env != env %}<div class="sub">注意：那次运行的选择器或环境和这次不同（{{ nr.selector or '全部' }} · {{ nr.env or 'default' }}）。</div>{% endif %}
+    </div>
+    {%- endif %}
+  </div>
+</section>
+{%- endif %}
+
+{%- if attention %}
+<section class="card" id="attention" aria-labelledby="bycat">
+  <div class="row"><h2 id="bycat">需要看的用例 · 按归因分组</h2><span class="sub">归因由规则判断，不经过 LLM；每条都写了依据</span></div>
+  <div class="groups" style="margin-top:16px">
+    {%- for g in attention %}
+    <div class="group" data-category="{{ g.key }}">
+      <div class="row">
+        <span class="badge {{ 'sut' if g.blames_system_under_test else ('untrusted' if g.key == 'untrusted' else 'ours') }}">{{ g.label }} · {{ g.cases|length }}</span>
+        {%- if g.next_step %}<span class="sub">{{ '下一步：' if g.key != 'untrusted' else '' }}{{ g.next_step }}</span>{% endif %}
+      </div>
+      <div class="scroll">
+        <table class="t wide">
+          <thead><tr><th scope="col">用例</th><th scope="col">{{ '情况' if g.key == 'untrusted' else '不成立的判定' }}</th><th scope="col">依据</th>{% if baseline or nr %}<th scope="col">对比</th>{% endif %}</tr></thead>
+          <tbody>
+          {%- for c in g.cases %}
+          {%- set bad_checks = c.judgements|rejectattr('ok')|list %}
+          <tr>
+            <td><a href="#{{ c.nodeid }}"><b>{{ c.title or c.name }}</b></a>{% if c.title %}<div class="sub">{{ c.name }}</div>{% endif %}</td>
+            <td class="fx">
+              {%- if g.key == 'untrusted' %}
+                {%- if c.status == 'UNVERIFIED' %}<div>未判定：通过了，没有判定任何东西</div>{% endif %}
+                {%- if c.flaky %}<div>标记为不稳定：{{ c.flaky }}</div>{% endif %}
+                {%- if weak_by_case.get(c.nodeid) %}<div>比基线弱 {{ weak_by_case[c.nodeid] }} 处</div>{% endif %}
+                {%- if c.gaps %}<div>声明了 {{ c.gaps|length }} 处缺口</div>{% endif %}
+              {%- elif bad_checks %}
+                {%- for k in bad_checks[:3] %}<div>{{ k.expr or k.name }}</div>{% endfor %}
+                {%- if bad_checks|length > 3 %}<div class="sub">另有 {{ bad_checks|length - 3 }} 条</div>{% endif %}
+              {%- else %}<div>{{ (c.message or '—').splitlines()[0] }}</div>{% endif %}
             </td>
-            {%- endfor %}
+            <td>{{ c.reason or '—' }}{% if c.confidence %}<div class="sub">{{ confidence_label.get(c.confidence, c.confidence) }}</div>{% endif %}</td>
+            {%- if baseline or nr %}
+            <td>
+              {%- if c.nodeid in newly_base %}<span class="tag new">新红</span>
+              {%- elif c.nodeid in nb.get('no_passing_record', []) %}<span class="sub">基线无通过记录</span>{% endif %}
+              {%- if c.nodeid in newly_run %} <span class="tag plain">比上次新失败</span>{% endif %}
+            </td>
+            {%- endif %}
           </tr>
           {%- endfor %}
-        </tbody>
-      </table>
-    </div>
-    {% endfor %}
-
-    {% if by_source %}
-    <div class="card">
-      <h3>判定构成 · 按维度</h3>
-      <p class="note">这里数的是断言，不是用例。一个套件可以每条用例都通过，却几乎什么都没判。</p>
-      <div class="mix">
-        {%- for src, n in by_source.items() %}
-        {%- set gp = n.get('gap', 0) %}
-        {%- set tot = (n.passed + n.failed + gp) or 1 %}
-        <div class="mixrow">
-          <span class="k">{{ src }}</span>
-          <span class="bar">
-            {%- if n.passed %}<i class="ok" style="width:{{ '%.1f'|format(100.0 * n.passed / tot) }}%"></i>{% endif %}
-            {%- if n.failed %}<i class="bad" style="width:{{ '%.1f'|format(100.0 * n.failed / tot) }}%"></i>{% endif %}
-            {%- if gp %}<i class="gp" style="width:{{ '%.1f'|format(100.0 * gp / tot) }}%"></i>{% endif %}
-          </span>
-          <span class="n">{{ n.passed }}✓{% if n.failed %} {{ n.failed }}✗{% endif %}{% if gp %} {{ gp }}!{% endif %}</span>
-        </div>
-        {%- endfor %}
+          </tbody>
+        </table>
       </div>
     </div>
-    {% endif %}
-
+    {%- endfor %}
   </div>
+</section>
+{%- endif %}
 
-  <div class="stamp {{ ('warn' if weakened else 'good') if ok else 'bad' }}">
-    <div class="big">{{ totals.passed }}/{{ totals.total }}</div>
-    <div class="verdict">{{ ('PASS · 判定变弱' if weakened else 'PASS') if ok else 'FAIL' }}</div>
-    <div class="rule"></div>
-    <div class="line">通过率 {{ pass_rate }}</div>
-    {%- if totals.failed or totals.error %}<div class="line">{{ totals.failed + totals.error }} failed</div>{% endif %}
-    {%- if inconclusive %}<div class="line">{{ inconclusive|length }} 无结论</div>{% endif %}
-    {%- if check_totals.gap %}<div class="line">{{ check_totals.gap }} 处未覆盖</div>{% endif %}
-    {%- if weakened %}<div class="line">{{ weakened }} 处判定变弱</div>{% endif %}
-    <div class="line">{{ '%.2f'|format(duration) }}s wall</div>
-  </div>
-</div>
-
-{% if judgement_changes %}
-<section>
-  <div class="sec-head">
-    <h2>判定变化</h2>
-    <span class="tally">{{ weakened }} 处变弱 · 共 {{ judgement_changes|length }} 处</span>
-  </div>
-  <p class="sec-note">
-    和基线 <code>{{ baseline }}</code> 比，这次运行实际执行的判定有哪些不同。比的是运行时的判定，不是源码文本。
-    {%- if weakened %} <strong>变弱的那几处要有人看过</strong>：确认无误后用 <code>ipandora run --update-baseline</code> 接受，否则恢复它们。{% endif %}
-  </p>
-  <div class="rows">
+{%- if judgement_changes %}
+<section class="card" id="changes" aria-labelledby="chg">
+  <div class="row"><h2 id="chg">判定变化</h2><span class="sub">{{ weakened }} 处变弱 · 共 {{ judgement_changes|length }} 处 · 对比 <code>{{ baseline_display }}</code></span></div>
+  <p class="sub">比的是这次实际执行的判定，不是源码文本。失败的用例中途停止，不参与比较，通过后再比。
+    {%- if weakened %} 变弱的那几处要有人确认：有意的就用 <code>ipandora run --update-baseline</code> 写回基线，改动会出现在 PR 的 diff 里；不是有意的，把判定加回来。{% endif %}</p>
+  <div class="changes">
     {%- for c in judgement_changes %}
     <div class="chg {{ 'weak' if c.weakening else '' }}">
       <span class="k">{{ c.label }}</span>
       <span>
         <span class="c">{{ c.case }}</span>
-        <span class="w">
-          {%- if c.before and c.after %}<span class="from">{{ c.before }}</span> → {{ c.after }}
-          {%- else %}{{ c.before or c.after }}{% endif %}</span>
+        <span class="w">{% if c.before and c.after %}<span class="from">{{ c.before }}</span> → {{ c.after }}{% else %}{{ c.before or c.after }}{% endif %}</span>
         {%- if c.note %}<span class="n">{{ c.note }}</span>{% endif %}
       </span>
     </div>
     {%- endfor %}
   </div>
 </section>
-{% endif %}
+{%- endif %}
 
-{% if triage and triage.headline %}
-<section>
-  <div class="sec-head">
-    <h2>失败归因</h2>
-    <span class="tally">{{ triage.headline }}</span>
-  </div>
-  <p class="sec-note">
-    规则分类，不调模型。<strong>{{ triage.blames_system_under_test }}</strong> 条指向被测系统；
-    其余是环境或数据问题 —— 修它们不会改变产品。
-  </p>
-</section>
-{% endif %}
-
-{% if inconclusive %}
-<section>
-  <div class="sec-head">
-    <h2>什么都没测到</h2>
-    <span class="tally">{{ inconclusive|length }} 条</span>
-  </div>
-  <p class="sec-note">这些用例没有对产品作出任何判断，因此不计入通过率。</p>
-  <div class="rows">
-    {%- for case in inconclusive %}
-    <div class="row">
-      <span>
-        <span class="nm">{{ case.title or case.name }}</span>
-        <span class="rs">{{ case.reason or case.message or '—' }}</span>
-      </span>
-      <span class="tag">{{ case.status }}</span>
+{%- if coverage or by_source %}
+<section class="card" id="coverage" aria-labelledby="cov">
+  <h2 id="cov">判定构成与覆盖</h2>
+  {%- for grid in coverage %}
+  <div style="margin-top:14px">
+    <h3>{{ grid.title or '覆盖' }}{% if not grid.problem %} · {{ grid.filled }} / {{ grid.total }}{% endif %}</h3>
+    {%- if grid.note %}<p class="sub">{{ grid.note }}</p>{% endif %}
+    {%- if grid.problem %}<div class="problem">{{ grid.problem }}</div>
+    {%- else %}
+    <div class="matrix">
+      <table>
+        <thead><tr><th scope="col">{{ grid.y_label }}</th>{% for x in grid.x_labels %}<th scope="col">{{ x }}</th>{% endfor %}</tr></thead>
+        <tbody>
+          {%- for row in grid.rows %}
+          <tr><th scope="row">{{ row.label }}</th>
+            {%- for cell in row.cells %}
+            <td>{% if cell.cases %}<a class="cell {{ cell.status }}" href="#{{ cell.cases[0].nodeid }}"><span class="dot"></span>{{ cell.cases|length }} 条</a>{% else %}<span class="cell none"><span class="dot"></span>无用例</span>{% endif %}</td>
+            {%- endfor %}
+          </tr>
+          {%- endfor %}
+        </tbody>
+      </table>
     </div>
-    {%- endfor %}
+    {%- endif %}
   </div>
+  {%- endfor %}
+  {%- if by_source %}
+  <div style="margin-top:18px">
+    <h3>判定按来源</h3>
+    <p class="sub">数的是判定，不是用例。一个套件可以每条用例都通过，却几乎什么都没判。</p>
+    <div class="mix">
+      {%- for src, n in by_source.items() %}
+      {%- set gp = n.get('gap', 0) %}
+      <div class="mixrow">
+        <span class="mono">{{ src }}</span>
+        <span class="bar" aria-hidden="true">
+          {%- if n.passed %}<i class="ok" style="flex:{{ n.passed }}"></i>{% endif %}
+          {%- if n.failed %}<i class="bad" style="flex:{{ n.failed }}"></i>{% endif %}
+          {%- if gp %}<i class="gp" style="flex:{{ gp }}"></i>{% endif %}
+        </span>
+        <span class="n">{{ n.passed }} 成立{% if n.failed %} · {{ n.failed }} 不成立{% endif %}{% if gp %} · {{ gp }} 缺口{% endif %}</span>
+      </div>
+      {%- endfor %}
+    </div>
+  </div>
+  {%- endif %}
 </section>
-{% endif %}
+{%- endif %}
 
-<section>
-  <div class="sec-head">
-    <h2>用例明细</h2>
-    <div class="filters">
-      <button data-filter="all" aria-pressed="true">全部</button>
-      <button data-filter="bad" aria-pressed="false">仅失败</button>
-      <button data-filter="gap" aria-pressed="false">有缺口</button>
-      <button data-filter="none" aria-pressed="false">无结论</button>
+<section aria-labelledby="casesh" id="cases">
+  <div class="row" style="margin-bottom:12px">
+    <h2 id="casesh">用例明细</h2>
+    <div class="filters end" role="group" aria-label="筛选用例">
+      <button type="button" data-filter="all" aria-pressed="true">全部</button>
+      <button type="button" data-filter="bad" aria-pressed="false">失败</button>
+      <button type="button" data-filter="none" aria-pressed="false">无结论</button>
+      <button type="button" data-filter="gap" aria-pressed="false">有缺口</button>
     </div>
   </div>
 
-  {% for suite, suite_cases in by_suite.items() %}
+  {%- for suite, suite_cases in by_suite.items() %}
   <div class="band" data-band="{{ suite }}">{{ suite }}</div>
   <div class="cases">
     {%- for case in suite_cases %}
     {%- set bad = case.status in ('FAIL', 'ERROR') %}
-    <details class="case {{ case.status }}" id="{{ case.nodeid }}"
-             data-status="{{ case.status }}" data-gap="{{ 1 if case.gaps else 0 }}"
-             {% if bad %}open{% endif %}>
+    <details class="case" id="{{ case.nodeid }}" data-status="{{ case.status }}" data-gap="{{ 1 if case.gaps else 0 }}" {% if bad %}open{% endif %}>
       <summary>
-        <span class="st">{{ marks.get(case.status, '?') }}</span>
-        <span>
-          <span class="ct">{{ case.title or case.name }}</span>
-          <span class="cid">{{ case.name }}</span>
-        </span>
+        <span class="st {{ case.status }}">{{ status_label.get(case.status, case.status) }}</span>
+        <span><span class="ct">{{ case.title or case.name }}</span><span class="cid" style="display:block">{{ case.nodeid or case.name }}</span></span>
         <span class="pills">
-          {%- for key, value in case.dims.items() %}<span class="pill">{{ value }}</span>{% endfor %}
-          {%- if case.checks %}<span class="pill">{{ case.checks_passed }}✓{% if case.checks_failed %} {{ case.checks_failed }}✗{% endif %}{% if case.gaps %} {{ case.gaps|length }}!{% endif %}</span>{% endif %}
+          {%- for key, value in case.dims.items() %}<span>{{ key }}={{ value }}</span>{% endfor %}
+          {%- if case.judgements %}<span>{{ case.checks_passed }} / {{ case.judgements|length }} 成立</span>{% endif %}
+          <span>{{ '%.3f'|format(case.duration) }} s</span>
         </span>
-        <span class="cms">{{ '%.3f'|format(case.duration) }}s</span>
       </summary>
       <div class="body">
 
         {%- if case.reason %}
-        <div class="why {{ '' if bad else 'warn' }}">
-          <div class="cat">{{ case.category or case.status }}</div>
-          <div class="r">{{ case.reason }}</div>
-          {%- if case.next_step %}<div class="n">↳ {{ case.next_step }}</div>{% endif %}
+        <div class="why {{ 'bad' if bad else 'warn' }}">
+          <span class="cat">{{ category_label.get(case.category, case.category or status_label.get(case.status, case.status)) }}{% if case.confidence %} · {{ confidence_label.get(case.confidence, case.confidence) }}{% endif %}</span>
+          <span>{{ case.reason }}</span>
+          {%- if case.next_step %}<span class="n">下一步：{{ case.next_step }}</span>{% endif %}
         </div>
+        {%- elif case.status == 'UNVERIFIED' %}
+        <div class="why warn"><span class="cat">未判定</span><span>{{ case.message }}</span><span class="n">下一步：补上判定；有意不判的，用 gap() 声明出来</span></div>
         {%- endif %}
 
         {%- if case.checks %}
-        <div class="sub">判定 · {{ case.checks_passed }} 通过{% if case.checks_failed %} · {{ case.checks_failed }} 失败{% endif %}{% if case.gaps %} · {{ case.gaps|length }} 未覆盖{% endif %}</div>
-        <div class="checks">
-          {%- for check in case.checks %}
-          {%- set cls = 'gap' if check.kind == 'gap' else ('ok' if check.ok else 'bad') %}
-          <div class="check {{ cls }}">
-            <span class="mark">{{ '!' if cls == 'gap' else ('✓' if check.ok else '✗') }}</span>
-            <span>
-              <span class="name">{{ check.name }}</span>
-              {%- if check.expr %}<span class="expr">{{ check.expr }}</span>{% endif %}
-            </span>
-            <span class="src">{{ check.src }}</span>
+        <div>
+          <h3>判定 · {{ case.checks_failed }} / {{ case.judgements|length }} 不成立{% if case.gaps %} · {{ case.gaps|length }} 处缺口{% endif %}</h3>
+          <div class="scroll" style="margin-top:8px;border:0">
+          <table class="checks">
+            <thead><tr><th scope="col">结果</th><th scope="col">判定</th><th scope="col">实际</th><th scope="col">来源</th></tr></thead>
+            <tbody>
+            {%- for check in case.checks|sort(attribute='ok') %}
+            {%- set cls = 'gap' if check.kind == 'gap' else ('ok' if check.ok else 'bad') %}
+            <tr class="{{ cls }}">
+              <td class="r">{{ '缺口' if cls == 'gap' else ('成立' if check.ok else '不成立') }}</td>
+              <td class="e">{{ check.name }}</td>
+              <td class="e">{{ check.expr or '—' }}</td>
+              <td class="s">{{ check.src }}</td>
+            </tr>
+            {%- endfor %}
+            </tbody>
+          </table>
           </div>
-          {%- endfor %}
         </div>
         {%- elif case.status == 'PASS' %}
-        <div class="hint">这条用例通过了，但没有留下任何判定 —— 它可能什么都没断言。</div>
+        <div class="hint">这条用例通过了，但没有留下任何判定。</div>
         {%- endif %}
 
         {%- set visual = case.artifacts|selectattr('kind', 'in', ['golden', 'actual', 'diff'])|list %}
         {%- for group in visual|map(attribute='group')|unique %}
-        <div class="sub">图像判定 · {{ group }}</div>
-        <div class="visual">
-          {%- for kind, title in [('golden', '基准图'), ('actual', '实际'), ('diff', '差异（红框为变化位置）')] %}
-          {%- for a in visual if a.group == group and a.kind == kind %}
-          <figure><figcaption>{{ title }}</figcaption>
-            {%- if a.src %}<img src="{{ a.src }}" alt="{{ title }}" loading="lazy">
-            {%- else %}<code>{{ a.path }}</code>{% endif %}</figure>
-          {%- endfor %}
-          {%- endfor %}
+        <div>
+          <h3>图像判定 · {{ group }}</h3>
+          <div class="visual" style="margin-top:8px">
+            {%- for kind, ttl in [('golden', '基准图'), ('actual', '本次'), ('diff', '差异（红框为变化位置）')] %}
+            {%- for a in visual if a.group == group and a.kind == kind %}
+            <figure><figcaption>{{ ttl }}</figcaption>{% if a.src %}<img src="{{ a.src }}" alt="{{ ttl }}" loading="lazy">{% else %}<code>{{ a.path }}</code>{% endif %}</figure>
+            {%- endfor %}
+            {%- endfor %}
+          </div>
         </div>
         {%- endfor %}
 
         {%- set others = case.artifacts|rejectattr('kind', 'in', ['golden', 'actual', 'diff'])|list %}
         {%- if others %}
-        <div class="sub">失败现场</div>
-        {%- for a in others %}
-        {%- if a.kind == 'screenshot' and a.src %}
-        <img class="shot" src="{{ a.src }}" alt="失败时的页面截图" loading="lazy">
-        {%- elif a.kind == 'screenshot' %}
-        <div class="trace">截图 <code>{{ a.path }}</code></div>
-        {%- elif a.kind == 'trace' %}
-        <div class="trace">trace（逐步回放失败过程）<br><code>{{ a.command }}</code></div>
-        {%- else %}
-        <div class="trace">{{ a.kind }} <code>{{ a.path }}</code></div>
-        {%- endif %}
-        {%- endfor %}
+        <div>
+          <h3>失败现场</h3>
+          <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px">
+          {%- for a in others %}
+          {%- if a.kind == 'screenshot' and a.src %}<img class="shot" src="{{ a.src }}" alt="失败时的页面截图" loading="lazy">
+          {%- elif a.kind == 'screenshot' %}<div class="trace">截图<code>{{ a.path }}</code></div>
+          {%- elif a.kind == 'trace' %}<div class="trace">回放（逐步重现失败过程）<code>{{ a.command }}</code></div>
+          {%- else %}<div class="trace">{{ a.kind }}<code>{{ a.path }}</code></div>{% endif %}
+          {%- endfor %}
+          </div>
+        </div>
         {%- endif %}
 
         {%- if case.exchanges %}
         {%- set total_ms = case.exchange_ms or 1 %}
-        {%- set ns = namespace(at=0.0) %}
-        <div class="sub">请求 · {{ case.exchanges|length }} 次 · {{ case.exchange_ms|ms }}</div>
-        {%- for ex in case.exchanges %}
-        {%- set left = 100.0 * ns.at / total_ms %}
-        {%- set width = [100.0 * (ex.ms or 0) / total_ms, 0.8]|max %}
-        {%- set ns.at = ns.at + (ex.ms or 0) %}
-        {%- set broke = ex.error or not (ex.status and 200 <= ex.status < 400) %}
-        <details class="step" {% if broke %}open{% endif %}>
-          <summary>
-            <span class="verb">{{ ex.method or 'GET' }}</span>
-            <span class="su">{{ ex.url }}</span>
-            <span class="track"><i class="{{ 'err' if broke else ('slow' if case.exchanges|length > 1 and width > 50 else '') }}"
-              style="left:{{ '%.2f'|format(left) }}%;width:{{ '%.2f'|format(width) }}%"></i></span>
-            <span class="code-n {{ 'bad' if broke else 'ok' }}">{{ ex.status or '—' }}</span>
-            <span class="sms">{{ ex.ms|ms }}</span>
-          </summary>
-          <div class="io">
-            {%- if ex.error %}<div class="errline">{{ ex.error }}</div>{% endif %}
-            <div class="reqline">
-              <span class="m">{{ ex.method or 'GET' }}</span>
-              <span class="u">{{ ex.url }}</span>
-              {%- if ex.status %}<span class="code-n {{ 'bad' if broke else 'ok' }}">{{ ex.status }} {{ ex.reason }}</span>{% endif %}
-              <button class="copy" data-curl="{{ ex|curl }}">copy as curl</button>
-            </div>
-            <div class="panes">
-              <div class="pane">
-                <h5>Request headers</h5>
-                {%- if ex.request_headers %}
-                <pre class="hdr">{% for k, v in ex.request_headers.items() %}{{ k }}: {{ v }}
-{% endfor %}</pre>
-                {%- else %}<div class="hint">无</div>{% endif %}
+        <div>
+          <h3>HTTP · {{ case.exchanges|length }} 次请求 · {{ case.exchange_ms|ms }}</h3>
+          <div style="margin-top:8px">
+          {%- for ex in case.exchanges %}
+          {%- set broke = ex.error or not (ex.status and 200 <= ex.status < 400) %}
+          <details class="step" {% if broke %}open{% endif %}>
+            <summary>
+              <span class="verb">{{ ex.method or 'GET' }}</span>
+              <span class="url">{{ ex.url }}</span>
+              <span class="code-n {{ 'bad' if broke else 'ok' }}">{{ ex.status or '—' }}</span>
+              <span class="ms">{{ ex.ms|ms }}</span>
+            </summary>
+            <div class="io">
+              {%- if ex.error %}<div class="errline">{{ ex.error }}</div>{% endif %}
+              <div class="reqline">
+                <b>{{ ex.method or 'GET' }}</b><span class="u">{{ ex.url }}</span>
+                {%- if ex.status %}<span class="code-n {{ 'bad' if broke else 'ok' }}">{{ ex.status }} {{ ex.reason }}</span>{% endif %}
+                <button type="button" class="copy" data-curl="{{ ex|curl }}">复制为 curl</button>
               </div>
-              <div class="pane">
-                <h5>Response headers</h5>
-                {%- if ex.response_headers %}
-                <pre class="hdr">{% for k, v in ex.response_headers.items() %}{{ k }}: {{ v }}
-{% endfor %}</pre>
-                {%- else %}<div class="hint">无</div>{% endif %}
+              <div class="panes">
+                <div class="pane"><h5>请求头</h5>{% if ex.request_headers %}<pre class="hdr">{% for k, v in ex.request_headers.items() %}{{ k }}: {{ v }}
+{% endfor %}</pre>{% else %}<div class="hint">无</div>{% endif %}</div>
+                <div class="pane"><h5>响应头</h5>{% if ex.response_headers %}<pre class="hdr">{% for k, v in ex.response_headers.items() %}{{ k }}: {{ v }}
+{% endfor %}</pre>{% else %}<div class="hint">无</div>{% endif %}</div>
+              </div>
+              <div class="panes">
+                {%- if ex.request_body %}<div class="pane"><h5>请求体</h5><pre>{{ ex.request_body|hljson }}</pre></div>{% endif %}
+                <div class="pane"><h5>响应体</h5>{% if ex.response_body %}<pre>{{ ex.response_body|hljson }}</pre>{% else %}<div class="hint">无响应体</div>{% endif %}</div>
               </div>
             </div>
-            {#- Bodies get their own row, and collapse to one column when the
-                request has none. A GET leaves an empty half otherwise, which
-                is most of what an API suite sends. #}
-            <div class="panes {{ '' if ex.request_body else 'single' }}">
-              {%- if ex.request_body %}
-              <div class="pane">
-                <h5>Request body</h5>
-                <pre>{{ ex.request_body|hljson }}</pre>
-              </div>
-              {%- endif %}
-              <div class="pane">
-                <h5>Response body</h5>
-                {%- if ex.response_body %}<pre>{{ ex.response_body|hljson }}</pre>
-                {%- else %}<div class="hint">无响应体</div>{% endif %}
-              </div>
-            </div>
+          </details>
+          {%- endfor %}
+          {%- set slow = case.slowest_exchange %}
+          {%- if slow and case.exchanges|length > 1 and (slow.ms or 0) > 0.4 * total_ms %}
+          <div class="timenote">最慢一次占 {{ '%.0f'|format(100.0 * slow.ms / total_ms) }}%（{{ slow.ms|ms }}），其余 {{ (total_ms - slow.ms)|ms }}。</div>
+          {%- endif %}
           </div>
-        </details>
-        {%- endfor %}
-        {%- set slow = case.slowest_exchange %}
-        {%- if slow and case.exchanges|length > 1 and (slow.ms or 0) > 0.4 * total_ms %}
-        <div class="timenote">最慢一次占 <b>{{ '%.0f'|format(100.0 * slow.ms / total_ms) }}%</b>（{{ slow.ms|ms }}），其余 {{ (total_ms - slow.ms)|ms }}。</div>
-        {%- endif %}
+        </div>
         {%- endif %}
 
         {%- if bad and case.message %}
-        <details class="raw">
-          <summary>失败原文</summary>
-          <pre class="trace">{{ case.message }}</pre>
-        </details>
+        <details class="raw"><summary>失败原文</summary><pre>{{ case.message }}</pre></details>
         {%- endif %}
       </div>
     </details>
     {%- endfor %}
   </div>
-  {% endfor %}
+  {%- endfor %}
 </section>
 
-{% if gap_list %}
-<section>
-  <div class="sec-head">
-    <h2>断言缺口汇总</h2>
-    <span class="tally">{{ gap_list|length }} 类，共 {{ check_totals.gap }} 处</span>
-  </div>
-  <p class="sec-note">
-    由各用例声明的 <code>gap()</code> 聚合而来，供排下一轮补测的优先级。
-    它们不影响本次结论 —— 缺口是关于套件的陈述，不是关于被测系统的。
-  </p>
+{%- if gap_list %}
+<section class="card" id="gaps" aria-labelledby="gapsh">
+  <div class="row"><h2 id="gapsh">断言缺口汇总</h2><span class="sub">{{ gap_list|length }} 类，共 {{ check_totals.gap }} 处</span></div>
+  <p class="sub">由各用例声明的 <code>gap()</code> 聚合而来，用来排下一轮补测的优先级。缺口是关于套件的陈述，不影响本次结论。</p>
   <div class="gaps">
     {%- for g in gap_list %}
-    <div class="gaprow">
-      <span class="mark">!</span>
-      <span>
-        <span class="name">{{ g.name }}</span>
-        {%- if g.expr %}<span class="expr">{{ g.expr }}</span>{% endif %}
-      </span>
-      <span class="cnt">{{ g.count }} 处 · {{ g.src }}</span>
-    </div>
+    <div class="gaprow"><span>{{ g.name }}{% if g.expr %}<span class="e">{{ g.expr }}</span>{% endif %}</span><span class="cnt">{{ g.count }} 处 · {{ g.src }}</span></div>
     {%- endfor %}
   </div>
 </section>
-{% endif %}
+{%- endif %}
 
 <footer>
   <span>IntelliPandora</span>
   <span>{{ run_id }}</span>
   <span>生成于 {{ generated }}</span>
-  <span>凭据在构建期脱敏，非渲染期</span>
+  <span>判定全部由确定性规则给出，LLM 不参与结论</span>
+  <span>凭据在构建报告时已脱敏</span>
+  <span>框架不存运行历史；对比只用基线文件、传入的报告或本机缓存</span>
 </footer>
-</div>
+</main>
 
 <script>
 document.addEventListener("click", function (ev) {
   var copyBtn = ev.target.closest("[data-curl]");
   if (copyBtn) {
-    navigator.clipboard.writeText(copyBtn.getAttribute("data-curl")).then(function () {
-      var old = copyBtn.textContent;
-      copyBtn.textContent = "copied";
-      setTimeout(function () { copyBtn.textContent = old; }, 1200);
-    }).catch(function () { copyBtn.textContent = "copy failed"; });
+    var old = copyBtn.textContent;
+    var done = function (text) { copyBtn.textContent = text; setTimeout(function () { copyBtn.textContent = old; }, 1200); };
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(copyBtn.getAttribute("data-curl")).then(function () { done("已复制"); }, function () { done("复制失败"); });
+    } else { done("复制失败"); }
     return;
   }
   var btn = ev.target.closest("[data-filter]");
   if (!btn) return;
-  document.querySelectorAll("[data-filter]").forEach(function (b) {
-    b.setAttribute("aria-pressed", String(b === btn));
-  });
+  document.querySelectorAll("[data-filter]").forEach(function (b) { b.setAttribute("aria-pressed", String(b === btn)); });
   var mode = btn.getAttribute("data-filter");
   var inconclusive = ["SKIPPED", "BLOCKED", "GAP", "ERROR", "UNVERIFIED"];
   document.querySelectorAll("details.case").forEach(function (el) {
@@ -639,9 +715,7 @@ document.addEventListener("click", function (ev) {
   });
   document.querySelectorAll("[data-band]").forEach(function (band) {
     var group = band.nextElementSibling;
-    var any = group && Array.prototype.some.call(
-      group.querySelectorAll("details.case"),
-      function (c) { return c.style.display !== "none"; });
+    var any = group && Array.prototype.some.call(group.querySelectorAll("details.case"), function (c) { return c.style.display !== "none"; });
     band.style.display = any ? "" : "none";
     if (group) { group.style.display = any ? "" : "none"; }
   });

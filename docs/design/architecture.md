@@ -52,7 +52,7 @@ run()
 | `core/web.py` | Playwright 原样使用；把 expect 记为判定；区分"选择器过时"和"元素真的没了"；把 `web.*` 配置映射为 pytest-playwright 的默认选项 |
 | `core/concurrency.py` | `concurrently()`：同时起跑，复制登录态，绑定证据，判断并发是否真的发生 |
 | `core/triage/` | 失败归因，规则优先：defect / contract / environment / data / harness / unknown |
-| `core/report/` | 同一份 ReportData 生成 HTML、JSON、JUnit XML；凭据脱敏；历史归档 |
+| `core/report/` | 同一份 ReportData 生成 HTML、JSON、JUnit XML；凭据脱敏。首屏结论由 `model.py` 按计数拼出；`compare.py` 对比传入的报告或本机存档里的上一次运行（框架不存历史，本机存档由 `history.py` 写，最多 50 次）。对比基线的拆分在 `runner/inventory.py` 的 `against()` |
 | `core/schedule/` | 配置分层（包默认 → 项目 `conf/config.yaml` → `conf/<env>.yaml`）、`Runtime`、HTTP 会话 |
 | `ai/` | 可选的 LLM 归因。**`core/` 不得 import `ai/`**，由 `scripts/check_layering.py` 检查；`rm -rf src/ipandora/ai` 之后整个测试套件仍须全绿 |
 | `templates/` | `ipandora init` 写进新项目的文件 |

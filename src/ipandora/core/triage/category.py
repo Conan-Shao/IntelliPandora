@@ -45,10 +45,23 @@ class Confidence:
 BLAMES_SYSTEM_UNDER_TEST = {Category.DEFECT, Category.CONTRACT}
 
 NEXT_STEP = {
-    Category.DEFECT: 'compare the actual value against what the requirement says it should be',
-    Category.CONTRACT: 'check whether the interface changed; regenerate the client/schema',
-    Category.ENVIRONMENT: 'check the endpoint is up and reachable, then re-run',
-    Category.DATA: 'check the fixture or account state this test depends on',
-    Category.HARNESS: 'fix the test setup itself -- nothing was actually exercised',
-    Category.UNKNOWN: 'read the full traceback via explain_failure',
+    Category.DEFECT: '对照需求核对实际值，确认后提缺陷',
+    Category.CONTRACT: '确认接口是否改了；重新生成客户端或 schema',
+    Category.ENVIRONMENT: '确认被测服务在线、网络可达，然后重跑',
+    Category.DATA: '检查这条用例依赖的账号、夹具或数据状态',
+    Category.HARNESS: '修测试代码本身——这次没有真正测到被测系统',
+    Category.UNKNOWN: '用 explain_failure 看完整的失败原文',
 }
+
+LABEL = {
+    Category.DEFECT: '产品缺陷',
+    Category.CONTRACT: '接口契约',
+    Category.ENVIRONMENT: '环境',
+    Category.DATA: '测试数据',
+    Category.HARNESS: '测试代码',
+    Category.UNKNOWN: '待确认',
+}
+"""What a reader sees. The codes above are what programs compare."""
+
+CONFIDENCE_LABEL = {Confidence.HIGH: '高置信', Confidence.MEDIUM: '中置信',
+                    Confidence.LOW: '低置信'}

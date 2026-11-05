@@ -94,22 +94,34 @@ def list_runs(limit: int = 10) -> dict:
 
 
 @mcp.tool()
-def build_report(run_id: str, directory: str, title: str = '') -> dict:
+def build_report(run_id: str, directory: str, title: str = '',
+                 compare_with: str = '') -> dict:
     """
     Write an HTML and JSON report for a previous run.
 
     Both come from the same data and have already had secrets stripped.
-    Returns the paths written plus the totals, so the caller does not have to
-    open the files to know what happened.
+    Returns the paths written plus the verdict and totals, so the caller does
+    not have to open the files to know what happened.
+
+    compare_with: an earlier report.json to compare failures with (new,
+    still failing, recovered). Empty: the previous run of the same selector
+    in the local report archive, if there is one.
     """
     _result = store.load(run_id)
     if _result is None:
         return {'error': 'unknown run_id {!r}'.format(run_id),
                 'known_runs': store.list_runs(limit=10)}
     _report = report.build(_result, title=title or None)
+    from ipandora.core.report import compare
+    try:
+        compare.attach(_report, compare_with=compare_with or None)
+    except ValueError as exc:
+        return {'error': str(exc)}
     return {'written': report.write(_report, directory),
+            'verdict': _report.verdict,
             'totals': _report.totals,
             'pass_rate': _report.pass_rate,
+            'against_run': _report.against_run,
             'ok': _report.ok}
 
 

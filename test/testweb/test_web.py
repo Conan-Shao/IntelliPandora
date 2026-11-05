@@ -211,7 +211,7 @@ class TestSelectorOrProduct:
         _finding = triage(_result).findings[0]
         assert _result.cases[0].locator_failures[0]['verdict'] == web.STALE
         assert _finding.category == 'harness' and _finding.confidence == 'high'
-        assert "'#pay' is stale" in _finding.reason and 'button "付款"' in _finding.reason
+        assert "'#pay' 失效" in _finding.reason and 'button "付款"' in _finding.reason
 
     def test_an_element_that_is_gone_is_to_be_confirmed_with_a_screenshot(
             self, site, tmp_path, monkeypatch):

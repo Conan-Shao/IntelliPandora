@@ -85,12 +85,10 @@ def classify(nodeid: str, outcome: str, message: str, locator_failures=None) -> 
 
     if RESOURCE_WAIT_MARKER in _message:
         return _finding(Category.ENVIRONMENT, Confidence.HIGH,
-                        'never started: a shared resource it declares was held by another '
-                        'case or run for the whole wait')
+                        '没有开始执行：它声明的共享资源在整个等待期间都被别的用例或运行占着')
     if CASE_TIMEOUT_MARKER in _message and 'pytest-timeout' in _message:
         return _finding(Category.ENVIRONMENT, Confidence.MEDIUM,
-                        'the case exceeded its time limit. Usually a dependency that stopped '
-                        'answering; if the system under test itself hangs, that is a defect')
+                        '用例超过了时间上限。通常是某个依赖不再响应；如果是被测系统自己卡住，那是缺陷')
 
     _locator = _locator_finding(locator_failures)
     if _locator:
@@ -100,41 +98,37 @@ def classify(nodeid: str, outcome: str, message: str, locator_failures=None) -> 
     _transport = next((_m for _m in TRANSPORT_MARKERS if _m in _message), None)
     if _transport:
         return _finding(Category.ENVIRONMENT, Confidence.HIGH,
-                        'transport failure ({}): no response was received, so nothing '
-                        'about the system was actually tested'.format(_transport))
+                        '传输失败（{}）：没有收到响应，被测系统实际上什么都没测到'.format(_transport))
 
     # A skipped test is a precondition that was not met, by design -- see
     # require() in the assertion layer.
     if outcome == 'skipped':
         return _finding(Category.DATA, Confidence.HIGH,
-                        'precondition not met, so the test did not run: {}'.format(
+                        '前置条件不满足，用例没有执行：{}'.format(
                             _message.strip().splitlines()[0] if _message.strip() else 'skipped'))
 
     # Setup or teardown blew up: the harness is broken, not the product.
     if outcome == 'error':
         _marker = next((_m for _m in HARNESS_MARKERS if _m in _message), '')
         return _finding(Category.HARNESS, Confidence.HIGH,
-                        'the test errored outside its body{}; it never exercised the '
-                        'system'.format(' ({})'.format(_marker) if _marker else ''))
+                        '用例在测试体之外出错{}，没有调用到被测系统'.format(
+                            '（{}）'.format(_marker) if _marker else ''))
 
     _sources = failed_check_sources(_message)
     if _sources:
         # Only schema checks failed -> the shape changed, not the value.
         if set(_sources) == {'schema'}:
             return _finding(Category.CONTRACT, Confidence.HIGH,
-                            'every failed check was a schema check: the response no '
-                            'longer matches its declared contract', _sources)
+                            '不成立的判定全是 schema 判定：响应不再符合声明的契约', _sources)
         return _finding(Category.DEFECT, Confidence.HIGH,
-                        'assertions failed on {}: the system returned a value the test '
-                        'says is wrong'.format('/'.join(_sources)), _sources)
+                        '{} 上的判定不成立：被测系统返回的值与判定不符'.format('/'.join(_sources)), _sources)
 
     if 'AssertionError' in _message:
         return _finding(Category.DEFECT, Confidence.MEDIUM,
-                        'a plain assertion failed; consider using assert_all so the '
-                        'failure carries its own evidence')
+                        '一条普通 assert 不成立；改用 assert_all，失败时会带上实际值和请求证据')
 
     return _finding(Category.UNKNOWN, Confidence.LOW,
-                    'no recognised signature in the failure message')
+                    '失败信息里没有可识别的特征')
 
 
 def _locator_finding(failures):
@@ -153,19 +147,16 @@ def _locator_finding(failures):
     _what = '{} "{}"'.format(_identity.get('role', '?'), _identity.get('name', '?'))
     if _f.get('verdict') == 'stale_selector':
         return (Category.HARNESS, Confidence.HIGH,
-                'selector {!r} is stale: it found nothing, but the page still has {} -- '
-                'the element it used to point at. Update the selector; the product is '
-                'not at fault'.format(_selector, _what))
+                '选择器 {!r} 失效：它什么也没找到，但页面上仍有 {}，就是它上次通过时指向的元素。'
+                '改选择器即可，产品没有问题'.format(_selector, _what))
     if _f.get('verdict') == 'missing':
         return (Category.DEFECT, Confidence.LOW,
-                '待确认: {!r} found nothing, and no {} is on the page either -- it was '
-                'there when this case last passed. Possibly removed or renamed: a '
-                'product defect unless the change was intended. See the screenshot'.format(
+                '待确认：{!r} 什么也没找到，页面上也没有 {}，而这条用例上次通过时它还在。'
+                '可能被删掉或改了名：除非是有意的改动，否则是产品缺陷。请看截图'.format(
                     _selector, _what))
     return (Category.UNKNOWN, Confidence.LOW,
-            '待确认: {!r} found nothing, and there is no record of what it pointed at in '
-            'a passing run, so a stale selector cannot be told apart from a missing '
-            'element. See the screenshot'.format(_selector))
+            '待确认：{!r} 什么也没找到，而且没有它在通过的运行里指向什么的记录，'
+            '分不清是选择器失效还是元素真的没了。请看截图'.format(_selector))
 
 
 @dataclass

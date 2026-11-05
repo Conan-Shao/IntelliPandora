@@ -330,6 +330,7 @@ def _compare_with_baseline(result: RunResult, baseline: Optional[str]) -> None:
         return
     result.baseline = _path
     result.judgement_changes = [_f.to_dict() for _f in inventory.compare(_base, result)]
+    result.against_baseline = inventory.against(_base, result)
 
 
 def looks_like_path(selector: str) -> bool:
