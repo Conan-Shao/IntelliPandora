@@ -30,6 +30,8 @@
 | anthropic | extra:ai | >=2.1,<3 | 可选的 LLM 失败归因 | MIT | 调用 Anthropic API；默认关闭，有调用上限。2.x 已核对框架用到的接口（`Anthropic()`、`messages.create`、`TextBlock.text`）未变 | 2026-11-05 |
 | mcp | extra:mcp | >=2.0,<3 | 作为 agent 的 MCP 服务端 | MIT | 通过 stdio 与 agent 通信 | 2026-11-05 |
 | psutil | extra:system | >=5.9,<8 | 系统信息工具 | BSD-3-Clause | 读取本机进程和资源信息 | 2026-11-05 |
+| pytest-xdist | extra:parallel | >=3.8,<4 | `--workers` 多进程并行 | MIT | 启动 N 个本机子进程运行用例，经 stdin/stdout 管道通信（execnet），不联网。pytest-dev 组织维护；3.8.0 发布于 2025-07，超过 12 个月无新版，但功能稳定、仍在维护，按此登记 | 2026-11-05 |
+| pytest-timeout | extra:parallel | >=2.4,<3 | `--timeout` 单条用例超时 | MIT | 用信号或看门狗线程中断超时用例。pytest-dev 组织维护；2.4.0 发布于 2025-05，超过 12 个月无新版，理由同 pytest-xdist | 2026-11-05 |
 | httpretty | extra:test | >=1.1,<2 | 测试里模拟 HTTP 响应 | MIT | 只在测试中替换 socket | 2026-11-05 |
 
 ## 构建与工具链

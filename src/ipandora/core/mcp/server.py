@@ -19,13 +19,16 @@ mcp = MCPServer(Runtime.Mcp.name)
 
 
 @mcp.tool()
-def run_tests(selector: str = '', env: str = '') -> dict:
+def run_tests(selector: str = '', env: str = '', workers: int = 0) -> dict:
     """
     Run tests and return a summary of what happened.
 
     selector: a path, a pytest nodeid, or a -k expression. Empty runs everything.
     env: environment name, e.g. "dev" or "prod". Optional. Overlays
          conf/<env>.yaml from the suite's config dir for this run only.
+    workers: run in parallel with this many processes; 0 or 1 is serial.
+         The result is the same as a serial run, only faster. Needs the
+         package's `parallel` extra; without it you get an error saying so.
 
     Returns totals plus, for each failure, the case name, the assertion
     message, and a rule-based classification saying whether it looks like a
@@ -46,7 +49,10 @@ def run_tests(selector: str = '', env: str = '') -> dict:
     """
     # quiet=True is not optional here: on stdio transport, anything pytest
     # prints would land in the middle of this server's JSON-RPC stream.
-    _result = runner.run(selector=selector, env=env, quiet=True)
+    try:
+        _result = runner.run(selector=selector, env=env, quiet=True, workers=workers or None)
+    except (runner.MissingExtra, ValueError) as exc:
+        return {'error': str(exc)}
     _summary = _result.summary()
 
     _report = triage(_result)

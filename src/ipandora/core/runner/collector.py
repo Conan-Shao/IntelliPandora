@@ -4,95 +4,17 @@
 @File  : collector.py
 @Time  : 2026-08-01
 """
-import ast
 import textwrap
 from typing import Dict, List
 
-from ipandora.core.assertion.check import Check, Source
-from ipandora.core.evidence import recorder
+import pytest
+
+from ipandora.core.runner import plugin
 from ipandora.core.runner.result import CaseResult, ERROR, FAILED, PASSED, SKIPPED
 
-# Items whose checks are not `assert` statements: unittest's assertEqual and
-# doctest's expected output. The runner cannot see their judgements, so it
-# must not call them unverified.
-OPAQUE_ITEMS = ('TestCaseFunction', 'DoctestItem', 'DoctestTextfile')
-
-
-def _names(expected) -> str:
-    if isinstance(expected, tuple):
-        return ' | '.join(getattr(_e, '__name__', repr(_e)) for _e in expected)
-    return getattr(expected, '__name__', repr(expected))
-
-
-def _constant(source: str) -> bool:
-    """
-    Whether an assert's expression is a literal -- `assert True`, `assert 1`.
-
-    Such an assert cannot fail, so it judges nothing. Recording it would let
-    `assert True` turn an empty test into a "verified" one, which is precisely
-    the shortcut the unverified status exists to expose.
-    """
-    try:
-        ast.literal_eval(source.strip())
-    except (ValueError, SyntaxError, TypeError, MemoryError, RecursionError):
-        return False
-    return True
-
-
-def _record_judgement(claim: str, ok: bool = True, expr: str = '') -> None:
-    recorder.add_checks([Check(name=claim, ok=ok, expr=expr or claim,
-                               src=Source.ASSERT, claim=claim)])
-
-
-class _Recording:
-    """
-    Wraps the context manager pytest.raises / pytest.warns returns, and
-    records the judgement once it has held.
-
-    Recorded on a clean exit only. When the expected exception never comes,
-    pytest's own __exit__ raises and the case fails -- there is no passed
-    judgement to record. When a different exception escapes, __exit__ returns
-    False and nothing is recorded either.
-    """
-
-    def __init__(self, inner, claim: str):
-        self._inner = inner
-        self._claim = claim
-
-    def __enter__(self):
-        return self._inner.__enter__()
-
-    def __exit__(self, *exc):
-        _handled = self._inner.__exit__(*exc)
-        if _handled or exc[0] is None:
-            _record_judgement(self._claim)
-        return _handled
-
-    def __getattr__(self, name):
-        return getattr(self._inner, name)
-
-
-def _recording(original, verb: str):
-    """
-    A drop-in for pytest.raises / pytest.warns that records a judgement.
-
-    `with pytest.raises(ValueError): f()` checks something real, but it is not
-    an `assert` statement, so the assertion-pass hook never sees it. Without
-    this, every test written that way would read as unverified.
-    """
-    def _wrapped(expected, *args, **kwargs):
-        _claim = '{} {}'.format(verb, _names(expected))
-        if kwargs.get('match'):
-            _claim += ' match {!r}'.format(kwargs['match'])
-        if args and callable(args[0]):
-            # function form: pytest.raises(E, func, *args) -- returns only on success
-            _info = original(expected, *args, **kwargs)
-            _record_judgement(_claim)
-            return _info
-        return _Recording(original(expected, *args, **kwargs), _claim)
-    _wrapped.__wrapped__ = original
-    _wrapped.__doc__ = original.__doc__
-    return _wrapped
+# Kept importable from here: they moved to plugin.py, which is where a case
+# actually runs.
+OPAQUE_ITEMS = plugin.OPAQUE_ITEMS
 
 
 def skip_reason(report) -> str:
@@ -140,18 +62,24 @@ def short_reason(report) -> str:
 
 class ResultCollector:
     """
-    A pytest plugin that turns reports into CaseResult objects.
+    The main-process half of the runner: turns reports into CaseResult objects.
 
     This is why the runner can be called as a library: pytest hands us
     structured reports, so nothing has to shell out and scrape stdout.
+
+    It reads reports and nothing else. What a case judged, requested and
+    declared is recorded where the case runs -- plugin.py, in every xdist
+    worker -- and arrives here inside the teardown report. Reading the case
+    directly would work serially and see nothing in parallel, which is the
+    bug this split exists to remove.
     """
 
     def __init__(self):
         self.cases = {}  # type: Dict[str, CaseResult]
         self._order = []  # type: List[str]
+        self._index = {}  # type: Dict[str, int]
         self.collect_errors = []  # type: List[str]
-        self.coverage = []  # type: List[Dict]
-        self._coverage_seen = set()
+        self._coverage = {}  # type: Dict[str, tuple]
         self.deselected = []  # type: List[str]
         self.rootdir = ''
 
@@ -161,125 +89,20 @@ class ResultCollector:
             self._order.append(nodeid)
         return self.cases[nodeid]
 
-    # -- evidence ----------------------------------------------------------
-
     def pytest_configure(self, config):
-        # Patched for the duration of the run, restored in pytest_unconfigure.
-        # A module that did `from pytest import raises` during this run keeps
-        # the wrapper afterwards, which is harmless: outside a case it records
-        # nothing and behaves exactly like the original.
-        import pytest
         self.rootdir = str(getattr(config, 'rootpath', '') or '')
-        self._patched = {'raises': pytest.raises, 'warns': pytest.warns}
-        pytest.raises = _recording(self._patched['raises'], 'raises')
-        pytest.warns = _recording(self._patched['warns'], 'warns')
-        config.addinivalue_line(
-            'markers',
-            'dims(**axes): place this case in the coverage matrix, '
-            'e.g. @pytest.mark.dims(role="admin", channel="web")')
-        config.addinivalue_line(
-            'markers',
-            'flaky(reason): this case is known-unstable. The reason is '
-            'required -- a bare marker is how a failure gets parked forever. '
-            'Run with --exclude-flaky to keep these out of a gate.')
+        # xdist runs collection, and so deselection, in the workers and does
+        # not forward pytest_deselected. Each worker reports what it removed
+        # when it shuts down; the hook for that only exists when xdist does.
+        if hasattr(config.hook, 'pytest_testnodedown'):
+            config.pluginmanager.register(_WorkerOutput(self), 'ipandora-worker-output')
 
-    def pytest_unconfigure(self, config):
-        import pytest
-        for _name, _original in getattr(self, '_patched', {}).items():
-            setattr(pytest, _name, _original)
-        self._patched = {}
+    # -- what the case itself sent --------------------------------------------
 
-    # -- judgements pytest does not hand over by itself ---------------------
-
-    def pytest_assertion_pass(self, item, lineno, orig, expl):
-        """
-        A plain `assert` that held.
-
-        pytest only calls this with enable_assertion_pass_hook, which run()
-        sets. `orig` is the source text -- `r['fee'] <= 100` -- and is what
-        the inventory compares; `expl` carries the values it saw.
-        """
-        if _constant(orig):
-            return
-        _expr = (expl or '').splitlines()[0] if expl else orig
-        _record_judgement('assert {}'.format(orig), ok=True, expr=_expr)
-
-    def pytest_runtest_makereport(self, item, call):
-        """
-        A plain `assert` that failed. The pass hook only sees successes, so
-        without this a case failing on a bare assert would show no failed
-        judgement at all. assert_all records its own failures first, so a
-        case that already has one is left alone.
-        """
-        _excinfo = getattr(call, 'excinfo', None)
-        if call.when != 'call' or _excinfo is None \
-                or not _excinfo.errisinstance(AssertionError):
-            return None
-        if any(not _c.get('ok') for _c in recorder.current_checks()):
-            return None
-        _lines = [_l for _l in str(_excinfo.value).splitlines() if _l.strip()]
-        _expr = ' / '.join(_lines[:2]) or 'AssertionError'
-        _record_judgement('assert (failed)', ok=False, expr=_expr)
-        return None
-
-    def pytest_runtest_setup(self, item):
-        """
-        Open an evidence slot before the test body runs.
-
-        Setup, not call: fixtures make requests too, and a fixture that fails
-        is exactly when someone wants to see what it asked for.
-        """
-        recorder.begin(item.nodeid)
-        self._read_declarations(item)
-
-    def pytest_runtest_teardown(self, item):
-        _evidence = recorder.end(item.nodeid)
-        if _evidence is None:
-            return
-        _case = self._slot(item.nodeid)
-        # extend rather than assign: a case that somehow files evidence twice
-        # should accumulate it, and this collector is per-run so nothing older
-        # can be here
-        _case.checks.extend(_evidence.checks)
-        _case.exchanges.extend(_evidence.exchanges)
-
-    def _read_declarations(self, item):
-        """
-        Pull the two things a test can declare about itself: where it sits in
-        the coverage matrix, and what it is for.
-        """
-        _case = self._slot(item.nodeid)
-        _case.judgeable = type(item).__name__ not in OPAQUE_ITEMS
-
-        _marker = item.get_closest_marker('dims')
-        if _marker is not None:
-            _case.dims = {str(_k): str(_v) for _k, _v in (_marker.kwargs or {}).items()}
-
-        _flaky = item.get_closest_marker('flaky')
-        if _flaky is not None:
-            # A reason is the whole value of the marker. Without one this is
-            # just a quieter way of ignoring a failing test.
-            _case.flaky = str(
-                (_flaky.kwargs or {}).get('reason')
-                or (_flaky.args[0] if _flaky.args else '')
-                or '未说明原因')
-
-        _doc = (getattr(item, 'function', None).__doc__
-                if getattr(item, 'function', None) else None)
-        if _doc:
-            _case.title = _doc.strip().splitlines()[0].strip()
-
-        # Axes are declared once per module, not per test: the whole point of
-        # the matrix is the cells with no test in them, and a run can only know
-        # those if the full value set is stated independently of what ran.
-        _module = getattr(item, 'module', None)
-        _axes = getattr(_module, 'COVERAGE', None)
-        if _axes and id(_module) not in self._coverage_seen:
-            self._coverage_seen.add(id(_module))
-            self.coverage.extend(_axes)
-
+    @pytest.hookimpl(tryfirst=True)
     def pytest_runtest_logreport(self, report):
         _case = self._slot(report.nodeid)
+        self._take_evidence(_case, report)
         _case.duration += getattr(report, 'duration', 0.0) or 0.0
 
         if report.when == 'call':
@@ -295,11 +118,51 @@ class ResultCollector:
         elif report.when == 'setup' and report.outcome == SKIPPED:
             _case.outcome = SKIPPED
 
-        if report.outcome == FAILED or (report.when != 'call' and report.outcome == FAILED):
+        if report.outcome == FAILED:
             _case.detail = getattr(report, 'longreprtext', '') or _case.detail
             _case.message = short_reason(report) or _case.message
         elif report.outcome == SKIPPED and not _case.message:
             _case.message = skip_reason(report)
+
+    def _take_evidence(self, case: CaseResult, report):
+        """
+        Move the plugin's entry out of the report into the case.
+
+        Out, not just read: tryfirst puts this ahead of pytest's own junitxml,
+        which writes every user_properties entry as an XML property -- a
+        user's `--junitxml` would otherwise carry every request body of the
+        run. Their own record_property entries are left alone.
+        """
+        _props = getattr(report, 'user_properties', None) or []
+        _ours = [_v for _k, _v in _props if _k == plugin.KEY]
+        if not _ours:
+            return
+        report.user_properties = [(_k, _v) for _k, _v in _props if _k != plugin.KEY]
+        for _payload in _ours:
+            # extend rather than assign: a case that somehow files evidence
+            # twice should accumulate it, and this collector is per-run so
+            # nothing older can be here
+            case.checks.extend(_payload.get('checks') or [])
+            case.exchanges.extend(_payload.get('exchanges') or [])
+            case.judgeable = bool(_payload.get('judgeable', case.judgeable))
+            if 'dims' in _payload:
+                case.dims = dict(_payload['dims'])
+            if 'flaky' in _payload:
+                case.flaky = _payload['flaky']
+            if 'title' in _payload:
+                case.title = _payload['title']
+            if 'index' in _payload:
+                self._index[case.nodeid] = _payload['index']
+            _coverage = _payload.get('coverage')
+            if _coverage:
+                # one entry per module, placed at the first of its cases in
+                # collection order -- not at whichever worker reported first
+                _module = _coverage.get('module')
+                _at = _payload.get('index', len(self._index) + len(self._coverage) + 10 ** 9)
+                if _module not in self._coverage or _at < self._coverage[_module][0]:
+                    self._coverage[_module] = (_at, list(_coverage.get('axes') or []))
+
+    # -- what the run as a whole reports --------------------------------------
 
     def pytest_deselected(self, items):
         """
@@ -309,12 +172,49 @@ class ResultCollector:
         the run entirely -- and a flaky marker nobody is reminded of is a
         failure that has been parked. They are deselected, not forgotten.
         """
-        self.deselected.extend(getattr(_i, 'nodeid', str(_i)) for _i in items or ())
+        self.add_deselected(getattr(_i, 'nodeid', str(_i)) for _i in items or ())
+
+    def add_deselected(self, nodeids):
+        for _nodeid in nodeids:
+            if _nodeid not in self.deselected:
+                self.deselected.append(_nodeid)
 
     def pytest_collectreport(self, report):
         if report.outcome == FAILED:
-            self.collect_errors.append(
-                getattr(report, 'longreprtext', '') or str(report.longrepr))
+            _text = getattr(report, 'longreprtext', '') or str(report.longrepr)
+            # every xdist worker collects the whole suite and may report the
+            # same broken module
+            if _text not in self.collect_errors:
+                self.collect_errors.append(_text)
+
+    @property
+    def coverage(self) -> List[Dict]:
+        """Each module's COVERAGE axes, in collection order."""
+        return [_axis for _at, _axes in sorted(self._coverage.values(), key=lambda v: v[0])
+                for _axis in _axes]
 
     def results(self) -> List[CaseResult]:
-        return [self.cases[_n] for _n in self._order]
+        """
+        In collection order, whatever order they finished in.
+
+        Serially the two are the same. In parallel, arrival order depends on
+        which worker was faster, and the report, the JSON and the judgement
+        inventory would differ between two runs of the same suite for no
+        reason. A case with no index -- its worker died before it could send
+        one -- goes last, in arrival order.
+        """
+        _arrival = {_n: _i for _i, _n in enumerate(self._order)}
+        _late = len(_arrival) + max(self._index.values(), default=0) + 1
+        return [self.cases[_n] for _n in sorted(
+            self._order, key=lambda n: (self._index.get(n, _late + _arrival[n])))]
+
+
+class _WorkerOutput:
+    """Registered only when xdist is loaded: its hook does not exist otherwise."""
+
+    def __init__(self, collector: ResultCollector):
+        self._collector = collector
+
+    def pytest_testnodedown(self, node, error):
+        _output = getattr(node, 'workeroutput', None) or {}
+        self._collector.add_deselected(_output.get(plugin.DESELECTED_KEY) or ())
