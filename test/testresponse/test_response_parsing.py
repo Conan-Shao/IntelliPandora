@@ -133,26 +133,40 @@ class TestFilter:
     def test_filter_selects(self):
         assert handler({'data': [{'i': 1}, {'i': 2}]}).filter(i=2).fetch_one() == {'i': 2}
 
-    def test_filter_with_operator(self):
+    def test_filter_with_a_predicate(self):
         assert handler({'data': [{'i': 1}, {'i': 5}]}).filter(
-            i={'$gt': 3}).fetch_all() == [{'i': 5}]
+            lambda x: x['i'] > 3).fetch_all() == [{'i': 5}]
 
     def test_filter_with_a_range(self):
         assert handler({'data': [{'i': 1}, {'i': 5}, {'i': 9}]}).filter(
-            i={'$gte': 2, '$lte': 5}).fetch_all() == [{'i': 5}]
+            lambda x: 2 <= x['i'] <= 5).fetch_all() == [{'i': 5}]
 
-    def test_filter_with_regex(self):
-        assert handler({'data': [{'s': 'a-1'}, {'s': 'b-2'}]}).filter(
-            s={'$regex': '^b'}).fetch_all() == [{'s': 'b-2'}]
+    def test_predicate_and_keywords_both_apply(self):
+        data = [{'t': 'a', 'i': 1}, {'t': 'a', 'i': 5}, {'t': 'b', 'i': 5}]
+        assert handler({'data': data}).filter(lambda x: x['i'] > 3, t='a').fetch_all() == [
+            {'t': 'a', 'i': 5}]
 
-    def test_filter_does_not_truncate(self):
-        assert handler({'data': [{'i': 5.9}]}).filter(i={'$eq': 5}).fetch_all() == []
+    def test_predicate_sees_scalars(self):
+        assert handler({'data': [1, 2, 3]}).filter(lambda x: x > 1).fetch_all() == [2, 3]
 
-    def test_filter_ignores_keys_that_are_not_operators(self):
-        # matched every item before: `__class__` resolved to Compare itself
-        for _key in ('__class__', '_coerced'):
-            assert handler({'data': [{'i': 1}, {'i': 2}]}).filter(
-                i={_key: 5}).fetch_all() == []
+    def test_keyword_equality_is_strict(self):
+        # used to compare str(a) == str(b): '0' matched 0 and 'True' matched True
+        data = [{'v': 0}, {'v': '0'}, {'v': True}, {'v': 1}]
+        assert handler({'data': data}).filter(v='0').fetch_all() == [{'v': '0'}]
+        assert handler({'data': data}).filter(v=1).fetch_all() == [{'v': 1}]
+        assert handler({'data': data}).filter(v=True).fetch_all() == [{'v': True}]
+
+    def test_operator_dicts_say_how_to_migrate(self):
+        with pytest.raises(TypeError, match='lambda x'):
+            handler({'data': [{'i': 1}]}).filter(i={'$gt': 3})
+
+    def test_non_callable_predicate(self):
+        with pytest.raises(TypeError, match='callable'):
+            handler({'data': [{'i': 1}]}).filter({'i': 1})
+
+    def test_a_dict_value_is_still_plain_equality(self):
+        data = [{'m': {'a': 1}}, {'m': {'a': 2}}]
+        assert handler({'data': data}).filter(m={'a': 2}).fetch_all() == [{'m': {'a': 2}}]
 
     def test_filter_skips_items_without_fields(self):
         # a list of scalars has nothing to match on; previously AttributeError

@@ -9,7 +9,7 @@ import json
 import logging
 from requests.models import Response
 from ipandora.core.protocol.http.model.interface.responseinterface import HttpResponseInterface
-from ipandora.utils.match import DictMatcher
+from ipandora.utils.match import same
 
 logger = logging.getLogger(__name__)
 
@@ -261,42 +261,49 @@ class ResponseHandler(HttpResponseInterface):
         if hasattr(self.response, '__exit__'):
             self.response.__exit__(exc_type, exc_val, exc_tb)
 
-    def filter(self, **kwargs):
+    def filter(self, predicate=None, **equals):
         """
-        super filter data, support logic compare
-        expression: gt, =, in, contains, startWith
+        Keep the items that match, for the next fetch.
 
-        eg:
-        1.field more than target value
-            object.superFilter(stock_type='0', enable_amount={'$gt':'1000000'}).fetchOne()
+            resp.filter(status='ok')                         # field equals
+            resp.filter(lambda x: x['amount'] > 1000)        # any Python
+            resp.filter(lambda x: x['code'].startswith('300'), type='0')
 
-        2.field in target list
-            object.superFilter(stock_type={'$in':['0','T','c']}).fetchOne()
+        Keyword arguments are exact equality: the item must have the field and
+        it must equal the value, with no type coercion -- '0' does not equal 0,
+        and true does not equal 1. A predicate receives each item and is plain
+        Python, so it fails the way Python does: an item without the key
+        raises KeyError; use x.get('key') where items differ in shape.
 
-        3.field contain target str
-            object.superFilter(stock_name={'$contains':'st'}).fetchOne()
-
-        4.field start with target str
-            object.superFilter(stock_code={'$startWith':'300'}).fetchOne()
-
-        5.field equal target str
-            object.superFilter(stock_name='xxx').fetchOne()
-
-        :param kwargs:
-        :return:
+        The `{'$gt': 1000}` operator dicts this used to take are gone; passing
+        one raises with the equivalent predicate in the message.
         """
+        if predicate is not None and not callable(predicate):
+            raise TypeError('filter() predicate must be callable, got {}'.format(
+                type(predicate).__name__))
+        for _key, _value in equals.items():
+            if isinstance(_value, dict) and any(str(_k).startswith('$') for _k in _value):
+                raise TypeError(
+                    'filter({k}={v!r}): operator dicts were removed, write it in Python -- '
+                    'filter(lambda x: x[{k!r}] ...)'.format(k=_key, v=_value))
+
         _f = self.target or self.origin_fetched or []
         _n = []
         for item in _f:
-            _mapping = as_mapping(item)
-            if _mapping is None:
-                # scalars and strings carry no fields to filter on. Skipping
-                # beats the previous AttributeError, which fired on exactly
-                # the payloads json_to_obj used to degrade to plain dicts.
-                logger.debug('filter skipped non-object item: %r', item)
+            if equals:
+                _mapping = as_mapping(item)
+                if _mapping is None:
+                    # scalars and strings carry no fields to match a keyword
+                    # against. Skipping beats the previous AttributeError. A
+                    # predicate still sees them: filter(lambda x: x > 2).
+                    logger.debug('filter skipped non-object item: %r', item)
+                    continue
+                if any(_k not in _mapping or not same(_mapping[_k], _v)
+                       for _k, _v in equals.items()):
+                    continue
+            if predicate is not None and not predicate(item):
                 continue
-            if DictMatcher(superset=_mapping).condition(condition=kwargs).match():
-                _n.append(item)
+            _n.append(item)
         self._update_target_data(data=_n)
         return self
 
