@@ -44,6 +44,7 @@ pip install intellipandora            # 内核，依赖只有 8 个
 pip install intellipandora[ai]        # 可选：失败归因接 LLM
 pip install intellipandora[mcp]       # 可选：agent 入口
 pip install intellipandora[system]    # 可选：系统信息工具（psutil）
+pip install intellipandora[parallel]  # 可选：并行执行 --workers、单条用例超时 --timeout
 ```
 
 ## 用起来

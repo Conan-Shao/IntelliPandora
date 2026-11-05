@@ -25,6 +25,12 @@ TRANSPORT_MARKERS = ('HttpTimeoutError', 'HttpConnectionError', 'TransportError'
                      'ConnectionError', 'ReadTimeout', 'ConnectTimeout',
                      'could not connect', 'timed out')
 
+# A case that ran out of time, or waited too long for a shared resource, says
+# nothing about the system yet. Checked before everything else: a lock timeout
+# fails in setup, and would otherwise read as a broken harness.
+CASE_TIMEOUT_MARKER = 'Timeout (>'          # pytest-timeout: "Failed: Timeout (>5.0s) from pytest-timeout."
+RESOURCE_WAIT_MARKER = 'ipandora: gave up waiting for resource'   # core/runner/plugin.py
+
 HARNESS_MARKERS = ('fixture', 'not found', 'ImportError', 'ModuleNotFoundError',
                    'AttributeError', 'TypeError', 'NameError')
 
@@ -73,6 +79,15 @@ def classify(nodeid: str, outcome: str, message: str) -> Finding:
         return Finding(nodeid=nodeid, category=category, confidence=confidence,
                        reason=reason, next_step=NEXT_STEP.get(category, ''),
                        check_sources=sources or [])
+
+    if RESOURCE_WAIT_MARKER in _message:
+        return _finding(Category.ENVIRONMENT, Confidence.HIGH,
+                        'never started: a shared resource it declares was held by another '
+                        'case or run for the whole wait')
+    if CASE_TIMEOUT_MARKER in _message and 'pytest-timeout' in _message:
+        return _finding(Category.ENVIRONMENT, Confidence.MEDIUM,
+                        'the case exceeded its time limit. Usually a dependency that stopped '
+                        'answering; if the system under test itself hangs, that is a defect')
 
     # Nothing reached the system under test.
     _transport = next((_m for _m in TRANSPORT_MARKERS if _m in _message), None)

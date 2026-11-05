@@ -337,6 +337,41 @@ ipandora run tests --fail-on-weakened    # CI：判定比基线弱就失败
 - 关掉比对：`--no-baseline`；指定别的基线文件：`--baseline PATH`
 - MCP 的 `run_tests` 返回里带 `unverified`、`judgements_weakened`、`judgement_changes` 三个字段
 
+#### 2.1.6 并行执行
+
+```shell
+pip install intellipandora[parallel]
+
+ipandora run tests --workers 4          # 4 个进程；auto = 每个 CPU 一个
+ipandora run tests --workers auto --timeout 120   # 单条用例超过 120 秒判失败
+```
+
+**并行跑的结论和串行完全一样**：判定清单、零判定、基线比对、报告里的用例顺序都一致，只是更快。等待接口响应为主的套件，4 个进程的耗时约为串行的三分之一。
+
+底层是 pytest-xdist（多进程，不是多线程：fixture、Playwright、HTTP 会话都不是线程安全的）。判定是在每个进程里记下的，`ipandora run --workers` 会把它们连同请求证据一起带回主进程；直接用 `pytest -n 4` 也能跑，但没有判定清单。
+
+**共享资源**：多条用例要用同一个测试账号、同一笔固定的订单时，声明出来，它们就不会同时执行：
+
+```python
+@pytest.mark.resource('account:vip')
+def test_upgrade(): ...
+
+@pytest.mark.resource('account:vip')
+def test_downgrade(): ...      # 和 test_upgrade 不会同时跑；其他用例照常并行
+
+@pytest.mark.resource('account:vip', 'order:42')   # 可以同时占用多个
+def test_refund(): ...
+```
+
+- 只锁真正冲突的用例，不像 `xdist_group` 那样把整组挪到一个进程里串行。
+- 串行运行也会加锁，所以同一台机器上的两次运行（两个 CI 作业、你和 MCP server）也不会撞上同一个账号。
+- 等锁超过 300 秒（环境变量 `IPANDORA_RESOURCE_TIMEOUT` 可改），用例记为 error，归因为**环境问题**，不算产品缺陷。
+- **只管同一台机器**。多台机器、多个 CI runner 共用一个账号时需要分布式锁，目前不支持；这种情况请给每台机器分配不同的账号。
+
+**超时**：`--timeout` 用 pytest-timeout 实现。一条卡住的用例会一直占着一个进程，并行时更难发现。超时的用例判失败，归因为环境问题（多半是依赖的服务不响应；如果是被测系统自己卡死，那就是缺陷）。
+
+**库调用和 MCP**：`run('tests', workers=4, timeout=120)`；MCP 的 `run_tests(selector, env, workers)`。没装 `parallel` 却要求并行时会直接报错并提示安装，不会悄悄改成串行。
+
 ### 2.2 辅助功能
 
 #### 2.2.1 测试数据注入
@@ -584,7 +619,7 @@ claude mcp add intellipandora -- ipandora mcp      # Claude Code
 
 | tool | 用途 |
 |---|---|
-| `run_tests(selector, env)` | 跑用例，返回摘要：失败名、断言信息、归因 |
+| `run_tests(selector, env, workers)` | 跑用例，返回摘要：失败名、断言信息、归因。`workers` 大于 1 时并行 |
 | `explain_failure(run_id)` | 按需取完整失败现场（traceback、证据） |
 | `list_runs(limit)` | 最近的运行，用来比较回归 |
 | `build_report(run_id, directory)` | 为某次运行生成 HTML + JSON 报告，给人看 |

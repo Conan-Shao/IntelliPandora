@@ -38,8 +38,10 @@ LOCKS = {
     # `test` is httpretty, which test/testhttp imports. CI installed .[ai,mcp]
     # without it from 1.11.0 on and every run failed at collection.
     # `system` too: every extra a user can install is audited, used by tests or not.
-    'ci.txt': (['setup.py', 'requirements/build.in'], ['ai', 'mcp', 'system', 'test']),
-    'ci-noai.txt': (['setup.py', 'requirements/build.in'], ['mcp', 'test']),
+    # `parallel` in both, so the parallel tests run in every CI job, with and
+    # without ai/.
+    'ci.txt': (['setup.py', 'requirements/build.in'], ['ai', 'mcp', 'parallel', 'system', 'test']),
+    'ci-noai.txt': (['setup.py', 'requirements/build.in'], ['mcp', 'parallel', 'test']),
     'tools.txt': (['requirements/tools.in'], []),
 }
 

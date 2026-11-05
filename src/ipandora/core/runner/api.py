@@ -4,6 +4,7 @@
 @File  : api.py
 @Time  : 2026-08-01
 """
+import importlib.util
 import io
 import os
 import sys
@@ -12,6 +13,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
 from typing import List, Optional, Sequence
 
+from ipandora.core.runner import plugin as _plugin
 from ipandora.core.runner.collector import ResultCollector
 from ipandora.core.runner.result import RunResult
 from ipandora.core.runner import inventory, store
@@ -33,8 +35,12 @@ from ipandora.utils.log import logger
 # enable_assertion_pass_hook makes pytest report every plain `assert` that
 # held, which is how a suite written with bare asserts still gets a judgement
 # inventory. See _bytecode_cache() for the catch.
+#
+# `-p ipandora.core.runner.plugin` loads the half of the runner that records
+# judgements and evidence. As a -p argument it reaches every xdist worker; see
+# plugin.py for why a plugin object would not.
 BASE_ARGS = ('-q', '--no-header', '-p', 'no:cacheprovider', '--import-mode=importlib',
-             '-o', 'enable_assertion_pass_hook=true')
+             '-o', 'enable_assertion_pass_hook=true', '-p', 'ipandora.core.runner.plugin')
 
 # pytest exit codes that mean the run did not happen properly. 0 (all passed)
 # and 1 (tests failed) are the two where the case results tell the story;
@@ -117,8 +123,62 @@ def _bytecode_cache() -> str:
     return _dir
 
 
+class MissingExtra(RuntimeError):
+    """An option was asked for whose optional dependency is not installed."""
+
+
+def _workers_args(workers) -> List[str]:
+    """
+    `-n` for pytest-xdist, or nothing for a serial run.
+
+    Asking for workers without xdist installed is an error, not a quiet
+    serial run: the caller asked for something specific, and a suite that
+    takes four times as long without saying why is how a pipeline's timeout
+    gets raised instead of the dependency installed.
+    """
+    if workers in (None, '', 0, 1, '0', '1'):
+        return []
+    _n = str(workers).strip().lower()
+    if _n != 'auto' and not (_n.isdigit() and int(_n) > 1):
+        raise ValueError('workers must be a number or "auto", got {!r}'.format(workers))
+    if importlib.util.find_spec('xdist') is None:
+        raise MissingExtra('--workers needs pytest-xdist: pip install intellipandora[parallel]')
+    return ['-n', _n]
+
+
+def _timeout_args(timeout) -> List[str]:
+    """
+    `--timeout` for pytest-timeout. One case that hangs holds its worker for
+    good, and in a parallel run nobody notices the run has quietly lost a
+    worker until the job's own limit kills everything with no report at all.
+    """
+    if not timeout:
+        return []
+    _seconds = float(timeout)
+    if _seconds <= 0:
+        raise ValueError('timeout must be positive, got {!r}'.format(timeout))
+    if importlib.util.find_spec('pytest_timeout') is None:
+        raise MissingExtra('--timeout needs pytest-timeout: pip install intellipandora[parallel]')
+    return ['--timeout', '{:g}'.format(_seconds)]
+
+
+def _process_environment(env: str) -> dict:
+    """
+    What workers need to start the way this process already is.
+
+    An xdist worker is a new interpreter: it inherits environment variables,
+    not this process's state. Two things matter. The bytecode cache: without
+    it a worker reuses a __pycache__ written by plain pytest, which has no
+    assertion-pass hook compiled in, and every case reads as unverified again
+    (plugin.pytest_load_initial_conftests applies it). And the env overlay,
+    which run() applies to this process only (plugin._apply_worker_env).
+    """
+    return {_plugin.PYCACHE_VAR: _bytecode_cache(), _plugin.ENV_VAR: env or ''}
+
+
 def run(selector: str = '', env: str = '', extra_args: Sequence[str] = (),
-        persist: bool = True, quiet: bool = False, baseline: Optional[str] = None) -> RunResult:
+        persist: bool = True, quiet: bool = False, baseline: Optional[str] = None,
+        workers=None, timeout: Optional[float] = None) -> RunResult:
     """
     Execute tests and return a structured result.
 
@@ -142,6 +202,12 @@ def run(selector: str = '', env: str = '', extra_args: Sequence[str] = (),
                      the comparison off. Comparing never changes `ok` -- a
                      weaker pass is reported in `judgement_changes`, and
                      gating on it is the caller's decision.
+    :param workers:  run in parallel with pytest-xdist: a number, or 'auto'
+                     for one per CPU. None, 0 or 1 is serial. Results, the
+                     judgement inventory and the report are the same either
+                     way -- see plugin.py. Needs the `parallel` extra.
+    :param timeout:  seconds a single case may take before it is failed, with
+                     pytest-timeout. Needs the `parallel` extra.
 
     Note: pytest runs in-process. The project modules a run imports -- test
     files, conftest.py, the suite's own helpers -- are dropped from
@@ -156,9 +222,10 @@ def run(selector: str = '', env: str = '', extra_args: Sequence[str] = (),
         raise RuntimeError('pytest is required to run tests: {}'.format(exc))
 
     _run_id = new_run_id()
+    # validated before anything is changed, so a bad option leaves no trace
+    _args = _build_args(selector, extra_args) + _workers_args(workers) + _timeout_args(timeout)
     _settings_before, _env_file = _apply_env(env)
     _collector = ResultCollector()
-    _args = _build_args(selector, extra_args)
 
     logger.info('run %s: pytest %s', _run_id, ' '.join(_args))
     _start = time.perf_counter()
@@ -174,6 +241,8 @@ def run(selector: str = '', env: str = '', extra_args: Sequence[str] = (),
     # every run costs milliseconds, a stale verdict costs the whole loop.
     sys.dont_write_bytecode = True
     _modules_before = set(sys.modules)
+    _environ_before = {_k: os.environ.get(_k) for _k in _process_environment(env)}
+    os.environ.update(_process_environment(env))
     try:
         if quiet:
             with redirect_stdout(_sink), redirect_stderr(_sink):
@@ -181,6 +250,11 @@ def run(selector: str = '', env: str = '', extra_args: Sequence[str] = (),
         else:
             _exit = pytest.main(list(_args), plugins=[_collector])
     finally:
+        for _k, _v in _environ_before.items():
+            if _v is None:
+                os.environ.pop(_k, None)
+            else:
+                os.environ[_k] = _v
         sys.pycache_prefix = _prefix_before
         sys.dont_write_bytecode = _nowrite_before
         _forget_project_modules(_modules_before, _collector.rootdir)

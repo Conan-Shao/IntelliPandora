@@ -18,7 +18,7 @@ Both entry points -- the pytest CLI and the MCP `run_tests` tool -- go through
 throws away the structure pytest already provides and floods an agent's
 context with output it cannot use.
 """
-from ipandora.core.runner.api import explain, new_run_id, run
+from ipandora.core.runner.api import MissingExtra, explain, new_run_id, run
 from ipandora.core.runner.result import CaseResult, RunResult
 
-__all__ = ['run', 'explain', 'new_run_id', 'RunResult', 'CaseResult']
+__all__ = ['run', 'explain', 'new_run_id', 'RunResult', 'CaseResult', 'MissingExtra']

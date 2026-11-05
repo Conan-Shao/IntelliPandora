@@ -46,10 +46,17 @@ class Command(CommandBase):
             _extra += ['-m', 'not flaky']
         from ipandora.core.runner import inventory
         _baseline = '' if options.no_baseline else options.baseline
-        _result = run(options.selector, env=options.env or '',
-                      extra_args=_extra or None,
-                      persist=not options.no_store,
-                      baseline=_baseline)
+        from ipandora.core.runner.api import MissingExtra
+        try:
+            _result = run(options.selector, env=options.env or '',
+                          extra_args=_extra or None,
+                          persist=not options.no_store,
+                          baseline=_baseline,
+                          workers=options.workers,
+                          timeout=options.timeout)
+        except (MissingExtra, ValueError) as exc:
+            print('  ERROR  {}'.format(exc), file=sys.stderr)
+            sys.exit(2)
 
         _report = build(_result, title=options.title)
 
@@ -218,6 +225,19 @@ class Command(CommandBase):
                  '-- removed, loosened, changed, newly skipped or excluded, or '
                  'a case that passes without judging anything. The gate for '
                  'suites that agents edit')
+        self.parser.add_argument(
+            '-w', '--workers', default=None, metavar='N|auto',
+            help='run in parallel with N worker processes (pytest-xdist), or '
+                 '"auto" for one per CPU. Judgements, the report and the '
+                 'baseline comparison are the same as a serial run. Cases '
+                 'that share an account or other fixed data declare it with '
+                 '@pytest.mark.resource("name") and never run at the same '
+                 'time. Needs: pip install intellipandora[parallel]')
+        self.parser.add_argument(
+            '--timeout', default=None, type=float, metavar='SECONDS',
+            help='fail any single case that runs longer than this '
+                 '(pytest-timeout); triage blames the environment. Needs: '
+                 'pip install intellipandora[parallel]')
         self.parser.add_argument(
             '--no-store', action='store_true',
             help='do not keep the raw run for explain_failure')

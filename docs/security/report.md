@@ -11,12 +11,12 @@
 
 | 检查 | 范围 | 结果 |
 |---|---|---|
-| 依赖漏洞 | `requirements/ci.txt`：框架 + 全部可选组（ai、mcp、system、test） | 通过：48 个包，0 个已知漏洞 |
-| 依赖漏洞 | `requirements/ci-noai.txt`：框架 + mcp、test，不含 AI 组 | 通过：43 个包，0 个已知漏洞 |
+| 依赖漏洞 | `requirements/ci.txt`：框架 + 全部可选组（ai、mcp、system、test） | 通过：51 个包，0 个已知漏洞 |
+| 依赖漏洞 | `requirements/ci-noai.txt`：框架 + mcp、test，不含 AI 组 | 通过：46 个包，0 个已知漏洞 |
 | 依赖漏洞 | `requirements/tools.txt`：构建与工具链（不安装到用户环境） | 通过：58 个包，0 个已知漏洞 |
-| 自身代码 | `src/`，bandit 静态扫描 | 通过：0 个未处理问题，10 处经评估标注（理由见下） |
-| 许可证 | 运行环境 49 个分发包、工具链 58 个（含间接依赖） | 通过：全部在白名单内 |
-| 组件登记 | 24 个直接依赖与 CI 动作 | 通过：与代码声明一致 |
+| 自身代码 | `src/`，bandit 静态扫描 | 通过：0 个未处理问题，11 处经评估标注（理由见下） |
+| 许可证 | 运行环境 52 个分发包、工具链 58 个（含间接依赖） | 通过：全部在白名单内 |
+| 组件登记 | 26 个直接依赖与 CI 动作 | 通过：与代码声明一致 |
 | 漏洞例外 | 例外登记表 | 通过：0 条 |
 
 ## 漏洞明细
@@ -35,6 +35,7 @@ bandit 报出、经评估不构成问题的地方，在源码里标注 `# nosec`
 | B110 | `src/ipandora/core/evidence/recorder.py` | reporting must never fail a test |
 | B110 | `src/ipandora/core/protocol/http/model/data/responseobject.py` | evidence capture must never fail a request |
 | B110 | `src/ipandora/core/protocol/http/model/data/responseobject.py` | evidence capture must never fail a request |
+| B110 | `src/ipandora/core/runner/plugin.py` | a lock that will not release must not turn a result red; the process exit frees it |
 | B311 | `src/ipandora/utils/variable.py` | test data |
 | B311 | `src/ipandora/utils/variable.py` | test data, not a secret |
 | B405 | `src/ipandora/core/report/junit.py` | this module builds XML and never parses it |
@@ -44,7 +45,7 @@ bandit 报出、经评估不构成问题的地方，在源码里标注 `# nosec`
 
 白名单为宽松许可证（MIT、BSD、Apache、ISC、MPL-2.0、PSF 等），不接受 GPL 系、SSPL、BUSL 等，理由见 [`docs/design/15`](../design/15-第三方组件安全准入与漏洞扫描.md) §3。
 
-<details><summary>运行环境（框架 + 全部可选组，即用户可能装上的全部）：49 个</summary>
+<details><summary>运行环境（框架 + 全部可选组，即用户可能装上的全部）：52 个</summary>
 
 | 分发包 | 版本 | 许可证 | 结果 |
 |---|---|---|---|
@@ -58,6 +59,7 @@ bandit 报出、经评估不构成问题的地方，在源码里标注 `# nosec`
 | click | 8.5.0 | BSD-3-Clause | 通过 |
 | cryptography | 50.0.2 | Apache-2.0 OR BSD-3-Clause | 通过 |
 | docstring-parser | 0.18.0 | MIT License | 通过 |
+| execnet | 2.1.2 | MIT | 通过 |
 | h11 | 0.16.0 | MIT License | 通过 |
 | httpcore2 | 2.16.0 | BSD-3-Clause | 通过 |
 | httpretty | 1.1.4 | MIT License | 通过 |
@@ -82,6 +84,8 @@ bandit 报出、经评估不构成问题的地方，在源码里标注 `# nosec`
 | pygments | 2.21.0 | BSD-2-Clause | 通过 |
 | pyjwt | 2.15.1 | MIT | 通过 |
 | pytest | 9.1.1 | MIT | 通过 |
+| pytest-timeout | 2.4.0 | DFSG approved / MIT License | 通过 |
+| pytest-xdist | 3.8.0 | MIT | 通过 |
 | python-multipart | 0.0.32 | Apache-2.0 | 通过 |
 | pyyaml | 6.0.3 | MIT License | 通过 |
 | referencing | 0.37.0 | MIT | 通过 |
