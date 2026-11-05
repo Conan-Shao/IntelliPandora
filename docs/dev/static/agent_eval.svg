@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800" font-family="'PingFang SC','Microsoft YaHei','WenQuanYi Zen Hei',sans-serif">
+  <style>text{white-space:pre}</style>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#5b6472"/>
+    </marker>
+  </defs>
+  <rect width="1200" height="800" fill="#ffffff"/>
+
+  <text x="600" y="44" text-anchor="middle" font-size="26" font-weight="700" fill="#1d2330">agent 验证：一个任务跑 k 次，判定看终态和轨迹</text>
+  <text x="600" y="74" text-anchor="middle" font-size="15" fill="#5b6472">同样的输入可以有不同且都正确的输出，所以结论是成功率，不是一次过或不过</text>
+
+  <!-- legend -->
+  <rect x="842" y="92" width="16" height="16" rx="3" fill="#e8f0fe" stroke="#2f6fd6"/>
+  <text x="864" y="105" font-size="12.5" fill="#1d2330">复用现有能力</text>
+  <rect x="972" y="92" width="16" height="16" rx="3" fill="#ffffff" stroke="#9aa3b2"/>
+  <text x="994" y="105" font-size="12.5" fill="#1d2330">新建</text>
+  <rect x="1046" y="92" width="16" height="16" rx="3" fill="#ffffff" stroke="#9aa3b2" stroke-dasharray="4 3"/>
+  <text x="1068" y="105" font-size="12.5" fill="#1d2330">可选</text>
+
+  <!-- two kinds of agents -->
+  <rect x="30" y="126" width="270" height="92" rx="12" fill="#ffffff" stroke="#9aa3b2"/>
+  <text x="48" y="156" font-size="15" font-weight="700" fill="#1d2330">编码类 agent</text>
+  <text x="48" y="180" font-size="12.5" fill="#5b6472">Claude Code、Codex、test_analyst…</text>
+  <text x="48" y="202" font-size="12.5" fill="#5b6472">命令行无头模式，结构化事件流</text>
+  <rect x="30" y="232" width="270" height="92" rx="12" fill="#ffffff" stroke="#9aa3b2"/>
+  <text x="48" y="262" font-size="15" font-weight="700" fill="#1d2330">业务 agent</text>
+  <text x="48" y="286" font-size="12.5" fill="#5b6472">客服、工单、交易、审批…</text>
+  <text x="48" y="308" font-size="12.5" fill="#5b6472">HTTP / SDK，多轮对话 + 模拟用户</text>
+
+  <path d="M302,172 L330,172 Q340,172 340,182 L340,214" stroke="#5b6472" stroke-width="2" fill="none"/>
+  <path d="M302,278 L330,278 Q340,278 340,268 L340,234" stroke="#5b6472" stroke-width="2" fill="none"/>
+  <line x1="340" y1="224" x2="372" y2="224" stroke="#5b6472" stroke-width="2" marker-end="url(#a)"/>
+
+  <!-- row A -->
+  <rect x="376" y="176" width="180" height="96" rx="12" fill="#ffffff" stroke="#9aa3b2"/>
+  <text x="466" y="210" text-anchor="middle" font-size="15" font-weight="700" fill="#1d2330">数据集（冻结版本）</text>
+  <text x="466" y="234" text-anchor="middle" font-size="12.5" fill="#5b6472">参考解自检 · 调试 / 测试集</text>
+  <text x="466" y="254" text-anchor="middle" font-size="12.5" fill="#5b6472">正反平衡 · 覆盖矩阵</text>
+  <line x1="558" y1="224" x2="588" y2="224" stroke="#5b6472" stroke-width="2" marker-end="url(#a)"/>
+
+  <rect x="592" y="176" width="180" height="96" rx="12" fill="#ffffff" stroke="#9aa3b2"/>
+  <text x="682" y="210" text-anchor="middle" font-size="15" font-weight="700" fill="#1d2330">执行：两条路径</text>
+  <text x="682" y="234" text-anchor="middle" font-size="12.5" fill="#5b6472">编码类：Inspect + inspect_swe</text>
+  <text x="682" y="254" text-anchor="middle" font-size="12.5" fill="#5b6472">业务类：pytest + xdist</text>
+  <line x1="774" y1="224" x2="804" y2="224" stroke="#5b6472" stroke-width="2" marker-end="url(#a)"/>
+
+  <!-- sandbox stacked k times -->
+  <rect x="820" y="166" width="180" height="96" rx="12" fill="#ffffff" stroke="#c9ced8"/>
+  <rect x="814" y="171" width="180" height="96" rx="12" fill="#ffffff" stroke="#b3bac6"/>
+  <rect x="808" y="176" width="180" height="96" rx="12" fill="#ffffff" stroke="#9aa3b2"/>
+  <text x="898" y="210" text-anchor="middle" font-size="15" font-weight="700" fill="#1d2330">沙箱 × k 次</text>
+  <text x="898" y="234" text-anchor="middle" font-size="12.5" fill="#5b6472">浅克隆，不共享 git 历史</text>
+  <text x="898" y="254" text-anchor="middle" font-size="12.5" fill="#2f6fd6">资源固定并记录、有超时</text>
+  <line x1="1002" y1="224" x2="1028" y2="224" stroke="#5b6472" stroke-width="2" marker-end="url(#a)"/>
+
+  <rect x="1032" y="176" width="140" height="96" rx="12" fill="#e8f0fe" stroke="#2f6fd6"/>
+  <text x="1102" y="210" text-anchor="middle" font-size="15" font-weight="700" fill="#1d2330">轨迹</text>
+  <text x="1102" y="234" text-anchor="middle" font-size="12" fill="#5b6472">消息、工具调用</text>
+  <text x="1102" y="254" text-anchor="middle" font-size="12" fill="#5b6472">改动、外联、费用</text>
+
+  <path d="M1102,274 L1102,330 Q1102,340 1092,340 L1000,340 Q990,340 990,350 L990,360" stroke="#5b6472" stroke-width="2" fill="none" marker-end="url(#a)"/>
+
+  <!-- graders (big) -->
+  <rect x="376" y="364" width="796" height="214" rx="12" fill="#e8f0fe" stroke="#2f6fd6"/>
+  <text x="396" y="394" font-size="16" font-weight="700" fill="#1d2330">判分器：每个都产出 Check，按来源分开记</text>
+  <text x="396" y="416" font-size="12.5" fill="#5b6472">确定性优先；模型评委只补确定性判不了的部分，而且要先校准</text>
+  <g font-size="13">
+    <rect x="396" y="432" width="184" height="62" rx="9" fill="#ffffff" stroke="#bcd3f5"/>
+    <text x="410" y="456" font-weight="700" fill="#1d2330">终态  state</text>
+    <text x="410" y="480" font-size="12" fill="#5b6472">数据库记录、隐藏测试</text>
+    <rect x="590" y="432" width="184" height="62" rx="9" fill="#ffffff" stroke="#bcd3f5"/>
+    <text x="604" y="456" font-weight="700" fill="#1d2330">轨迹  trajectory</text>
+    <text x="604" y="480" font-size="12" fill="#5b6472">必须 / 禁止调用、参数</text>
+    <rect x="784" y="432" width="184" height="62" rx="9" fill="#ffffff" stroke="#bcd3f5"/>
+    <text x="798" y="456" font-weight="700" fill="#1d2330">安全  safety</text>
+    <text x="798" y="480" font-size="12" fill="#5b6472">金丝雀、诱饵、注入</text>
+    <rect x="978" y="432" width="174" height="62" rx="9" fill="#ffffff" stroke="#bcd3f5"/>
+    <text x="992" y="456" font-weight="700" fill="#1d2330">成本  cost</text>
+    <text x="992" y="480" font-size="12" fill="#5b6472">token、费用、轮数</text>
+
+    <rect x="396" y="504" width="378" height="58" rx="9" fill="#ffffff" stroke="#2f6fd6" stroke-width="1.5"/>
+    <text x="410" y="528" font-weight="700" fill="#1d2330">判定清单对比：把测试改弱了吗</text>
+    <text x="410" y="548" font-size="12" fill="#2f6fd6">第 1 步现成的能力，原样拿来防刷分</text>
+    <rect x="784" y="504" width="368" height="58" rx="9" fill="#ffffff" stroke="#9aa3b2" stroke-dasharray="4 3"/>
+    <text x="798" y="528" font-weight="700" fill="#1d2330">模型评委  llm_judge</text>
+    <text x="798" y="548" font-size="12" fill="#5b6472">可答"不确定"；和人工一致率达标才进门禁</text>
+  </g>
+
+  <path d="M376,470 L352,470 Q342,470 342,480 L342,600 Q342,610 352,610 L372,610" stroke="#5b6472" stroke-width="2" fill="none" marker-end="url(#a)"/>
+
+  <!-- row C -->
+  <rect x="376" y="594" width="250" height="88" rx="12" fill="#ffffff" stroke="#9aa3b2"/>
+  <text x="501" y="626" text-anchor="middle" font-size="15" font-weight="700" fill="#1d2330">统计结论</text>
+  <text x="501" y="650" text-anchor="middle" font-size="12.5" fill="#5b6472">成功率 + 置信区间、按标签出分</text>
+  <text x="501" y="670" text-anchor="middle" font-size="12.5" fill="#5b6472">pass@k（能做到）/ pass^k（每次做到）</text>
+  <line x1="628" y1="638" x2="658" y2="638" stroke="#5b6472" stroke-width="2" marker-end="url(#a)"/>
+
+  <rect x="662" y="594" width="250" height="88" rx="12" fill="#e8f0fe" stroke="#2f6fd6"/>
+  <text x="787" y="626" text-anchor="middle" font-size="15" font-weight="700" fill="#1d2330">基线比对</text>
+  <text x="787" y="650" text-anchor="middle" font-size="12.5" fill="#5b6472">配对比较（McNemar / bootstrap）</text>
+  <text x="787" y="670" text-anchor="middle" font-size="12.5" fill="#5b6472">超出误差和基础设施噪声才算回归</text>
+  <line x1="914" y1="638" x2="944" y2="638" stroke="#5b6472" stroke-width="2" marker-end="url(#a)"/>
+
+  <rect x="948" y="594" width="224" height="88" rx="12" fill="#e8f0fe" stroke="#2f6fd6"/>
+  <text x="1060" y="626" text-anchor="middle" font-size="15" font-weight="700" fill="#1d2330">报告 · 归因 · 门禁</text>
+  <text x="1060" y="650" text-anchor="middle" font-size="12.5" fill="#5b6472">轨迹时间线；失败归到任务 /</text>
+  <text x="1060" y="670" text-anchor="middle" font-size="12.5" fill="#5b6472">判分器 / 环境 / agent</text>
+
+  <!-- footer -->
+  <rect x="30" y="706" width="1142" height="74" rx="12" fill="#1d2330"/>
+  <text x="54" y="736" font-size="14" font-weight="700" fill="#ffffff">共用底座</text>
+  <text x="140" y="736" font-size="13.5" fill="#d9dee7">判定（Check）· 判定清单防刷分 · 配对比较与基线门禁 · 归因 · 报告 · CLI / CI / MCP</text>
+  <text x="54" y="762" font-size="13.5" fill="#9aa3b2">每次运行记版本清单：数据集 · 外壳 · 模型 · 配置 · 资源。框架自身的判定不调 LLM；模型评委可选、单独记账</text>
+</svg>
