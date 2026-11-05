@@ -14,6 +14,14 @@ v1.11.0
 * add @pytest.mark.flaky(reason=...) and `ipandora run --exclude-flaky`. Excluded cases are still named in the summary: a flaky marker nobody is reminded of is a failure that has been parked
 * add scripts/mutation.py -- mutation testing, scoped to one module and its tests, with a score and --min-score for gating
 * smoke_import now passes against a minimal install, excusing only the modules whose optional extra is genuinely missing
+* add comparators $gte, $lt, $lte and $regex to json_matches and ResponseHandler.filter; a range is `{'$gte': 0, '$lte': 100}`
+* fix: numeric comparators truncated the value when the operand was an int -- `{'$eq': 5}` passed on 5.9, `{'$eq': 0}` on -0.5, and `{'$gt': 0}` failed on 0.9. Values now compare as floats
+* fix: a bool operand converted the value with bool(), so `{'$eq': True}` matched 1, 'yes' and the string 'false'; and `true` matched `{'$eq': 1}`. Booleans and numbers no longer coerce into each other -- the check fails and says why
+* fix: an operator key without `$` was used as a method name verbatim, so `{'__class__': 5}` passed on any value. Only `$` keys naming a real comparator are operators; anything else is "unknown operator"
+* config is read from the suite's own conf/ (./conf, or $IPANDORA_CONFIG_DIR) over the package defaults: conf/config.yaml for the project, conf/<env>.yaml per run. Previously both were looked up only inside the installed package, so configuring a suite meant editing site-packages. The old location still loads, with a warning
+* fix: an env overlay replaced whole sections (shallow dict.update) -- `ai: {enabled: true}` dropped `ai.model`. Layers now merge recursively
+* fix: an env overlay was never undone. In one process -- the MCP server -- a run with env=staging followed by env=prod (no prod.yaml) or by no env at all still used staging's settings. Each run's overlay is now removed when the run ends, pass or fail
+* fix: `-e` naming a file that does not exist logged at debug level, so a typo ran the whole suite on defaults under the requested env's name. It is now a warning listing every path searched
 * fix: the crypto key landed inside the tracked package tree and three separate gates failed to recognise it; it now lives in ~/.ipandora/crypto at 0700/0600
 * fix: AESCryptographer held a base64 str where AES wants raw bytes after generating a key, so the first run of a fresh install always raised
 * fix: MANIFEST.in named the distribution instead of the package path; scripts/check_packaging.py now checks the built wheel, because whether data files reach it depends on the setuptools version doing the build

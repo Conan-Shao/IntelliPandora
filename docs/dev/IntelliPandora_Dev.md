@@ -33,7 +33,7 @@
 │       ├── CHANGELOG
 │       ├── ai/                 # 可选 LLM 支持，可整包删除
 │       ├── common/
-│       ├── conf/               # config.yaml 与报告模板
+│       ├── conf/               # 框架默认 config.yaml 与报告模板（用例项目的配置放它自己的 ./conf）
 │       ├── core/
 │       ├── run/                # 命令行
 │       ├── utils/
@@ -57,7 +57,7 @@
     * **triage**: 失败归因，规则优先，LLM 可选
     * **evidence**: 请求响应证据采集
     * **mcp**: agent 入口
-    * **plugin** / **schedule**: 插件注册、Runtime 配置
+    * **plugin** / **schedule**: 插件注册、Runtime 配置。配置分层（包默认 → 项目 `conf/config.yaml` → `conf/<env>.yaml`）与深合并在 `schedule/config.py`；环境叠加只作用于一次 `run()`，结束即恢复
     * **engine/crypto**: 配置加密；密钥存放在 `~/.ipandora/crypto`，不在包内
   * **common** / **utils**: 工具
   * **run**: 命令行

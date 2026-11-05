@@ -14,11 +14,10 @@ from typing import List, Optional, Sequence
 from ipandora.core.runner.collector import ResultCollector
 from ipandora.core.runner.result import RunResult
 from ipandora.core.runner import store
+from ipandora.core.schedule import config as _config
 from ipandora.core.schedule.runtime import Runtime
 from ipandora.core.triage import hooks, triage
-from ipandora.utils.fileload import FileLoad
 from ipandora.utils.log import logger
-from ipandora.utils.pathutils import PathUtils
 
 # Quiet, and no cache writes -- the caller gets structure from the collector,
 # not from stdout.
@@ -47,27 +46,24 @@ def new_run_id() -> str:
     return 'run-{}'.format(datetime.now().strftime('%Y%m%d-%H%M%S-%f')[:-3])
 
 
-def _load_env_settings(env: str) -> bool:
+def _apply_env(env: str):
     """
-    Overlay conf/<env>.yaml onto Runtime.settings, if that file exists.
+    Overlay this env's yaml onto Runtime.settings for one run.
 
-    Returns whether anything was loaded. Environments are per-deployment, so a
-    missing file is normal rather than an error.
+    Returns (settings before, file loaded or ''). The caller restores the
+    first when the run ends -- see run(). Without that restore the overlay
+    stayed in place for the life of the process: in the MCP server, which
+    calls run() repeatedly, a run with `env=staging` followed by `env=prod`
+    (no prod.yaml) or `env=''` still ran with staging's settings.
     """
-    if not env:
-        return False
-    _file = os.path.join(PathUtils().pandora_path, 'conf', '{}.yaml'.format(env))
-    if not os.path.isfile(_file):
-        logger.debug('no config for env %r at %s', env, _file)
-        return False
-    _settings = FileLoad(_file).load_yaml() or {}
-    _merged = dict(Runtime.settings or {})
-    _merged.update(_settings)
-    Runtime.settings = _merged
-    # config values memoise on first read, so previously-read ones would keep
-    # the old environment's value without this
-    Runtime.reset()
-    return True
+    _before = Runtime.settings
+    _file = _config.find_env_file(env)
+    if _file:
+        Runtime.settings = _config.deep_merge(_before, _config.read_yaml(_file))
+        # config values memoise on first read, so previously-read ones would
+        # keep the old environment's value without this
+        Runtime.reset()
+    return _before, _file
 
 
 def run(selector: str = '', env: str = '', extra_args: Sequence[str] = (),
@@ -82,7 +78,8 @@ def run(selector: str = '', env: str = '', extra_args: Sequence[str] = (),
 
     :param selector: what to run -- a path, a nodeid, or a `-k` expression.
                      Empty means the whole suite.
-    :param env:      environment name; overlays conf/<env>.yaml when present.
+    :param env:      environment name; overlays <env>.yaml for this run only,
+                     found as described in core/schedule/config.py.
     :param extra_args: extra pytest arguments.
     :param persist:  archive the full run so explain_failure can retrieve it.
     :param quiet:    swallow pytest's own stdout/stderr. Required when the
@@ -102,7 +99,7 @@ def run(selector: str = '', env: str = '', extra_args: Sequence[str] = (),
         raise RuntimeError('pytest is required to run tests: {}'.format(exc))
 
     _run_id = new_run_id()
-    _restore_env = bool(env) and _load_env_settings(env)
+    _settings_before, _env_file = _apply_env(env)
     _collector = ResultCollector()
     _args = _build_args(selector, extra_args)
 
@@ -117,7 +114,8 @@ def run(selector: str = '', env: str = '', extra_args: Sequence[str] = (),
             _exit = pytest.main(list(_args), plugins=[_collector])
     finally:
         _duration = time.perf_counter() - _start
-        if _restore_env:
+        if _env_file:
+            Runtime.settings = _settings_before
             Runtime.reset()
 
     _collect_error = '\n'.join(_collector.collect_errors)

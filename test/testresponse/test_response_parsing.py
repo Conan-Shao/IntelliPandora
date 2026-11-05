@@ -137,6 +137,23 @@ class TestFilter:
         assert handler({'data': [{'i': 1}, {'i': 5}]}).filter(
             i={'$gt': 3}).fetch_all() == [{'i': 5}]
 
+    def test_filter_with_a_range(self):
+        assert handler({'data': [{'i': 1}, {'i': 5}, {'i': 9}]}).filter(
+            i={'$gte': 2, '$lte': 5}).fetch_all() == [{'i': 5}]
+
+    def test_filter_with_regex(self):
+        assert handler({'data': [{'s': 'a-1'}, {'s': 'b-2'}]}).filter(
+            s={'$regex': '^b'}).fetch_all() == [{'s': 'b-2'}]
+
+    def test_filter_does_not_truncate(self):
+        assert handler({'data': [{'i': 5.9}]}).filter(i={'$eq': 5}).fetch_all() == []
+
+    def test_filter_ignores_keys_that_are_not_operators(self):
+        # matched every item before: `__class__` resolved to Compare itself
+        for _key in ('__class__', '_coerced'):
+            assert handler({'data': [{'i': 1}, {'i': 2}]}).filter(
+                i={_key: 5}).fetch_all() == []
+
     def test_filter_skips_items_without_fields(self):
         # a list of scalars has nothing to match on; previously AttributeError
         assert handler({'data': [1, 2, 3]}).filter(i=2).fetch_all() == []

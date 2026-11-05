@@ -4,7 +4,6 @@
 @File  : runtime.py
 @Time  : 2024-04-19
 """
-import os
 import socket
 import threading
 from typing import Union, List
@@ -14,15 +13,15 @@ from ipandora.common.systeminfo import SystemInfo
 from ipandora.core.base.classwrap.classproperty import (ClassProperty, ClassPropertyMeta,
                                                         classproperty)
 from ipandora.core.engine.crypto.crypto import CryptoFactory
-from ipandora.utils.fileload import FileLoad
+from ipandora.core.schedule import config as _config
 from ipandora.utils.pathutils import PathUtils
 
 
 class Runtime(object):
     exc_info = ''
     product = ''
-    settings = FileLoad(
-        os.path.join(PathUtils().pandora_path, 'conf/config.yaml')).load_yaml()  # type:dict
+    # package conf/config.yaml, then the project's -- see core/schedule/config.py
+    settings = _config.load_base()  # type:dict
 
     # Snapshot of every section's memo slots, taken at import before anything
     # has been read. Populated by _snapshot_config_defaults() below.

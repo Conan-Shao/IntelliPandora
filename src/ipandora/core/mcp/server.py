@@ -24,7 +24,8 @@ def run_tests(selector: str = '', env: str = '') -> dict:
     Run tests and return a summary of what happened.
 
     selector: a path, a pytest nodeid, or a -k expression. Empty runs everything.
-    env: environment name, e.g. "dev" or "prod". Optional.
+    env: environment name, e.g. "dev" or "prod". Optional. Overlays
+         conf/<env>.yaml from the suite's config dir for this run only.
 
     Returns totals plus, for each failure, the case name, the assertion
     message, and a rule-based classification saying whether it looks like a

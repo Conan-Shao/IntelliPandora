@@ -82,7 +82,7 @@ resp.fetch_one()                      # 第一个；没有数据时返回 None
 resp.filter(status='ok').fetch_all()  # 过滤后再取
 ```
 
-`filter` 支持的比较器与断言层一致：`$gt` `$in` `$notIn` `$contains` `$startWith` `$eq`。
+`filter` 支持的比较器与断言层一致，见 [2.1.4 断言](#214-断言) 的比较器表。
 
 各种响应形态的行为：
 
@@ -173,10 +173,30 @@ Assertion failed (2/3 checks failed)
 | `header_is(resp, 'Content-Type', 'application/json')` | 响应头 |
 | `json_has(resp, 'data.token')` | 字段存在（值为 null 也算存在） |
 | `json_equals(resp, 'data.id', 1)` | 字段等于 |
-| `json_matches(resp, 'data.total', {'$gt': 0})` | 比较器：`$gt` `$in` `$notIn` `$contains` `$startWith` `$eq` |
+| `json_matches(resp, 'data.total', {'$gt': 0})` | 比较器，见下表 |
 | `schema_conforms(resp, schema)` | JSON Schema 校验 |
 
 路径支持点号与下标：`data.items[0].name`、`items[-1].id`。
+
+**比较器**（`json_matches` 与 `filter` 共用）
+
+| 运算符 | 含义 | 例 |
+|---|---|---|
+| `$eq` `$gt` `$gte` `$lt` `$lte` | 相等 / 大小；操作数是数字时按数字比 | `{'$gt': 0}` |
+| `$in` `$notIn` | 属于 / 不属于 | `{'$in': ['ok', 'pending']}` |
+| `$contains` | 子串，**不区分大小写** | `{'$contains': 'success'}` |
+| `$startWith` | 前缀 | `{'$startWith': 'ORD-'}` |
+| `$regex` | `re.search`，只匹配字符串；要整值匹配自己加 `^…$` | `{'$regex': r'^\d+\.\d+\.\d+$'}` |
+
+一个条件里写多个运算符表示**同时成立**，区间就这么写：`{'$gte': 0, '$lte': 100}`。
+
+比较器**不做猜测**：
+- 数字按 `float` 比，不截断——`5.9` 不等于 `5`，`0.9 > 0` 成立
+- 布尔不当数字：`true` 不等于 `1`；`{'$eq': True}` 只认真正的 `true`，不认 `"false"` 这种非空字符串
+- `$regex` 不把数字转成字符串去匹配
+- 不认识的运算符（包括没写 `$` 的键）
+
+这些情况都是**失败的 Check，并写明原因**，不会抛异常打断同一次 `assert_all` 里的其他判定。
 
 **前置条件用 `require`，不用 `assert_all`**
 
@@ -240,7 +260,63 @@ PluginManager.endpoints(reg=EndPointPlugin())
 
 ```
 
-#### 2.2.2 测试执行参数全局管理 Runtime
+#### 2.2.2 配置文件与环境（`conf/`）
+
+配置放在**你的用例项目**里，不用改装好的包：
+
+```
+your-suite/
+├── conf/
+│   ├── config.yaml      # 本项目的默认配置，覆盖框架自带默认值
+│   ├── staging.yaml     # ipandora run -e staging 时叠加
+│   └── prod.yaml
+└── tests/
+```
+
+```yaml
+# conf/config.yaml —— 只写要改的键，其余沿用框架默认
+http:
+  read_timeout: 60
+```
+
+```yaml
+# conf/staging.yaml
+base_url: https://staging.example.com    # 框架不认识的键，留给你的用例自己读
+http:
+  verify: false        # 只在这个一次性环境关
+```
+
+```shell
+ipandora run tests -e staging
+```
+
+框架只读 `http` / `ai` / `mcp` 三段。其他键（如上面的 `base_url`）原样留在 `Runtime.settings` 里，由你的端点插件（见 [2.2.1](#221-测试数据注入)）自己取：
+
+```python
+from ipandora.core.schedule.runtime import Runtime
+
+class EndPointPlugin(EndPointsInterface):
+    def endpoints(self, mark):
+        return {"svc": {"url": Runtime.settings.get("base_url", "http://localhost:8080")}}
+```
+
+叠加顺序（后者覆盖前者）：
+
+1. 框架自带 `ipandora/conf/config.yaml`
+2. 项目目录 `conf/config.yaml`
+3. 项目目录 `conf/<env>.yaml`（仅本次运行）
+
+项目目录默认是**当前工作目录下的 `conf/`**；设了环境变量 `IPANDORA_CONFIG_DIR` 就用它（CI 里从别处取配置时用）。
+
+几条行为：
+
+- **深合并**：`staging.yaml` 写 `ai: {enabled: true}` 只改 `enabled`，`ai.model` 等其余键保留
+- **只作用于这一次运行**：`run()` 结束后配置恢复原样。同一进程里连续跑（MCP server 就是这样），上一次的环境不会串到下一次
+- **找不到环境文件会打 WARNING**，并列出找过的路径——`-e stagnig` 这种拼写错误不会悄悄用默认配置跑完
+- `-e` 只接受名字，不接受路径
+- 旧位置（装好的包目录里的 `conf/<env>.yaml`）仍然能读到，但会提示迁到项目目录
+
+#### 2.2.3 测试执行参数全局管理 Runtime
 
 ```python
 import pytest
@@ -268,7 +344,7 @@ Runtime.reset()           # 恢复全部
 
 不还原的话，这个覆盖会泄漏给后面所有测试。
 
-#### 2.2.3 用例步骤记录
+#### 2.2.4 用例步骤记录
 
 `Runtime.Case` 的状态是 **thread-local** 的，并发跑用例不会互相串号：
 
@@ -281,7 +357,7 @@ Runtime.Case.drain_steps()  # 取走并清空
 Runtime.Case.clear()        # 清掉当前线程的全部记录
 ```
 
-#### 2.2.4 以库方式执行测试
+#### 2.2.5 以库方式执行测试
 
 不用起子进程、不用解析 stdout：
 
@@ -309,7 +385,7 @@ explain(result.run_id)   # 完整 traceback，按需取
 - 运行记录存在 `~/.ipandora/runs`（`IPANDORA_RUNS_DIR` 可改），保留最近 50 次
 - pytest 在**当前进程内**执行，测试模块会被导入且保持导入状态；需要完全干净的环境请用新进程
 
-#### 2.2.5 失败归因
+#### 2.2.6 失败归因
 
 跑完之后可以问"这些失败是什么性质的"：
 
@@ -351,7 +427,7 @@ ipandora.ai.enable()
 - **预算闸**：`ai.max_calls_per_run`，设 0 就是完全禁止
 - **fail-open**：模型不可用只是少一段分析文字，**绝不改变测试结论**
 
-#### 2.2.6 生成报告
+#### 2.2.7 生成报告
 
 ```python
 from ipandora.core.runner import run
@@ -380,7 +456,7 @@ HTML 和 JSON 出自同一份数据。**脱敏在 `build()` 时完成，不在�
 
 `pass_rate` **只算有结论的用例**。跳过一半用例的套件不是 100% 健康。
 
-#### 2.2.7 MCP 能力面
+#### 2.2.8 MCP 能力面
 
 `ipandora mcp` 启动后暴露 4 个工具：
 
@@ -394,7 +470,7 @@ HTML 和 JSON 出自同一份数据。**脱敏在 `build()` 时完成，不在�
 
 典型闭环：`run_tests` → 有失败 → `explain_failure(run_id)` → 改代码 → 再 `run_tests`。
 
-#### 2.2.8 命令行能力
+#### 2.2.9 命令行能力
 
 ```shell
  ~/Repos/intellipandora ⮀ ipandora -h

@@ -311,6 +311,115 @@ class TestComparators:
         assert not check.ok
 
 
+class TestOrderingAndRange:
+    """$gte / $lt / $lte did not exist, so `0 <= fee <= 100` was unwritable."""
+
+    @pytest.mark.parametrize('op,operand,value,expected', [
+        ('$gte', 5, 5, True), ('$gte', 5, 4, False),
+        ('$lt', 5, 4, True), ('$lt', 5, 5, False),
+        ('$lte', 5, 5, True), ('$lte', 5, 6, False),
+    ])
+    def test_boundaries(self, make_response, op, operand, value, expected):
+        resp = make_response(body={'n': value})
+        assert json_matches(resp, 'n', {op: operand}).ok is expected
+
+    def test_range_is_two_operators_in_one_condition(self, make_response):
+        cond = {'$gte': 0, '$lte': 100}
+        assert json_matches(make_response(body={'fee': 0}), 'fee', cond).ok
+        assert json_matches(make_response(body={'fee': 100}), 'fee', cond).ok
+        assert not json_matches(make_response(body={'fee': 100.01}), 'fee', cond).ok
+        assert not json_matches(make_response(body={'fee': -1}), 'fee', cond).ok
+
+    def test_the_failing_operator_is_named(self, make_response):
+        check = json_matches(make_response(body={'fee': 150}), 'fee',
+                             {'$gte': 0, '$lte': 100})
+        assert not check.ok and '$lte' in check.expr and '150' in check.expr
+
+    def test_numeric_string_still_compares_as_a_number(self, make_response):
+        assert json_matches(make_response(body={'n': '12'}), 'n', {'$gt': 9}).ok
+
+
+class TestNoTruncation:
+    """
+    An int operand used to compare `int(float(value))`, truncating the value
+    first. Every case here gave the wrong answer before.
+    """
+
+    @pytest.mark.parametrize('value,condition', [
+        (5.9, {'$eq': 5}),       # passed: 5.9 truncated to 5
+        (-0.5, {'$eq': 0}),      # passed: -0.5 truncated to 0
+        (0.9, {'$lte': 0}),
+        (5.5, {'$lt': 5}),
+    ])
+    def test_wrongly_passed_before(self, make_response, value, condition):
+        assert not json_matches(make_response(body={'v': value}), 'v', condition).ok
+
+    @pytest.mark.parametrize('value,condition', [
+        (0.9, {'$gt': 0}),       # failed: a positive amount read as 0
+        (5.9, {'$gt': 5}),
+        (4.5, {'$gte': 4.5}),
+    ])
+    def test_wrongly_failed_before(self, make_response, value, condition):
+        assert json_matches(make_response(body={'v': value}), 'v', condition).ok
+
+    def test_true_does_not_equal_one(self, make_response):
+        # bool is an int subclass, so float(True) == 1
+        check = json_matches(make_response(body={'v': True}), 'v', {'$eq': 1})
+        assert not check.ok and 'boolean' in check.expr
+
+    @pytest.mark.parametrize('value', [1, 'yes', 'false', [0]])
+    def test_bool_operand_needs_a_bool(self, make_response, value):
+        # bool('false') is True: every one of these used to pass
+        check = json_matches(make_response(body={'v': value}), 'v', {'$eq': True})
+        assert not check.ok and 'expected a boolean' in check.expr
+
+    def test_bool_against_bool(self, make_response):
+        assert json_matches(make_response(body={'v': True}), 'v', {'$eq': True}).ok
+        assert not json_matches(make_response(body={'v': False}), 'v', {'$eq': True}).ok
+
+
+class TestRegex:
+    def test_search_semantics(self, make_response):
+        resp = make_response(body={'version': 'v1.11.0-rc'})
+        assert json_matches(resp, 'version', {'$regex': r'\d+\.\d+\.\d+'}).ok
+
+    def test_anchored(self, make_response):
+        resp = make_response(body={'version': 'v1.11.0-rc'})
+        assert not json_matches(resp, 'version', {'$regex': r'^\d+\.\d+\.\d+$'}).ok
+        resp = make_response(body={'version': '1.11.0'})
+        assert json_matches(resp, 'version', {'$regex': r'^\d+\.\d+\.\d+$'}).ok
+
+    def test_number_is_not_stringified(self, make_response):
+        check = json_matches(make_response(body={'v': 59}), 'v', {'$regex': '^5'})
+        assert not check.ok and 'only applies to strings' in check.expr
+
+    def test_invalid_pattern_is_a_failed_check_not_an_exception(self, make_response):
+        check = json_matches(make_response(body={'v': 'abc'}), 'v', {'$regex': '('})
+        assert not check.ok and 'raised' in check.expr
+
+
+class TestOnlyDollarKeysAreOperators:
+    """
+    Dispatch was `op.replace('$', 'cmp_')` plus hasattr, so a key with no `$`
+    became an attribute name verbatim: `{'__class__': 5}` built a new Compare,
+    which is truthy, and passed on any value. `_coerced` is the helper added
+    alongside this fix, which the old dispatch would have reached the same way.
+    """
+
+    @pytest.mark.parametrize('op', ['__class__', '_coerced', '__init__', 'cmp_eq', '$',
+                                    '$_coerced', '$__class__', 'gt'])
+    def test_not_an_operator(self, make_response, op):
+        check = json_matches(make_response(body={'price': 9}), 'price', {op: 5})
+        assert not check.ok and 'unknown operator' in check.expr
+
+    def test_method_for(self):
+        from ipandora.utils.match import Compare
+        assert Compare.method_for('$gte') == 'cmp_gte'
+        assert Compare.method_for('$regex') == 'cmp_regex'
+        assert Compare.method_for('gte') == ''
+        assert Compare.method_for('$nope') == ''
+
+
 class TestJsonValueForCustomChecks:
     """
     Custom checks must be able to read a field without risking an exception --
