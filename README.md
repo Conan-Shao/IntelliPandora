@@ -43,7 +43,7 @@ ipandora mcp                                 # 以 MCP server 方式供 agent �
 
 ```python
 from ipandora.core import api
-from ipandora.core.assertion import assert_all, json_equals, status_ok
+from ipandora.core.assertion import assert_all, field, status_ok
 
 class OrderService:
     @api.http.post(path="api/order/create")
@@ -51,15 +51,35 @@ class OrderService:
         return dict(json={"amount": amount})
 
 def test_create_order():
-    """下单成功，金额与请求一致"""
+    """下单成功，金额与请求一致，每个明细价格为正"""
     r = OrderService().create(100)
-    assert_all(
+    assert_all(                                   # 一次报出全部失败，而不是第一个就停
         status_ok(r),
-        json_equals(r, 'data.amount', 100),
+        field(r, 'data.amount') == 100,
+        field(r, 'data.status').is_in(['created', 'paid']),
+        field(r, 'data.items').each('price').decimal() > 0,
     )
 ```
 
+失败时：`data.items[*].price > 0 — 1 of 3 items failed: data.items[1].price = Decimal('-1') (expected > 0)`。
+
 📖 [使用手册](docs/usr/user_guider.md)
+
+## 和 pytest、Playwright 是什么关系
+
+| | 它负责 | IntelliPandora 负责 |
+|---|---|---|
+| **pytest** | 发现并执行用例、fixture、插件 | 建在它之上：用例就是 pytest 用例，多出来的是一次报全的 `Check` 断言、失败归因、统一报告、可编程的 `run()` 和 MCP |
+| **Playwright / Appium / requests** | 怎么操作被测对象（驱动） | 结果可不可信（判定）。UI 层规划直接把它们当驱动用，不重做 |
+| **ARTEMIS 这类 agent 工具** | 用自然语言探索、冒烟、复现 bug | 回归用的确定性判定。agent 负责探索和编写，框架负责判定，人负责评审 |
+
+📖 [定位与对比](docs/usr/定位与对比.md)：逐项对比、各自更适合的场景，以及我们不适合的场景
+
+## 用不用 MCP
+
+![用 MCP 和不用 MCP](docs/dev/static/mcp_vs_cli.svg)
+
+两条路调的是同一个 `run()`，测试能力完全一样。MCP 是可选的，只有接 AI agent 时才需要。
 
 ## 日常工作流
 

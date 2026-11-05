@@ -205,6 +205,39 @@ assert_all(
 | `.startswith(s)` | 前缀 |
 | `.matches(pattern)` | `re.search`；整值匹配自己加 `^…$` |
 | `.len()` | 长度，再接比较：`.len() > 0` |
+| `.decimal()` | 转成精确的 Decimal 再比较，用于字符串形式的数字（如 `"100.50"`） |
+| `.each(path)` | 列表的每一项都要满足，失败时指出是第几项 |
+| `.map(fn, label)` | 对值做任意计算，得到新的 field |
+| `field(...) == field(...)` | 两个字段互相比较 |
+
+**常见场景**
+
+```python
+from decimal import Decimal
+from ipandora.core.assertion import assert_all, field, that
+
+items = field(r, 'data.items')
+assert_all(
+    # 金额是字符串：显式转成数字。默认不转，因为接口偷偷把数字改成字符串本身就是问题
+    field(r, 'data.amount').decimal() > 0,
+
+    # 每一项都满足 —— 失败时：data.items[*].price > 0 — 1 of 3 items failed: data.items[1].price = Decimal('-1')
+    items.len() > 0,
+    items.each('price').decimal() > 0,
+    items.each('sku').matches(r'^SKU-\d+$'),
+
+    # 跨字段：总价等于明细之和
+    field(r, 'data.total').decimal() == items.map(
+        lambda xs: sum(Decimal(x['price']) for x in xs), '明细合计'),
+
+    # 不是来自这个响应的值：数据库、另一个接口、页面上的文字
+    that(db_row['state'], 'db.state') == 'PAID',
+)
+```
+
+- `.each()` 遇到**空列表默认判失败**：对零个元素说"每一项都对"永远成立，往往说明查询本身坏了。空列表确实合法时，写 `each('price', allow_empty=True)`
+- `.map()` 里的函数抛出任何异常（比如某一项缺了键导致 KeyError），都会变成一条失败的 Check，并带上异常信息，不会让用例崩掉
+- `that()` 判断出来的 Check 来源记为 `derived`，报告和归因据此区分它和接口返回的字段
 
 失败时直接给出证据：`data.fee = 150 (expected <= 100)`；字段不存在时说明路径在哪一层断了。
 
@@ -478,28 +511,45 @@ HTML 和 JSON 出自同一份数据。**脱敏在 `build()` 时完成，不在�
 
 #### 2.2.8 MCP 能力面
 
-`ipandora mcp` 启动后暴露 4 个工具：
+![用 MCP 和不用 MCP](../dev/static/mcp_vs_cli.svg)
+
+MCP 是**可选的**：只有让 AI agent（Claude Code、Cursor 等）来跑用例时才需要。框架本身就是 MCP server，不用另外部署。它和命令行调的是同一个 `run()`，测试能力完全一样。
+
+**接入**（在用例项目根目录下；server 会从这里读取 `./conf`）：
+
+```shell
+pip install intellipandora[mcp]
+claude mcp add intellipandora -- ipandora mcp      # Claude Code
+```
+
+其他客户端配置 `.mcp.json`：
+
+```json
+{"mcpServers": {"intellipandora": {"command": "ipandora", "args": ["mcp"]}}}
+```
+
+**4 个工具**：
 
 | tool | 用途 |
 |---|---|
-| `run_tests(selector, env)` | 跑用例，返回摘要 |
-| `explain_failure(run_id)` | 取完整失败现场 |
-| `list_runs(limit)` | 最近的 run_id |
-| `build_report(run_id, directory)` | 为某次运行生成 HTML + JSON 报告 |
-| `get_test_report(xml_file)` | 解析 Robot Framework 的 output.xml |
+| `run_tests(selector, env)` | 跑用例，返回摘要：失败名、断言信息、归因 |
+| `explain_failure(run_id)` | 按需取完整失败现场（traceback、证据） |
+| `list_runs(limit)` | 最近的运行，用来比较回归 |
+| `build_report(run_id, directory)` | 为某次运行生成 HTML + JSON 报告，给人看 |
 
-典型闭环：`run_tests` → 有失败 → `explain_failure(run_id)` → 改代码 → 再 `run_tests`。
+典型闭环：`run_tests` → 有失败 → `explain_failure(run_id)` → 改代码 → 再 `run_tests`。摘要刻意保持精简，细节按 `run_id` 再取，避免撑爆 agent 的上下文。
 
 #### 2.2.9 命令行能力
 
 ```shell
  ~/Repos/intellipandora ⮀ ipandora -h
-usage: ipandora [-h] [-v] [-V] {mcp} ...
+usage: ipandora [-h] [-v] [-V] {mcp,run} ...
 
 positional arguments:
-  {mcp}            ipandora support these sub-commands.
+  {mcp,run}        ipandora support these sub-commands.
     mcp            start the MCP server exposing IntelliPandora capabilities
                    to AI clients
+    run            run a suite and write its HTML report into the run history
 
 options:
   -h, --help       show this help message and exit

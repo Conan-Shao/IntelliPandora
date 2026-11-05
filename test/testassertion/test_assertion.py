@@ -8,7 +8,7 @@ from decimal import Decimal
 
 import pytest
 
-from ipandora.core.assertion import (MISSING, Check, Source, assert_all, header_is,
+from ipandora.core.assertion import (MISSING, Check, Source, assert_all, header_is, that,
                                      field, json_equals, json_has, json_value,
                                      require, schema_conforms, status_is, status_ok)
 
@@ -424,7 +424,7 @@ class TestFieldMethods:
         assert check.ok and check.name == 'len(items) > 0'
         assert (field(r, 'items').len() == 3).ok
         check = field(r, 'n').len() > 0
-        assert not check.ok and 'has no length' in check.expr
+        assert not check.ok and 'has no len' in check.expr
         check = field(r, 'missing').len() > 0
         assert not check.ok and 'missing' in check.expr
 
@@ -435,6 +435,141 @@ class TestFieldMethods:
                        field(r, 'status').is_in(['ok']),
                        field(r, 'items').len() > 0)
         assert '3/3 checks failed' in str(exc.value)
+
+
+ORDER = {'data': {'amount': '100.50', 'total': '30.00', 'n': 'abc',
+                  'items': [{'price': '10.00', 'tags': ['a']},
+                            {'price': '-1', 'tags': []},
+                            {'price': '21.00'}]}}
+
+
+class TestDecimal:
+    """Strict comparison plus an explicit way out for string-encoded numbers."""
+
+    def test_numeric_string(self, make_response):
+        r = make_response(body=ORDER)
+        assert not (field(r, 'data.amount') > 0).ok             # strict by default
+        check = field(r, 'data.amount').decimal() > 0
+        assert check.ok and check.name == 'data.amount > 0'
+
+    def test_exact(self, make_response):
+        r = make_response(body={'a': '0.1', 'b': 0.1})
+        assert (field(r, 'a').decimal() == Decimal('0.1')).ok
+        assert (field(r, 'b').decimal() == Decimal('0.1')).ok   # via str(), not binary float
+        assert (field(r, 'a').decimal() == field(r, 'b').decimal()).ok
+
+    @pytest.mark.parametrize('value,reason', [
+        ('abc', 'not a number'), (True, 'got bool'), ('NaN', 'not a finite'),
+        ([1], 'got list'), ('', 'not a number'),
+    ])
+    def test_not_a_number_is_a_failed_check(self, make_response, value, reason):
+        check = field(make_response(body={'v': value}), 'v').decimal() > 0
+        assert not check.ok and reason in check.expr
+
+    def test_missing_stays_missing(self, make_response):
+        check = field(make_response(body={}), 'v').decimal() > 0
+        assert not check.ok and "no key 'v'" in check.expr
+
+
+class TestFieldAsOperand:
+    def test_compare_two_fields(self, make_response):
+        r = make_response(body={'a': 3, 'b': 3, 'c': 4})
+        check = field(r, 'a') == field(r, 'b')
+        assert check.ok and check.name == 'a == b' and 'b = 3' in check.expr
+        assert (field(r, 'a') < field(r, 'c')).ok
+        assert not (field(r, 'a') != field(r, 'b')).ok
+
+    def test_missing_operand_fails_and_says_which(self, make_response):
+        check = field(make_response(body={'a': 3}), 'a') == field(
+            make_response(body={'a': 3}), 'nope')
+        assert not check.ok and 'cannot compare a' in check.expr and 'nope' in check.expr
+
+
+class TestMap:
+    def test_cross_field(self, make_response):
+        r = make_response(body=ORDER)
+        total = field(r, 'data.items').map(
+            lambda xs: sum(Decimal(x['price']) for x in xs), 'sum(price)')
+        check = field(r, 'data.total').decimal() == total
+        assert check.ok and check.name == 'data.total == sum(price)'
+
+    def test_a_raising_function_is_a_failed_check(self, make_response):
+        r = make_response(body=ORDER)
+        check = field(r, 'data.items').map(lambda xs: xs[0]['nope']) == 1
+        assert not check.ok and 'KeyError' in check.expr
+
+    def test_default_label(self, make_response):
+        check = field(make_response(body={'s': 'ab'}), 's').map(str.upper) == 'AB'
+        assert check.ok and check.name == "upper(s) == 'AB'"
+
+
+class TestEach:
+    def test_names_the_failing_element(self, make_response):
+        check = field(make_response(body=ORDER), 'data.items').each('price').decimal() > 0
+        assert not check.ok
+        assert check.name == 'data.items[*].price > 0'
+        assert '1 of 3 items failed' in check.expr and 'data.items[1].price' in check.expr
+
+    def test_all_pass(self, make_response):
+        check = field(make_response(body=ORDER), 'data.items').each('price').decimal() > -5
+        assert check.ok and 'all 3 items' in check.expr
+
+    def test_element_missing_the_key(self, make_response):
+        check = field(make_response(body=ORDER), 'data.items').each('tags').len() >= 0
+        assert not check.ok and 'data.items[2].tags' in check.expr and "no key 'tags'" in check.expr
+
+    def test_transform_keeps_the_index(self, make_response):
+        check = field(make_response(body=ORDER), 'data.items').each('tags').len() > 0
+        assert 'len(data.items[1].tags) = 0' in check.expr
+
+    def test_without_a_path(self, make_response):
+        r = make_response(body={'tags': ['ab', 'cd', 'E']})
+        check = field(r, 'tags').each().matches('^[a-z]+$')
+        assert not check.ok and 'tags[2]' in check.expr
+
+    def test_empty_list_fails_unless_allowed(self, make_response):
+        r = make_response(body={'items': []})
+        check = field(r, 'items').each('price') > 0
+        assert not check.ok and 'nothing was checked' in check.expr
+        assert (field(r, 'items').each('price', allow_empty=True) > 0).ok
+
+    def test_not_a_list(self, make_response):
+        check = field(make_response(body={'v': 'x'}), 'v').each() == 'x'
+        assert not check.ok and 'is not a list' in check.expr
+
+    def test_missing_list(self, make_response):
+        check = field(make_response(body={}), 'v').each() == 'x'
+        assert not check.ok and "no key 'v'" in check.expr
+
+    def test_long_failure_lists_are_summarised(self, make_response):
+        check = field(make_response(body={'v': list(range(10))}), 'v').each() > 100
+        assert '10 of 10 items failed' in check.expr and '(+7 more)' in check.expr
+
+    def test_methods_work_per_element(self, make_response):
+        r = make_response(body={'s': ['ok', 'ok', 'bad']})
+        check = field(r, 's').each().is_in(['ok'])
+        assert not check.ok and 's[2]' in check.expr
+
+    def test_nested_each_is_refused(self, make_response):
+        with pytest.raises(TypeError, match='each'):
+            field(make_response(body={'v': [[1]]}), 'v').each().each()
+
+
+class TestThat:
+    def test_any_value(self):
+        check = that('PAID', 'db.state') == 'PAID'
+        assert check.ok and check.name == "db.state == 'PAID'"
+
+    def test_against_a_field(self, make_response):
+        r = make_response(body={'data': {'total': 3}})
+        check = that(3, 'rendered rows') == field(r, 'data.total')
+        assert check.ok and 'data.total = 3' in check.expr
+
+    def test_src_defaults_to_derived(self):
+        assert (that(1) == 1).src == Source.DERIVED
+
+    def test_list_value_supports_each(self):
+        assert not (that([1, -1], 'rows').each() > 0).ok
 
 
 class TestJsonEqualsIsStrictToo:

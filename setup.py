@@ -37,11 +37,11 @@ Topic :: Software Development :: Testing :: Acceptance
 Topic :: Software Development :: Testing :: BDD
 Topic :: Software Development :: Libraries :: Python Modules
 Topic :: Utilities
-Framework :: Robot Framework
 Framework :: Pytest
 """.strip().splitlines()
 
-DESCRIPTION = ("Generic automation framework for system testing and model evaluation")
+DESCRIPTION = ("General-purpose test framework on pytest: deterministic verdicts, "
+               "failure triage, reports, and an MCP entry point for AI agents")
 with open(os.path.join(here, 'README.md')) as f:
     LONG_DESCRIPTION = f.read()
 
