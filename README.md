@@ -1,14 +1,26 @@
 # IntelliPandora
 
-> AI 时代的通用测试框架内核：**agent 负责写，框架负责执行。**
+> AI 时代的测试**判定层**，建在 pytest 之上：**agent 写，框架判，人审。**
 >
-> 目前支持 HTTP 接口测试；UI 自动化（Web / App）在规划中。框架不绑定任何业务——业务相关的用例、流程、环境配置放在使用方自己的仓库里。
+> pytest 回答「有没有测试失败」；IntelliPandora 回答「这次通过可不可信」：验证了什么、没验证什么、比上次少验证了什么、失败该谁修。
+>
+> 目前支持 HTTP 接口测试；UI 自动化（Web / App）在规划中。框架不绑定任何业务，业务相关的用例、流程、环境配置放在使用方自己的仓库里。
 
-AI 写得出用例，但用例不能只有 agent 才跑得起来——那样 CI 接不上，别人很难直接跑，agent 参与执行还会把不确定性带进结果。
-
-IntelliPandora 是被拆出来的那一半：**一个确定性的、独立运行的执行器**。人、CI、agent 三个入口调用同一套 runner，跑出来的结果一致。
+agent 同一轮里既写代码又写测试，绿灯就可以被「做」出来。框架需要做的不只是执行测试，而是**为测试结果提供可信的依据**：判定确定、可复现、不调 LLM，而且判定本身的变化要能被看见。人、CI、agent 三个入口调用同一套 runner，跑出来的结果一致。
 
 ![架构](docs/dev/static/architecture.svg)
+
+## 为什么不直接用 pytest
+
+**pytest 回答「有没有测试失败」，IntelliPandora 回答「这次通过可不可信」。** 用例照样是 pytest 用例，现有套件不用改就能跑。
+
+![判定是数据，不是异常](docs/dev/static/verdict_as_data.svg)
+
+pytest 的断言是异常：通过时什么都不留下。所以它回答不了：一个通过的测试验证了什么？一个 assert 都没写的测试为什么也是绿的？这次比上次少验证了什么？
+
+AI 写测试之后，最后这个问题变成了关键：允许修改测试时，agent 走捷径的做法 96% 是改测试本身（[HackTrace](https://arxiv.org/html/2610.03055v1)）。我们的分工是 **agent 写，框架判，人审**：框架给出两个结论，一是结果，二是判定强度有没有变弱；人只审被标出来的几条。
+
+📖 [定位：为什么不直接用 pytest](docs/usr/定位与对比.md)：写明了哪些能力 pytest 生态已经有、哪些是独有的、为什么这样设计，以及还差什么
 
 ## 它解决什么
 
@@ -64,16 +76,6 @@ def test_create_order():
 失败时：`data.items[*].price > 0 — 1 of 3 items failed: data.items[1].price = Decimal('-1') (expected > 0)`。
 
 📖 [使用手册](docs/usr/user_guider.md)
-
-## 和 pytest、Playwright 是什么关系
-
-| | 它负责 | IntelliPandora 负责 |
-|---|---|---|
-| **pytest** | 发现并执行用例、fixture、插件 | 建在它之上：用例就是 pytest 用例，多出来的是一次报全的 `Check` 断言、失败归因、统一报告、可编程的 `run()` 和 MCP |
-| **Playwright / Appium / requests** | 怎么操作被测对象（驱动） | 结果可不可信（判定）。UI 层规划直接把它们当驱动用，不重做 |
-| **ARTEMIS 这类 agent 工具** | 用自然语言探索、冒烟、复现 bug | 回归用的确定性判定。agent 负责探索和编写，框架负责判定，人负责评审 |
-
-📖 [定位与对比](docs/usr/定位与对比.md)：逐项对比、各自更适合的场景，以及我们不适合的场景
 
 ## 用不用 MCP
 

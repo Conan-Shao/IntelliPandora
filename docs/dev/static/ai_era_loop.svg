@@ -1,0 +1,86 @@
+<svg xml:space="preserve" xmlns="http://www.w3.org/2000/svg" width="1200" height="820" viewBox="0 0 1200 820" font-family="'PingFang SC','Microsoft YaHei','WenQuanYi Zen Hei',sans-serif">
+  <style>text{white-space:pre}</style>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#5b6472"/>
+    </marker>
+    <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1f8a5b"/>
+    </marker>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#c2410c"/>
+    </marker>
+  </defs>
+  <rect width="1200" height="820" fill="#ffffff"/>
+
+  <text x="600" y="44" text-anchor="middle" font-size="26" font-weight="700" fill="#1d2330">AI 时代的分工：agent 写，框架判，人审</text>
+  <text x="600" y="74" text-anchor="middle" font-size="15" fill="#5b6472">agent 既改代码又改测试时，绿灯本身不再可信，需要有人看着判定本身</text>
+
+  <!-- problem band -->
+  <rect x="30" y="98" width="1140" height="136" rx="14" fill="#fff7ed" stroke="#f3c79b"/>
+  <text x="56" y="130" font-size="16" font-weight="700" fill="#9a3412">问题：绿灯能被做出来</text>
+  <g font-size="13.5" fill="#431407">
+    <text x="56" y="160">· 允许修改测试时，19.5% 的 agent 轨迹走了捷径，其中 96% 是改测试本身；测试只读时不到 1%（HackTrace，2026）</text>
+    <text x="56" y="186">· LLM 写出的判定，对注入缺陷的平均检出率（变异得分）只有 43%（ASE 2025，13,866 条判定）</text>
+    <text x="56" y="212">· 现有的防护是静态比对 diff 里的 assert 行数；行数不变的改写，比如上限从 100 改成 1000，它们看不出来</text>
+  </g>
+
+  <!-- flow -->
+  <rect x="30" y="268" width="210" height="96" rx="12" fill="#ffffff" stroke="#9aa3b2"/>
+  <text x="135" y="304" text-anchor="middle" font-size="16" font-weight="600" fill="#1d2330">agent</text>
+  <text x="135" y="328" text-anchor="middle" font-size="13" fill="#5b6472">改代码，也改测试</text>
+  <text x="135" y="348" text-anchor="middle" font-size="12" fill="#5b6472">Claude Code、Cursor…</text>
+
+  <line x1="242" y1="316" x2="282" y2="316" stroke="#5b6472" stroke-width="2" marker-end="url(#a)"/>
+
+  <rect x="286" y="268" width="250" height="96" rx="12" fill="#ffffff" stroke="#2f6fd6"/>
+  <text x="411" y="300" text-anchor="middle" font-size="15" font-weight="600" fill="#1d2330" font-family="Menlo,Consolas,'WenQuanYi Zen Hei Mono',monospace">ipandora run</text>
+  <text x="411" y="326" text-anchor="middle" font-size="13" fill="#5b6472">CLI、CI 或 MCP，同一个 run()</text>
+  <text x="411" y="348" text-anchor="middle" font-size="12.5" fill="#2f6fd6">确定性 · 运行时不调 LLM</text>
+
+  <line x1="538" y1="316" x2="578" y2="316" stroke="#5b6472" stroke-width="2" marker-end="url(#a)"/>
+
+  <rect x="582" y="252" width="300" height="128" rx="12" fill="#f2f7ff" stroke="#2f6fd6" stroke-width="1.5"/>
+  <text x="732" y="282" text-anchor="middle" font-size="15" font-weight="700" fill="#1d2330">两个结论</text>
+  <text x="602" y="312" font-size="13.5" fill="#1d2330">1. 结果：判定通过了吗</text>
+  <text x="602" y="338" font-size="13.5" fill="#1d2330">2. 强度：判定清单和基线比，</text>
+  <text x="622" y="360" font-size="13.5" fill="#1d2330">有没有变弱</text>
+
+  <!-- branches -->
+  <path d="M884,290 L930,290" stroke="#1f8a5b" stroke-width="2" fill="none" marker-end="url(#ag)"/>
+  <rect x="934" y="252" width="236" height="76" rx="12" fill="#eaf7f0" stroke="#8fd1b0"/>
+  <text x="1052" y="284" text-anchor="middle" font-size="14.5" font-weight="600" fill="#1f6b48">没变弱</text>
+  <text x="1052" y="308" text-anchor="middle" font-size="13" fill="#1a3a2b">门禁按结果放行</text>
+
+  <path d="M884,350 L910,350 Q920,350 920,360 L920,404 Q920,414 930,414 L934,414" stroke="#c2410c" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+  <rect x="938" y="378" width="232" height="76" rx="12" fill="#fff1e6" stroke="#f3a76b"/>
+  <text x="1054" y="410" text-anchor="middle" font-size="14.5" font-weight="600" fill="#9a3412">变弱了</text>
+  <text x="1054" y="434" text-anchor="middle" font-size="13" fill="#431407">标出来，交给人审</text>
+
+  <!-- example flagged diff -->
+  <rect x="30" y="414" width="852" height="196" rx="12" fill="#1d2330"/>
+  <text x="54" y="446" font-size="14" font-weight="600" fill="#ffffff">标出来的样子（示意）：test_order，与基线 run-20261104-0930 比</text>
+  <g font-family="Menlo,Consolas,'WenQuanYi Zen Hei Mono',monospace" font-size="13.5">
+    <text x="54" y="482" fill="#f19a9a">- 删除      data.items[*].price &gt; 0</text>
+    <text x="54" y="512" fill="#f5c26b">~ 上限放宽  data.fee &lt;= 100   →   data.fee &lt;= 1000</text>
+    <text x="54" y="542" fill="#f5c26b">→ 改为跳过  test_refund       理由：环境不稳定</text>
+    <text x="54" y="572" fill="#f5c26b">○ 零判定    test_cancel       通过，但一条判定都没有</text>
+  </g>
+  <text x="54" y="598" font-size="12.5" fill="#9aa3b2">对比的是运行时实际执行过的判定，所以行数不变的改写、写在辅助函数里的 assert、参数化展开出来的用例都看得到</text>
+
+  <path d="M1054,456 L1054,640" stroke="#c2410c" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+  <rect x="904" y="644" width="266" height="96" rx="12" fill="#ffffff" stroke="#9aa3b2"/>
+  <text x="1037" y="676" text-anchor="middle" font-size="15" font-weight="600" fill="#1d2330">人</text>
+  <text x="1037" y="702" text-anchor="middle" font-size="13" fill="#5b6472">只审被标出的这几条，</text>
+  <text x="1037" y="722" text-anchor="middle" font-size="13" fill="#5b6472">不用通读整个测试 diff</text>
+
+  <!-- division of labour -->
+  <rect x="30" y="644" width="852" height="150" rx="12" fill="#f6f7f9" stroke="#d5d9e0"/>
+  <text x="54" y="676" font-size="15" font-weight="700" fill="#1d2330">为什么这样分工</text>
+  <g font-size="13.5" fill="#1d2330">
+    <text x="54" y="704">agent 擅长写：写用例的成本已接近零，不必和它抢</text>
+    <text x="54" y="730">框架擅长判：确定、可复现、免费；判定标准写在代码里，可以评审</text>
+    <text x="54" y="756">人擅长审：但人的注意力最贵，只该花在"判定被改了"这件事上</text>
+    <text x="54" y="782" fill="#5b6472">pytest 只回答"有没有失败"，回答不了第二个结论；这正是框架存在的理由</text>
+  </g>
+</svg>
