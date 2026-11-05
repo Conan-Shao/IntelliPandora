@@ -288,6 +288,10 @@ footer{font-size:12px;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 16p
     <dd>{% if baseline %}<code>{{ baseline_display }}</code><span class="sub">随代码提交，本机和 CI 看到的一样</span>{% else %}无<span class="sub">用 <code>--update-baseline</code> 生成并提交</span>{% endif %}</dd>
     <dt>对比运行</dt>
     <dd>{% if nr %}<code>{{ nr.run_id or '—' }}</code><span class="sub">{{ '来源：传入的报告' if nr.source == 'argument' else '来源：本机缓存，只在这台机器上有' }}</span>{% else %}无<span class="sub">可用 <code>--compare-with</code> 传入一份 report.json</span>{% endif %}</dd>
+    {%- if shards %}
+    <dt>合并自</dt>
+    <dd>{{ shards|length }} 个分片{% if duplicates %} · 去掉重复的 {{ duplicates }} 条{% endif %}{% for sh in shards %}<span class="sub"><code>{{ sh.run_id or sh.source }}</code> · {{ sh.cases }} 条{% if not sh.ok %} · 有失败{% endif %}</span>{% endfor %}</dd>
+    {%- endif %}
     <dt>退出码</dt>
     <dd><code>{{ 0 if verdict.releasable else 1 }}</code></dd>
   </dl>
@@ -404,6 +408,18 @@ footer{font-size:12px;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 16p
     </div>
     {%- endif %}
   </div>
+</section>
+{%- endif %}
+
+{%- if merge_conflicts %}
+<section class="card" id="conflicts" aria-labelledby="conflictsh">
+  <div class="row"><h2 id="conflictsh">分片之间结论不一致</h2><span class="sub">{{ merge_conflicts|length }} 条 · 合并后取更严重的结论；可能是不稳定的用例，也可能是各分片跑的代码不同</span></div>
+  <ul class="list" style="margin-top:10px">
+    {%- for cf in merge_conflicts %}{% set c = case_by_id.get(cf.nodeid) %}
+    <li><span class="st {{ cf.status }}">{{ status_label.get(cf.status, cf.status) }}</span><a href="#{{ cf.nodeid }}"><b>{{ c.title or c.name if c else cf.nodeid }}</b></a>
+      <span class="sub">{% for seen in cf.seen %}{{ seen.run_id }}：{{ status_label.get(seen.status, seen.status) }}{% if not loop.last %} · {% endif %}{% endfor %}</span></li>
+    {%- endfor %}
+  </ul>
 </section>
 {%- endif %}
 
