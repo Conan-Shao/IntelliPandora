@@ -44,9 +44,12 @@ class Command(CommandBase):
         _extra = list(options.pytest_arg or [])
         if options.exclude_flaky:
             _extra += ['-m', 'not flaky']
+        from ipandora.core.runner import inventory
+        _baseline = '' if options.no_baseline else options.baseline
         _result = run(options.selector, env=options.env or '',
                       extra_args=_extra or None,
-                      persist=not options.no_store)
+                      persist=not options.no_store,
+                      baseline=_baseline)
 
         _report = build(_result, title=options.title)
 
@@ -66,9 +69,24 @@ class Command(CommandBase):
 
         self._print_summary(_result, _report, _paths)
 
+        if options.update_baseline:
+            _path = options.baseline or inventory.default_path()
+            _saved = inventory.save(_path, inventory.updated(inventory.load(_path), _result))
+            print('  判定基线已更新  {}'.format(_saved))
+            print('  把这个文件的改动和用例改动一起提交，评审时看它的 diff 就知道判定变了什么')
+            print('')
+
         # The exit code is the run's verdict, not the report's. A suite that
         # failed must fail the shell that called it, or CI goes green on red.
-        sys.exit(0 if _result.ok else 1)
+        # --fail-on-weakened adds the second verdict: a pass that judges less
+        # than the baseline is not accepted until someone updates the baseline.
+        _weakened = bool(_result.weakened) and options.fail_on_weakened \
+            and not options.update_baseline
+        if _weakened:
+            print('  FAIL  --fail-on-weakened：{} 处判定比基线弱。确认无误后用 --update-baseline 接受'.format(
+                len(_result.weakened)))
+            print('')
+        sys.exit(0 if _result.ok and not _weakened else 1)
 
     @staticmethod
     def _write_junit(report, path):
@@ -99,6 +117,24 @@ class Command(CommandBase):
 
         if report.inconclusive:
             print('  {} 条什么都没测到，不计入通过率'.format(len(report.inconclusive)))
+
+        _unverified = getattr(result, 'unverified', [])
+        if _unverified:
+            print('  {} 条通过了但没有任何判定：{}'.format(
+                len(_unverified),
+                '、'.join(_c.name for _c in _unverified[:3])
+                + ('…' if len(_unverified) > 3 else '')))
+
+        _changes = list(getattr(result, 'judgement_changes', []) or [])
+        if _changes:
+            _weak = [_c for _c in _changes if _c.get('weakening')]
+            print('')
+            print('  判定变化（对比 {}）：{} 处变弱，{} 处其他变化'.format(
+                result.baseline, len(_weak), len(_changes) - len(_weak)))
+            for _change in _changes[:12]:
+                print('    {}'.format(_change.get('line', '')))
+            if len(_changes) > 12:
+                print('    … 共 {} 处，完整列表见报告'.format(len(_changes)))
 
         # Printed whether they passed or failed this time, and whether or not
         # they were excluded. A flaky marker that stops being mentioned is a
@@ -163,6 +199,25 @@ class Command(CommandBase):
             help='also write JUnit XML here, for CI and report viewers. One '
                  'is already written beside every report; this puts a copy '
                  'where the pipeline expects it')
+        self.parser.add_argument(
+            '--baseline', default=None, metavar='PATH',
+            help='judgement inventory to compare with. Default: '
+                 'conf/judgements.json in the project config dir, when it '
+                 'exists')
+        self.parser.add_argument(
+            '--no-baseline', action='store_true',
+            help='do not compare judgements with any baseline')
+        self.parser.add_argument(
+            '--update-baseline', action='store_true',
+            help='accept this run\'s judgements as the new baseline. Commit '
+                 'the file: its diff is what a reviewer reads to see which '
+                 'judgements changed')
+        self.parser.add_argument(
+            '--fail-on-weakened', action='store_true',
+            help='exit non-zero when judgements got weaker than the baseline '
+                 '-- removed, loosened, changed, newly skipped or excluded, or '
+                 'a case that passes without judging anything. The gate for '
+                 'suites that agents edit')
         self.parser.add_argument(
             '--no-store', action='store_true',
             help='do not keep the raw run for explain_failure')

@@ -17,6 +17,9 @@ ERROR = 'error'
 # of lines of traceback into an agent's context is the classic mistake here.
 SUMMARY_MESSAGE_CHARS = 400
 
+# How many nodeids a summary list carries before it stops; the run store has all.
+SUMMARY_LIST_MAX = 20
+
 
 @dataclass
 class CaseResult:
@@ -37,6 +40,24 @@ class CaseResult:
     """Coverage coordinates, from @pytest.mark.dims."""
     title: str = ''
     """Human-readable intent, from the test's docstring."""
+    judgeable: bool = True
+    """
+    Whether the runner can see this case's judgements. False for unittest
+    and doctest items, whose assertEqual / expected-output checks are not
+    `assert` statements -- calling those unverified would be a false alarm.
+    """
+
+    @property
+    def unverified(self) -> bool:
+        """
+        Passed without making a single judgement the runner could see.
+
+        pytest counts `def test_x(): call_api()` as a pass. Nothing was
+        checked except that no exception escaped, and the report should say
+        so instead of adding it to the pass rate. A declared gap counts as a
+        statement about the case, so a case with only gaps is not this.
+        """
+        return self.outcome == PASSED and self.judgeable and not self.checks
 
     @property
     def name(self) -> str:
@@ -60,7 +81,15 @@ class RunResult:
     collect_error: str = ''
     deselected: List[str] = field(default_factory=list)
     """Cases a -m expression removed, e.g. --exclude-flaky."""
-    """Set when pytest could not even collect the selector."""
+    baseline: str = ''
+    """The judgement inventory this run was compared with. Empty: none."""
+    judgement_changes: List[Dict[str, Any]] = field(default_factory=list)
+    """What changed in what the suite judges, vs the baseline. See inventory.py."""
+
+    @property
+    def weakened(self) -> List[Dict[str, Any]]:
+        """The changes that make this pass weaker than the baseline's."""
+        return [_c for _c in self.judgement_changes if _c.get('weakening')]
 
     def _count(self, outcome: str) -> int:
         return sum(1 for _c in self.cases if _c.outcome == outcome)
@@ -86,6 +115,11 @@ class RunResult:
         return self._count(ERROR)
 
     @property
+    def unverified(self) -> List[CaseResult]:
+        """Passed, but judged nothing. Still counted in `passed`; see CaseResult."""
+        return [_c for _c in self.cases if _c.unverified]
+
+    @property
     def ok(self) -> bool:
         return not self.collect_error and self.failed == 0 and self.errors == 0
 
@@ -99,6 +133,9 @@ class RunResult:
                                ('skipped', self.skipped), ('error', self.errors)):
             if _count:
                 _parts.append('{} {}'.format(_count, _label))
+        if self.unverified:
+            # said next to "passed" because that is where it hides
+            _parts.append('{} unverified'.format(len(self.unverified)))
         return ', '.join(_parts) or 'no tests ran'
 
     def summary(self) -> Dict[str, Any]:
@@ -115,8 +152,23 @@ class RunResult:
             'duration': round(self.duration, 3),
             'totals': {'total': self.total, 'passed': self.passed,
                        'failed': self.failed, 'skipped': self.skipped,
-                       'error': self.errors},
+                       'error': self.errors, 'unverified': len(self.unverified)},
         }
+        if self.unverified:
+            _out['unverified'] = [_c.nodeid for _c in self.unverified][:SUMMARY_LIST_MAX]
+            _out['unverified_hint'] = (
+                'these passed without making any judgement -- add assertions, '
+                'or declare gap() if the omission is deliberate')
+        if self.judgement_changes:
+            _out['judgements_weakened'] = bool(self.weakened)
+            _out['judgement_changes'] = [
+                _c['line'] for _c in (self.weakened or self.judgement_changes)][:SUMMARY_LIST_MAX]
+            if self.weakened:
+                _out['judgement_hint'] = (
+                    'judgements got weaker than the baseline ({}). If that is '
+                    'intended, a person should review it and accept it with '
+                    '`ipandora run --update-baseline`; otherwise restore '
+                    'them.'.format(self.baseline))
         if self.collect_error:
             _out['collect_error'] = self.collect_error[:SUMMARY_MESSAGE_CHARS]
             return _out
@@ -140,6 +192,9 @@ class RunResult:
             'duration': self.duration,
             'exit_code': self.exit_code,
             'collect_error': self.collect_error,
+            'deselected': list(self.deselected),
+            'baseline': self.baseline,
+            'judgement_changes': list(self.judgement_changes),
             'totals': {'total': self.total, 'passed': self.passed,
                        'failed': self.failed, 'skipped': self.skipped,
                        'error': self.errors},
@@ -155,4 +210,7 @@ class RunResult:
             duration=data.get('duration', 0.0),
             exit_code=data.get('exit_code', 0),
             collect_error=data.get('collect_error', ''),
+            deselected=list(data.get('deselected', []) or []),
+            baseline=data.get('baseline', ''),
+            judgement_changes=list(data.get('judgement_changes', []) or []),
             cases=[CaseResult(**_c) for _c in data.get('cases', [])])

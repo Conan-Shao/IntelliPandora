@@ -302,9 +302,11 @@ class TestEvidenceReachesTheResult:
         assert len(result.coverage) == 1, 'axes duplicated per test'
 
     def test_a_suite_that_declares_nothing_still_runs(self, sample_suite):
+        # plain pytest, no Check, no dims: its bare asserts are still recorded
         result = run(sample_suite, persist=False, quiet=True)
         assert result.total == 4
-        assert all(c.checks == [] and c.dims == {} for c in result.cases)
+        assert all(c.dims == {} for c in result.cases)
+        assert all(k['src'] == 'assert' for c in result.cases for k in c.checks)
 
     def test_evidence_does_not_bleed_between_cases(self, evidence_suite):
         result = run(evidence_suite, persist=False, quiet=True)

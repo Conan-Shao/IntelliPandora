@@ -20,7 +20,9 @@ pytest 的断言是异常：通过时什么都不留下。所以它回答不了�
 
 AI 写测试之后，最后这个问题变成了关键：允许修改测试时，agent 走捷径的做法 96% 是改测试本身（[HackTrace](https://arxiv.org/html/2610.03055v1)）。我们的分工是 **agent 写，框架判，人审**：框架给出两个结论，一是结果，二是判定强度有没有变弱；人只审被标出来的几条。
 
-📖 [定位：为什么不直接用 pytest](docs/usr/定位与对比.md)：写明了哪些能力 pytest 生态已经有、哪些是独有的、为什么这样设计，以及还差什么
+另一条腿是**开箱的全栈方案**：HTTP 今天可用，Web / App 按"集成，不封装"接入，驱动 API 原样暴露，框架只补配置、证据、判定和归因。
+
+📖 [定位：为什么不直接用 pytest](docs/usr/定位与对比.md)：哪些能力 pytest 生态已经有、哪些是独有的、为什么这样设计 · [路线](docs/design/12-定位与路线.md)
 
 ## 它解决什么
 
@@ -48,6 +50,8 @@ ipandora run test/api                        # 跑完出 HTML + JSON + JUnit XML
 ipandora run test/api --junit-xml out.xml    # 给 CI 的那份放到指定位置
 ipandora run test/api --exclude-flaky        # 门禁模式：已知不稳定的用例不参与判定
 ipandora run test/api -e staging             # 叠加 ./conf/staging.yaml，只作用于本次运行
+ipandora run test/api --update-baseline      # 接受这次的判定为基线（conf/judgements.json，提交进仓库）
+ipandora run test/api --fail-on-weakened     # 门禁：判定比基线弱（删除、放宽、改期望值、改成跳过、零判定）就失败
 ipandora mcp                                 # 以 MCP server 方式供 agent 调用
 ```
 
@@ -111,7 +115,7 @@ def test_create_order():
 |---|---|
 | `core/protocol` | 协议层。传输策略、响应解析 |
 | `core/assertion` | 断言层。`Check` / `assert_all` / `require` / `gap` |
-| `core/runner` | 库可调用的执行入口。CLI 和 MCP 都是它的薄壳 |
+| `core/runner` | 库可调用的执行入口，CLI 和 MCP 都是它的薄壳；判定清单与基线比对（`inventory.py`） |
 | `core/report` | ReportData → HTML / JSON / JUnit XML + 历史归档 |
 | `core/triage` | 失败归因（规则优先，LLM 可选） |
 | `core/evidence` | 请求响应证据采集 |

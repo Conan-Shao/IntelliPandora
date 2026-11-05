@@ -28,6 +28,12 @@ class Source:
     """The business result is right -- the value, not just its presence."""
     AUTHZ = 'authz'
     """Who may do what: the request was allowed or refused correctly."""
+    ASSERT = 'assert'
+    """
+    A plain pytest `assert` (or pytest.raises / pytest.warns), recorded by the
+    runner. What it checks is not known beyond its source text, so it gets
+    a dimension of its own rather than being guessed into one of the above.
+    """
 
 
 class Kind:
@@ -64,16 +70,27 @@ class Check:
           went wrong without opening the logs -- put the actual and expected
           values in it.
     src:  which dimension this judgement covers, see `Source`.
+    claim: what is being asserted, in a stable form -- `data.fee <= 100`.
+          Unlike `name` it does not change when someone gives the check a
+          friendlier label, so it is what the judgement inventory compares
+          between runs (core/runner/inventory.py). Empty means "same as name",
+          which is right for a hand-built Check whose name is the claim.
     """
     name: str
     ok: bool
     expr: str = ''
     src: str = Source.DERIVED
     kind: str = Kind.ASSERT
+    claim: str = ''
 
     @property
     def is_gap(self) -> bool:
         return self.kind == Kind.GAP
+
+    @property
+    def subject(self) -> str:
+        """The claim, falling back to the name."""
+        return self.claim or self.name
 
     def __bool__(self) -> bool:
         return self.ok

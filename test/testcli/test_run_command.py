@@ -154,3 +154,62 @@ class TestFlags:
         assert done.returncode == 0
         assert (flat / 'report.html').is_file()
         assert not (flat / 'index.json').exists()
+
+
+class TestJudgementBaselineGate:
+    """--update-baseline and --fail-on-weakened, as CI would run them."""
+
+    STRONG = '''
+        def test_fee():
+            fee = 50
+            assert fee <= 100
+            assert fee >= 0
+    '''
+    WEAK = '''
+        def test_fee():
+            fee = 50
+            assert fee <= 1000
+    '''
+
+    def project(self, tmp_path):
+        (tmp_path / 'tests').mkdir()
+        (tmp_path / 'tests' / 'test_fee.py').write_text(
+            textwrap.dedent(self.STRONG), encoding='utf-8')
+        return tmp_path
+
+    def cli(self, root, *args):
+        _env = dict(os.environ)
+        _env.update({'IPANDORA_REPORTS_DIR': str(root / 'reports'),
+                     'IPANDORA_RUNS_DIR': str(root / 'runs')})
+        _env.pop('IPANDORA_CONFIG_DIR', None)
+        return subprocess.run([sys.executable, '-m', 'ipandora.run', 'run', 'tests'] + list(args),
+                              capture_output=True, text=True, env=_env, cwd=str(root), timeout=180)
+
+    def test_the_whole_loop(self, tmp_path):
+        root = self.project(tmp_path)
+        made = self.cli(root, '--update-baseline', '--no-report')
+        assert made.returncode == 0, made.stdout + made.stderr
+        baseline = json.loads((root / 'conf' / 'judgements.json').read_text(encoding='utf-8'))
+        assert baseline['cases']['tests/test_fee.py::test_fee']['claims'] == [
+            'assert fee <= 100', 'assert fee >= 0']
+
+        (root / 'tests' / 'test_fee.py').write_text(textwrap.dedent(self.WEAK), encoding='utf-8')
+
+        lenient = self.cli(root, '--no-report')
+        assert lenient.returncode == 0                       # reported, not gated
+        assert '放宽' in lenient.stdout and '删除' in lenient.stdout
+
+        gated = self.cli(root, '--no-report', '--fail-on-weakened')
+        assert gated.returncode == 1
+        assert '--fail-on-weakened' in gated.stdout
+
+        accepted = self.cli(root, '--no-report', '--fail-on-weakened', '--update-baseline')
+        assert accepted.returncode == 0
+        again = self.cli(root, '--no-report', '--fail-on-weakened')
+        assert again.returncode == 0 and '判定变化' not in again.stdout
+
+    def test_no_baseline_flag(self, tmp_path):
+        root = self.project(tmp_path)
+        self.cli(root, '--update-baseline', '--no-report')
+        (root / 'tests' / 'test_fee.py').write_text(textwrap.dedent(self.WEAK), encoding='utf-8')
+        assert self.cli(root, '--no-report', '--fail-on-weakened', '--no-baseline').returncode == 0

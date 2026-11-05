@@ -112,9 +112,10 @@ class Field:
         Apply `test` to the value. `blocked` is why the *expected* side could
         not be read (a Field operand that is itself missing).
         """
-        _name = self._name or '{} {}'.format(self._label, claim)
+        _claim = '{} {}'.format(self._label, claim)
         _ok, _expr = self._verdict(test, expected, blocked)
-        return Check(name=_name, ok=_ok, expr=_expr, src=self._src)
+        return Check(name=self._name or _claim, ok=_ok, expr=_expr, src=self._src,
+                     claim=_claim)
 
     def _verdict(self, test, expected, blocked):
         if self._value is MISSING:
@@ -317,11 +318,12 @@ class Each(Field):
         self._allow_empty = allow_empty
 
     def _judge(self, claim, test, expected, blocked=''):
-        _name = self._name or '{} {}'.format(self._label, claim)
+        _claim = '{} {}'.format(self._label, claim)
+        _name = self._name or _claim
         if self._reason:
-            return Check(name=_name, ok=False, expr=self._reason, src=self._src)
+            return Check(name=_name, ok=False, expr=self._reason, src=self._src, claim=_claim)
         if not self._items:
-            return Check(name=_name, ok=self._allow_empty,
+            return Check(name=_name, ok=self._allow_empty, claim=_claim,
                          expr='no items' + ('' if self._allow_empty else
                                             ' -- nothing was checked (allow_empty=True if '
                                             'an empty list is valid)'),
@@ -333,12 +335,12 @@ class Each(Field):
                 _failures.append(_expr)
         _total = len(self._items)
         if not _failures:
-            return Check(name=_name, ok=True,
+            return Check(name=_name, ok=True, claim=_claim,
                          expr='all {} items {}'.format(_total, claim), src=self._src)
         _shown = '; '.join(_failures[:_EACH_SHOWN])
         _more = ' (+{} more)'.format(len(_failures) - _EACH_SHOWN) \
             if len(_failures) > _EACH_SHOWN else ''
-        return Check(name=_name, ok=False, src=self._src,
+        return Check(name=_name, ok=False, src=self._src, claim=_claim,
                      expr='{} of {} items failed: {}{}'.format(
                          len(_failures), _total, _shown, _more))
 

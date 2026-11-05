@@ -59,7 +59,7 @@
 
   <!-- example flagged diff -->
   <rect x="30" y="414" width="852" height="196" rx="12" fill="#1d2330"/>
-  <text x="54" y="446" font-size="14" font-weight="600" fill="#ffffff">标出来的样子（示意）：test_order，与基线 run-20261104-0930 比</text>
+  <text x="54" y="446" font-size="14" font-weight="600" fill="#ffffff">标出来的样子（示意）：与基线 conf/judgements.json 比</text>
   <g font-family="Menlo,Consolas,'WenQuanYi Zen Hei Mono',monospace" font-size="13.5">
     <text x="54" y="482" fill="#f19a9a">- 删除      data.items[*].price &gt; 0</text>
     <text x="54" y="512" fill="#f5c26b">~ 上限放宽  data.fee &lt;= 100   →   data.fee &lt;= 1000</text>

@@ -36,9 +36,17 @@ class Status:
     docs/design/04-实施计划.md.
     """
 
+    UNVERIFIED = 'UNVERIFIED'
+    """
+    pytest says passed, but the case made no judgement the runner could see:
+    no Check, no plain `assert` that held, no pytest.raises. All it showed is
+    that nothing raised. Counted as inconclusive, not as a pass.
+    """
+
 
 # Statuses that mean "this told us nothing about the product".
-INCONCLUSIVE = frozenset({Status.SKIPPED, Status.BLOCKED, Status.GAP, Status.ERROR})
+INCONCLUSIVE = frozenset({Status.SKIPPED, Status.BLOCKED, Status.GAP, Status.ERROR,
+                          Status.UNVERIFIED})
 
 
 def _cell_status(cases) -> str:
@@ -137,6 +145,14 @@ class ReportData:
     coverage: List[Dict[str, Any]] = field(default_factory=list)
     """Matrix axes declared by the suite. See `coverage_matrix`."""
     collect_error: str = ''
+    baseline: str = ''
+    """The judgement inventory the run was compared with, if any."""
+    judgement_changes: List[Dict[str, Any]] = field(default_factory=list)
+    """Changes in what the suite judges vs the baseline. See runner/inventory.py."""
+
+    @property
+    def weakened(self) -> List[Dict[str, Any]]:
+        return [_c for _c in self.judgement_changes if _c.get('weakening')]
 
     def _count(self, status: str) -> int:
         return sum(1 for _c in self.cases if _c.status == status)
@@ -151,6 +167,7 @@ class ReportData:
             'skipped': self._count(Status.SKIPPED),
             'blocked': self._count(Status.BLOCKED),
             'gap': self._count(Status.GAP),
+            'unverified': self._count(Status.UNVERIFIED),
         }
 
     @property
@@ -306,6 +323,9 @@ class ReportData:
             'totals': self.totals,
             'pass_rate': self.pass_rate,
             'collect_error': self.collect_error,
+            'baseline': self.baseline,
+            'judgement_changes': self.judgement_changes,
+            'weakened': len(self.weakened),
             'triage': self.triage,
             'check_totals': self.check_totals,
             'by_source': self.by_source,

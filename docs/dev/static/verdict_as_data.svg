@@ -88,18 +88,17 @@
     <rect x="332" y="668" width="264" height="232" rx="10" fill="#2c3445"/>
     <text x="350" y="698" font-size="15.5" font-weight="700" fill="#ffffff">② 什么没验证</text>
     <text x="350" y="726" font-size="13" fill="#d9dee7">gap 显式声明的未覆盖点</text>
-    <text x="350" y="748" font-size="13" fill="#d9dee7">一条判定都没有的用例，不算通过</text>
-    <text x="350" y="784" font-size="12.5" fill="#8fd1b0">✅ gap 已有</text>
-    <text x="440" y="784" font-size="12.5" fill="#f5c26b">🚧 零判定检测待做</text>
+    <text x="350" y="748" font-size="13" fill="#d9dee7">一条判定都没有的用例记为零判定</text>
+    <text x="350" y="784" font-size="12.5" fill="#8fd1b0">✅ 已有（gap + 零判定检测）</text>
     <line x1="350" y1="800" x2="578" y2="800" stroke="#3d4659"/>
     <text x="350" y="824" font-size="12" fill="#9aa3b2">pytest 生态：没有找到对应插件。</text>
     <text x="350" y="844" font-size="12" fill="#9aa3b2">空测试和 assert True 都是 PASSED</text>
 
     <rect x="610" y="668" width="264" height="232" rx="10" fill="#33405a" stroke="#5b8def"/>
     <text x="628" y="698" font-size="15.5" font-weight="700" fill="#ffffff">③ 比上次少验证了什么</text>
-    <text x="628" y="726" font-size="13" fill="#d9dee7">与基线比对判定清单：删掉、</text>
+    <text x="628" y="726" font-size="13" fill="#d9dee7">与基线文件比对判定清单：删掉、</text>
     <text x="628" y="748" font-size="13" fill="#d9dee7">放宽、改成 skip 都会被标出</text>
-    <text x="628" y="784" font-size="12.5" fill="#f5c26b">🚧 待做 · AI 时代的核心差异</text>
+    <text x="628" y="784" font-size="12.5" fill="#8fd1b0">✅ 已有 · AI 时代的核心差异</text>
     <line x1="628" y1="800" x2="856" y2="800" stroke="#4a5a7a"/>
     <text x="628" y="824" font-size="12" fill="#9aa3b2">现有工具都是静态比对 diff 里的</text>
     <text x="628" y="844" font-size="12" fill="#9aa3b2">assert 行数，&lt;= 100 改成 &lt;= 1000</text>
