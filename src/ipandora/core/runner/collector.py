@@ -68,6 +68,7 @@ class ResultCollector:
         self.collect_errors = []  # type: List[str]
         self.coverage = []  # type: List[Dict]
         self._coverage_seen = set()
+        self.deselected = []  # type: List[str]
 
     def _slot(self, nodeid: str) -> CaseResult:
         if nodeid not in self.cases:
@@ -82,6 +83,11 @@ class ResultCollector:
             'markers',
             'dims(**axes): place this case in the coverage matrix, '
             'e.g. @pytest.mark.dims(chain="56", pay="native")')
+        config.addinivalue_line(
+            'markers',
+            'flaky(reason): this case is known-unstable. The reason is '
+            'required -- a bare marker is how a failure gets parked forever. '
+            'Run with --exclude-flaky to keep these out of a gate.')
 
     def pytest_runtest_setup(self, item):
         """
@@ -114,6 +120,15 @@ class ResultCollector:
         _marker = item.get_closest_marker('dims')
         if _marker is not None:
             _case.dims = {str(_k): str(_v) for _k, _v in (_marker.kwargs or {}).items()}
+
+        _flaky = item.get_closest_marker('flaky')
+        if _flaky is not None:
+            # A reason is the whole value of the marker. Without one this is
+            # just a quieter way of ignoring a failing test.
+            _case.flaky = str(
+                (_flaky.kwargs or {}).get('reason')
+                or (_flaky.args[0] if _flaky.args else '')
+                or '未说明原因')
 
         _doc = (getattr(item, 'function', None).__doc__
                 if getattr(item, 'function', None) else None)
@@ -151,6 +166,16 @@ class ResultCollector:
             _case.message = short_reason(report) or _case.message
         elif report.outcome == SKIPPED and not _case.message:
             _case.message = skip_reason(report)
+
+    def pytest_deselected(self, items):
+        """
+        Remember what a `-m` expression removed.
+
+        Without this, `--exclude-flaky` makes the excluded cases vanish from
+        the run entirely -- and a flaky marker nobody is reminded of is a
+        failure that has been parked. They are deselected, not forgotten.
+        """
+        self.deselected.extend(getattr(_i, 'nodeid', str(_i)) for _i in items or ())
 
     def pytest_collectreport(self, report):
         if report.outcome == FAILED:

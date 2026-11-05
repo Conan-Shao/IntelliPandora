@@ -6,10 +6,28 @@
 """
 import platform
 import socket
-import psutil
 import os
 import getpass
 from ipandora.utils.log import logger
+
+PSUTIL_HINT = ('psutil is an optional extra: pip install intellipandora[system]')
+
+
+def _psutil():
+    """
+    Import psutil only when a method that needs it is called.
+
+    It used to be a module-level import, which made psutil a hard dependency
+    of the whole package -- yet every method here that uses it has no caller
+    in this repo, and SystemInfo itself is consumed for one thing: `.user`,
+    which is getpass. A mandatory dependency nothing takes is supply-chain
+    surface bought for nothing.
+    """
+    try:
+        import psutil
+    except ImportError:
+        raise ImportError(PSUTIL_HINT)
+    return psutil
 
 
 class SystemInfo(object):
@@ -58,7 +76,7 @@ class SystemInfo(object):
 
     @staticmethod
     def get_memory_info():
-        return psutil.virtual_memory()
+        return _psutil().virtual_memory()
 
     @staticmethod
     def get_host_name():
@@ -66,7 +84,7 @@ class SystemInfo(object):
 
     @staticmethod
     def get_host():
-        interfaces = psutil.net_if_addrs()
+        interfaces = _psutil().net_if_addrs()
         for interface_name, interface_addresses in interfaces.items():
             for address in interface_addresses:
                 # get address which family is "AddressFamily.AF_INET: 2" and ignore "
@@ -93,7 +111,7 @@ class SystemInfo(object):
         :return:
         """
         result = []
-        for proc in psutil.process_iter(attrs=['pid', 'name', 'cmdline']):
+        for proc in _psutil().process_iter(attrs=['pid', 'name', 'cmdline']):
             if name.lower() in proc.name().lower():
                 cmdline = proc.cmdline()
                 if (include and include in cmdline) and (exclude and exclude not in cmdline):
@@ -104,13 +122,14 @@ class SystemInfo(object):
     def kill_process(pid):
         try:
             # get pid object
-            process = psutil.Process(pid)
+            _ps = _psutil()
+            process = _ps.Process(pid)
             process.terminate()
             process.wait()
             logger.info(f"Process {pid} has been terminated.")
-        except psutil.NoSuchProcess:
+        except _psutil().NoSuchProcess:
             logger.warning(f"No process found with PID {pid}.")
-        except psutil.AccessDenied:
+        except _psutil().AccessDenied:
             logger.warning(f"Permission denied to terminate process {pid}.")
         except Exception as e:
             logger.warning(f"Error terminating process {pid}: {e}")

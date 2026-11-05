@@ -135,6 +135,8 @@ def _properties(parent: ET.Element, case: ReportCase) -> None:
         _items['ipandora.status'] = case.status
     if case.title:
         _items['ipandora.title'] = case.title
+    if case.flaky:
+        _items['ipandora.flaky'] = case.flaky
     if case.category:
         _items['ipandora.category'] = case.category
     for _axis, _value in (case.dims or {}).items():

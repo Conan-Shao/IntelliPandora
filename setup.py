@@ -63,9 +63,16 @@ setup(
     include_package_data=True,
     zip_safe=False,
     classifiers=CLASSIFIERS,
+    # Bounded like install_requires, and for the same reason. `ai` stays an
+    # extra because `rm -rf ai/ && pytest` staying green is a structural
+    # guarantee, not a convention -- see docs/design/03-LLM接入边界.md.
     extras_require={
-        'ai': ['anthropic'],
-        'mcp': ['mcp'],
+        'ai': ['anthropic>=0.40,<1'],
+        'mcp': ['mcp>=1.0,<2'],
+        # SystemInfo's memory/network/process helpers. Nothing in the
+        # framework calls them, so psutil is not installed by default.
+        'system': ['psutil>=5.9,<8'],
+        'test': ['httpretty>=1.1,<2'],
     },
     entry_points={
         'console_scripts': [

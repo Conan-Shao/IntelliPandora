@@ -72,6 +72,7 @@ def build_from_run(result, title: str = None, include_triage: bool = True) -> Re
             suite=suite_of(_case.nodeid),
             title=getattr(_case, 'title', ''),
             dims=dict(getattr(_case, 'dims', {}) or {}),
+            flaky=redact(getattr(_case, 'flaky', '') or ''),
             # Evidence is the richest thing in the report and therefore the
             # likeliest to carry a credential: an Authorization header sits in
             # every request. It goes through the same redaction as everything

@@ -163,3 +163,7 @@ id_ed25519*
 .ipandora/
 reports/
 cassettes/
+
+# mutmut works in a copy of the project
+mutants/
+.mutmut-cache
