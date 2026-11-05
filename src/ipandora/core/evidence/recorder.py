@@ -187,7 +187,8 @@ def add_checks(checks) -> None:
     """
     try:
         recorder.add_checks(checks)
-    except Exception:  # noqa: BLE001 - see docstring
+    # bandit B110: reporting must never fail a test
+    except Exception:  # noqa: BLE001 - see docstring  # nosec B110
         pass
 
 
@@ -195,7 +196,8 @@ def add_exchange(**kwargs) -> None:
     """Record one HTTP call. Never raises, for the same reason."""
     try:
         recorder.add_exchange(Exchange(**kwargs))
-    except Exception:  # noqa: BLE001
+    # bandit B110: reporting must never fail a test
+    except Exception:  # noqa: BLE001  # nosec B110
         pass
 
 

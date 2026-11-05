@@ -36,11 +36,13 @@ class Variable(object):
 
     @staticmethod
     def get_random_from_list(items):
-        return random.choice(items)
+        # bandit B311: test data, not a secret
+        return random.choice(items)  # nosec B311
 
     @staticmethod
     def get_random_str(length=8):
-        return ''.join(random.sample(string.ascii_letters + string.digits, length))
+        # bandit B311: test data
+        return ''.join(random.sample(string.ascii_letters + string.digits, length))  # nosec B311
 
     @classmethod
     def get_endpoints(cls, key='ENDPOINTS'):

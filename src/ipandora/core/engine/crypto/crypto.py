@@ -70,11 +70,3 @@ class CryptoFactory:
             return FernetCryptographer(key)
         else:
             raise ValueError("Unsupported algorithm")
-
-
-# 使用示例
-if __name__ == "__main__":
-    factory = CryptoFactory()
-    mail_pwd_encrypt = 'IvDxMPS+BjIozlMICPmPrSqwcjEM7NhLJXcrt2ChyMc='
-    print(factory.aes.key)
-    print(factory.aes.decrypt(mail_pwd_encrypt))

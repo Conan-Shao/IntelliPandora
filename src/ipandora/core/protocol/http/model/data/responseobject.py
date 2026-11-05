@@ -82,7 +82,8 @@ class PandoraRequest(metaclass=ABCMeta):
                 url=self.request_object.url,
                 ms=round(elapsed * 1000.0, 1),
                 error='{}: {}'.format(type(exc).__name__, exc))
-        except Exception:  # noqa: BLE001
+        # bandit B110: evidence capture must never fail a request
+        except Exception:  # noqa: BLE001  # nosec B110
             pass
 
     def handle_response(self):
@@ -167,7 +168,8 @@ class NiceRequest(PandoraRequest):
                 request_body=_as_text(getattr(_req, 'body', None)),
                 response_headers=dict(self.response.headers or {}),
                 response_body=self.response.text)
-        except Exception:  # noqa: BLE001 - see docstring
+        # bandit B110: evidence capture must never fail a request
+        except Exception:  # noqa: BLE001 - see docstring  # nosec B110
             pass
 
     def handle(self):

@@ -1,0 +1,112 @@
+name: Release
+
+# Publishing a GitHub release (tag vX.Y.Z) publishes to PyPI. Nothing else
+# does: there is no API token anywhere -- PyPI trusts this workflow through
+# OIDC (Trusted Publishing), and only from the `pypi` environment, which is
+# where the required reviewers are set. Setup: docs/dev/IntelliPandora_Dev.md.
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  # Builds and checks with no credentials at all. The build runs setup.py;
+  # whatever it does, it never holds the publishing token.
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+
+      - name: Install build tools and the runtime environment
+        run: |
+          python -m venv "$RUNNER_TEMP/tools"
+          "$RUNNER_TEMP/tools/bin/pip" install --require-hashes -r requirements/tools.txt
+          python -m venv "$RUNNER_TEMP/runtime"
+          "$RUNNER_TEMP/runtime/bin/pip" install --require-hashes -r requirements/ci.txt
+          "$RUNNER_TEMP/runtime/bin/pip" install --no-deps --no-build-isolation -e .
+
+      # The same gate as every PR, run again on the exact commit being shipped:
+      # an advisory may have appeared since the last merge.
+      - name: Security scan
+        run: |
+          "$RUNNER_TEMP/tools/bin/python" scripts/security_report.py \
+            --runtime-python "$RUNNER_TEMP/runtime/bin/python" --out "$RUNNER_TEMP/report.md"
+
+      - name: Build
+        run: |
+          rm -rf build dist src/*.egg-info
+          "$RUNNER_TEMP/tools/bin/python" -m build --no-isolation
+
+      # The version comes from src/ipandora/CHANGELOG. A release tagged v1.2.0
+      # that builds 1.1.9 would publish the wrong thing under the right name.
+      - name: Wheel matches the tag
+        run: |
+          ls "dist/intellipandora-${GITHUB_REF_NAME#v}-py3-none-any.whl" \
+            || { echo "::error::tag $GITHUB_REF_NAME does not match the built version"; ls dist; exit 1; }
+
+      - name: Required data files reached the wheel
+        run: python scripts/check_packaging.py dist/*.whl
+
+      # CycloneDX SBOM of what `pip install intellipandora[...]` brings in,
+      # attached to the GitHub release so users can feed it to their scanners.
+      - name: SBOM
+        run: |
+          mkdir -p sbom
+          "$RUNNER_TEMP/tools/bin/cyclonedx-py" environment "$RUNNER_TEMP/runtime/bin/python" \
+            --output-format JSON --output-file "sbom/intellipandora-${GITHUB_REF_NAME#v}.cdx.json"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sbom
+          path: sbom/
+          if-no-files-found: error
+
+  # Only this job can mint the PyPI token, and only after a reviewer approves
+  # the `pypi` environment. It runs nothing from the repository.
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/intellipandora/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist/
+
+      # Attestations are on by default: PyPI records which workflow, commit and
+      # repository built each file, and pip/uv users can verify it.
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+
+  sbom:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: sbom
+          path: sbom/
+
+      - name: Attach the SBOM to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" sbom/*.cdx.json --repo "$GITHUB_REPOSITORY" --clobber

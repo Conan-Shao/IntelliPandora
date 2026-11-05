@@ -17,7 +17,8 @@ class Status:
     missing, and what is missing is usually the more interesting question.
     """
 
-    PASS = 'PASS'
+    # bandit B105: a status name, not a password
+    PASS = 'PASS'  # nosec B105
     FAIL = 'FAIL'
     ERROR = 'ERROR'
 

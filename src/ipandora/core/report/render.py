@@ -68,7 +68,8 @@ def highlight_json(text: str) -> Markup:
             _out.append('<span class="jn">{}</span>'.format(html.escape(_number)))
         _pos = _match.end()
     _out.append(html.escape(text[_pos:]))
-    return Markup(''.join(_out))
+    # bandit B704: all text went through html.escape; only our own span tags are raw
+    return Markup(''.join(_out))  # nosec B704
 
 
 def to_curl(exchange: dict) -> str:

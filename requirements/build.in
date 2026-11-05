@@ -1,0 +1,4 @@
+# What an editable install of the package itself needs, so CI can install it
+# with --no-build-isolation instead of letting pip fetch an unhashed setuptools.
+setuptools>=84.1,<85
+wheel>=0.45,<1

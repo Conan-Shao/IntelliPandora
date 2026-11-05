@@ -22,8 +22,10 @@ changing.
 Which is the shape of bug this guards: correctness that lives outside the
 source. The only way to know is to look inside the artifact.
 
-Usage: check_packaging.py           # builds into a temp dir
-       check_packaging.py some.whl  # inspects a wheel already built
+Usage: check_packaging.py                 # builds into a temp dir
+       check_packaging.py --no-isolation  # builds with the setuptools installed
+                                          # here (CI: the hashed tools lock)
+       check_packaging.py some.whl        # inspects a wheel already built
 """
 import glob
 import os
@@ -46,7 +48,7 @@ REQUIRED = (
 FORBIDDEN_SUFFIXES = ('.pem', '.key', '.p12', '.pfx', '.jks')
 
 
-def build_wheel(into: str) -> str:
+def build_wheel(into: str, isolated: bool = True) -> str:
     # `include_package_data` resolves through *.egg-info/SOURCES.txt, which
     # setuptools reuses if it is already there. A wheel built over a SOURCES.txt
     # from an earlier, correct MANIFEST.in contains the data files no matter
@@ -61,8 +63,13 @@ def build_wheel(into: str) -> str:
     # all nine of its files -- deleted code, packaged and publishable.
     shutil.rmtree(os.path.join(REPO, 'build'), ignore_errors=True)
 
-    subprocess.run([sys.executable, '-m', 'build', '--wheel', '--outdir', into],
-                   cwd=REPO, check=True, capture_output=True)
+    # An isolated build fetches setuptools from the index, unhashed, at
+    # whatever version pyproject.toml allows. CI and release pass
+    # --no-isolation so the backend is the one from requirements/tools.txt.
+    _cmd = [sys.executable, '-m', 'build', '--wheel', '--outdir', into]
+    if not isolated:
+        _cmd.append('--no-isolation')
+    subprocess.run(_cmd, cwd=REPO, check=True, capture_output=True)
     _wheels = [f for f in os.listdir(into) if f.endswith('.whl')]
     if not _wheels:
         raise SystemExit('build produced no wheel')
@@ -109,10 +116,12 @@ def inspect(wheel: str) -> int:
 
 
 def main(argv: list) -> int:
-    if argv:
-        return inspect(argv[0])
+    _isolated = '--no-isolation' not in argv
+    _wheels = [a for a in argv if a != '--no-isolation']
+    if _wheels:
+        return inspect(_wheels[0])
     with tempfile.TemporaryDirectory() as _tmp:
-        return inspect(build_wheel(_tmp))
+        return inspect(build_wheel(_tmp, _isolated))
 
 
 if __name__ == '__main__':

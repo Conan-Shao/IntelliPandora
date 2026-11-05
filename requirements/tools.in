@@ -1,0 +1,11 @@
+# Security and build tooling used by CI and by maintainers. Never installed by
+# users. Each entry passed the admission checklist in
+# docs/design/15-第三方组件安全准入与漏洞扫描.md and is listed in
+# docs/security/components.md.
+pip-audit==2.10.1
+bandit==1.9.4
+cyclonedx-bom==7.5.0
+build==1.6.1
+uv==0.13.5
+setuptools>=84.1,<85
+wheel>=0.45,<1

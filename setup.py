@@ -68,7 +68,12 @@ setup(
     # guarantee, not a convention -- see docs/design/03-LLM接入边界.md.
     extras_require={
         'ai': ['anthropic>=0.40,<1'],
-        'mcp': ['mcp>=1.0,<2'],
+        # >=2: core/mcp/server.py imports mcp.server.mcpserver.MCPServer, which
+        # only 2.x has. This said <2 from 1.11.0 on, so `pip install
+        # intellipandora[mcp]` resolved to mcp 1.x and `ipandora mcp` failed
+        # at import. The development environment happened to carry 2.3.0, which
+        # hid it; installing from the hash-pinned lock is what exposed it.
+        'mcp': ['mcp>=2.0,<3'],
         # SystemInfo's memory/network/process helpers. Nothing in the
         # framework calls them, so psutil is not installed by default.
         'system': ['psutil>=5.9,<8'],

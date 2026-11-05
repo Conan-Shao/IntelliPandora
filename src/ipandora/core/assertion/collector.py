@@ -61,7 +61,8 @@ def _record(checks: List[Check]) -> None:
     try:
         from ipandora.core.evidence import add_checks
         add_checks(checks)
-    except Exception:  # noqa: BLE001
+    # bandit B110: reporting must never fail a test
+    except Exception:  # noqa: BLE001  # nosec B110
         pass
 
 
