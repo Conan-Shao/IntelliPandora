@@ -92,6 +92,10 @@ class CaseEvidence:
     nodeid: str = ''
     checks: List[Dict[str, Any]] = field(default_factory=list)
     exchanges: List[Dict[str, Any]] = field(default_factory=list)
+    locators: Dict[str, Dict[str, str]] = field(default_factory=dict)
+    """Web: selector -> what it pointed at (role, accessible name). See core/web.py."""
+    locator_failures: List[Dict[str, Any]] = field(default_factory=list)
+    """Web: selectors that found nothing, with the stale / missing verdict."""
 
     def to_dict(self) -> Dict[str, Any]:
         return {'checks': list(self.checks), 'exchanges': list(self.exchanges)}

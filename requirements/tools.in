@@ -6,6 +6,6 @@ pip-audit==2.10.1
 bandit==1.9.4
 cyclonedx-bom==7.5.0
 build==1.6.1
-uv==0.13.5
+uv==0.13.4
 setuptools>=84.1,<85
 wheel>=0.45,<1

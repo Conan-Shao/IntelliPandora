@@ -52,6 +52,18 @@ LICENSE_OVERRIDES = {
     'intellipandora': 'Apache-2.0',
 }
 
+# Licenses outside the allowlist, accepted one by one after a review: the
+# license as we use it, and why. Each is shown as such in the public report.
+# docs/design/15 §3: copyleft never enters the core; an optional group needs
+# its own review -- this is where that review is written down.
+REVIEWED_LICENSES = {
+    'text-unidecode': (
+        'Artistic-1.0 OR GPL-2.0-or-later (used under Artistic-1.0)',
+        'only with the optional [web] group, via pytest-playwright -> python-slugify, '
+        'which uses it to transliterate test ids into artifact folder names. Dual '
+        'licensed; we take the Artistic License, not the GPL. Reviewed 2026-11-05'),
+}
+
 
 def norm(name: str) -> str:
     return re.sub(r'[-_.]+', '-', name).lower()
@@ -160,6 +172,9 @@ def check_licenses():
         _name = norm(_dist.metadata['Name'] or '')
         if not _name or _name in _seen:
             continue
+        if _name in REVIEWED_LICENSES:
+            _seen[_name] = (_dist.version, REVIEWED_LICENSES[_name][0])
+            continue
         _text = LICENSE_OVERRIDES.get(_name) or license_of(_dist)
         _seen[_name] = (_dist.version, _text)
         if not _text:
@@ -226,7 +241,9 @@ def main(argv) -> int:
     if _opts.licenses_json:
         import json
         _, _seen = check_licenses()
-        print(json.dumps({_n: {'version': _v, 'license': _t, 'allowed': license_ok(_t)}
+        print(json.dumps({_n: {'version': _v, 'license': _t,
+                               'allowed': _n in REVIEWED_LICENSES or license_ok(_t),
+                               'reviewed': REVIEWED_LICENSES.get(_n, ('', ''))[1]}
                           for _n, (_v, _t) in sorted(_seen.items())}, ensure_ascii=False))
         return 0
 

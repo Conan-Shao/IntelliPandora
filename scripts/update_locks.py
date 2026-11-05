@@ -40,15 +40,23 @@ LOCKS = {
     # `system` too: every extra a user can install is audited, used by tests or not.
     # `parallel` in both, so the parallel tests run in every CI job, with and
     # without ai/.
-    'ci.txt': (['setup.py', 'requirements/build.in'], ['ai', 'mcp', 'parallel', 'system', 'test']),
-    'ci-noai.txt': (['setup.py', 'requirements/build.in'], ['mcp', 'parallel', 'test']),
+    'ci.txt': (['setup.py', 'requirements/build.in'],
+               ['ai', 'mcp', 'parallel', 'system', 'test', 'web']),
+    'ci-noai.txt': (['setup.py', 'requirements/build.in'], ['mcp', 'parallel', 'test', 'web']),
     'tools.txt': (['requirements/tools.in'], []),
 }
 
 
 def cutoff(today: datetime.date = None) -> str:
+    """
+    Midnight UTC, COOLDOWN_DAYS ago, as a full timestamp.
+
+    Not a bare date: uv reads `--exclude-newer 2026-10-22` as including the
+    whole of that day, so a release uploaded that afternoon -- 13 days and
+    some hours old -- got in. Found when playwright 1.64.1 did.
+    """
     return ((today or datetime.date.today())
-            - datetime.timedelta(days=COOLDOWN_DAYS)).isoformat()
+            - datetime.timedelta(days=COOLDOWN_DAYS)).isoformat() + 'T00:00:00Z'
 
 
 def command(uv: str, inputs, extras, output, until: str):

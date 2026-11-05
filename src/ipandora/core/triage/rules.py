@@ -71,8 +71,11 @@ def failed_check_sources(message: str) -> List[str]:
     return _seen
 
 
-def classify(nodeid: str, outcome: str, message: str) -> Finding:
-    """Classify one case. Pure function of its outcome and message."""
+def classify(nodeid: str, outcome: str, message: str, locator_failures=None) -> Finding:
+    """
+    Classify one case. Pure function of its outcome, its message and, for web
+    cases, what core/web.py found out about selectors that matched nothing.
+    """
     _message = message or ''
 
     def _finding(category, confidence, reason, sources=None):
@@ -88,6 +91,10 @@ def classify(nodeid: str, outcome: str, message: str) -> Finding:
         return _finding(Category.ENVIRONMENT, Confidence.MEDIUM,
                         'the case exceeded its time limit. Usually a dependency that stopped '
                         'answering; if the system under test itself hangs, that is a defect')
+
+    _locator = _locator_finding(locator_failures)
+    if _locator:
+        return _finding(*_locator)
 
     # Nothing reached the system under test.
     _transport = next((_m for _m in TRANSPORT_MARKERS if _m in _message), None)
@@ -128,6 +135,37 @@ def classify(nodeid: str, outcome: str, message: str) -> Finding:
 
     return _finding(Category.UNKNOWN, Confidence.LOW,
                     'no recognised signature in the failure message')
+
+
+def _locator_finding(failures):
+    """
+    A selector found nothing. Stale selector, or a missing element?
+
+    Decided where the failure happened, while the page was still there
+    (core/web.py): the element the selector used to point at -- its role and
+    accessible name, remembered from a passing run -- was searched for.
+    """
+    if not failures:
+        return None
+    _f = failures[0]
+    _selector = _f.get('selector', '?')
+    _identity = _f.get('identity') or {}
+    _what = '{} "{}"'.format(_identity.get('role', '?'), _identity.get('name', '?'))
+    if _f.get('verdict') == 'stale_selector':
+        return (Category.HARNESS, Confidence.HIGH,
+                'selector {!r} is stale: it found nothing, but the page still has {} -- '
+                'the element it used to point at. Update the selector; the product is '
+                'not at fault'.format(_selector, _what))
+    if _f.get('verdict') == 'missing':
+        return (Category.DEFECT, Confidence.LOW,
+                '待确认: {!r} found nothing, and no {} is on the page either -- it was '
+                'there when this case last passed. Possibly removed or renamed: a '
+                'product defect unless the change was intended. See the screenshot'.format(
+                    _selector, _what))
+    return (Category.UNKNOWN, Confidence.LOW,
+            '待确认: {!r} found nothing, and there is no record of what it pointed at in '
+            'a passing run, so a stale selector cannot be told apart from a missing '
+            'element. See the screenshot'.format(_selector))
 
 
 @dataclass
@@ -182,4 +220,6 @@ def triage(result, include_skipped: bool = False) -> TriageReport:
         _cases += [_c for _c in getattr(result, 'cases', [])
                    if _c.outcome == 'skipped']
     return TriageReport(findings=[
-        classify(_c.nodeid, _c.outcome, _c.message) for _c in _cases])
+        classify(_c.nodeid, _c.outcome, _c.message,
+                 locator_failures=getattr(_c, 'locator_failures', None))
+        for _c in _cases])

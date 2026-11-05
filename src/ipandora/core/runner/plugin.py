@@ -205,6 +205,11 @@ def pytest_configure(config):
         'concurrent runs on one machine.')
     if is_worker(config):
         _apply_worker_env()
+    # Playwright, when installed: expect() as judgements, locators remembered
+    # by what they point at. See core/web.py.
+    from ipandora.core import web
+    if web.install() and config.pluginmanager.hasplugin('playwright'):
+        config.pluginmanager.register(web.ContextDefaults(), 'ipandora-web-context')
 
 
 def _apply_worker_env():
@@ -229,6 +234,8 @@ def _apply_worker_env():
 
 
 def pytest_unconfigure(config):
+    from ipandora.core import web
+    web.uninstall()
     for _name, _original in _PATCHED.items():
         setattr(pytest, _name, _original)
     _PATCHED.clear()
@@ -364,6 +371,10 @@ def _pack(item):
     if _evidence is not None:
         _payload['checks'] = list(_evidence.checks)
         _payload['exchanges'] = list(_evidence.exchanges)
+        if _evidence.locators:
+            _payload['locators'] = dict(_evidence.locators)
+        if _evidence.locator_failures:
+            _payload['locator_failures'] = list(_evidence.locator_failures)
     if _INDEX in item.stash:
         _payload['index'] = item.stash[_INDEX]
     # Reports cross a process boundary under xdist, and execnet carries only

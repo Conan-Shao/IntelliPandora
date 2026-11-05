@@ -74,6 +74,11 @@ setup(
         # out of the core: a serial run needs none of it. See
         # docs/design/14 §1 and docs/security/components.md.
         'parallel': ['pytest-xdist>=3.8,<4', 'pytest-timeout>=2.4,<3'],
+        # Web: Playwright and its official pytest plugin, used as they are
+        # (docs/design/14 §3). pytest-playwright is 0.x, so bounded to one
+        # minor. Browsers are a separate download pinned by the Playwright
+        # version: python -m playwright install chromium.
+        'web': ['playwright>=1.64,<2', 'pytest-playwright>=0.10,<0.11'],
         # >=2: core/mcp/server.py imports mcp.server.mcpserver.MCPServer, which
         # only 2.x has. This said <2 from 1.11.0 on, so `pip install
         # intellipandora[mcp]` resolved to mcp 1.x and `ipandora mcp` failed

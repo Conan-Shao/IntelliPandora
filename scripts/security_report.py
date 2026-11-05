@@ -257,10 +257,12 @@ def render(s, date: str) -> str:
         _out.append('| 依赖漏洞 | `{}`：{} | {} |'.format(_l['lock'], _l['label'], _res))
     _out.append('| 自身代码 | `src/`，bandit 静态扫描 | {}：{} 个未处理问题，{} 处经评估标注（理由见下） |'.format(
         _verdict(_bandit_ok), len(s['bandit']), len(s['annotations'])))
+    _reviewed = sorted({_n for _d in _lic.values() for _n, _v in _d.items() if _v.get('reviewed')})
+    _lic_text = ('：{} 个不在白名单'.format(len(_bad_lic)) if _bad_lic
+                 else '：全部在白名单内' if not _reviewed
+                 else '：其余在白名单内，{} 经人工审查（见下）'.format('、'.join(_reviewed)))
     _out.append('| 许可证 | 运行环境 {} 个分发包、工具链 {} 个（含间接依赖） | {} |'.format(
-        len(_lic['runtime']), len(_lic['tools']),
-        _verdict(not _bad_lic) + ('：全部在白名单内' if not _bad_lic else '：{} 个不在白名单'.format(
-            len(_bad_lic)))))
+        len(_lic['runtime']), len(_lic['tools']), _verdict(not _bad_lic) + _lic_text))
     _out.append('| 组件登记 | {} 个直接依赖与 CI 动作 | {} |'.format(
         s['components'], _verdict(not s['registry']) + (
             '：与代码声明一致' if not s['registry'] else '：{} 处不一致'.format(len(s['registry'])))))
@@ -304,7 +306,8 @@ def render(s, date: str) -> str:
         for _name, _d in sorted(_lic[_env].items()):
             _out.append('| {} | {} | {} | {} |'.format(
                 _name, _d['version'], _cell(_d['license']) or '未声明',
-                '通过' if _d['allowed'] else '**未通过**'))
+                ('通过（人工审查：{}）'.format(_cell(_d['reviewed'])) if _d.get('reviewed')
+                 else '通过' if _d['allowed'] else '**未通过**')))
         _out += ['', '</details>', '']
     _out += [
         '## 怎么扫的', '',

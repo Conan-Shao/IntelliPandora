@@ -280,3 +280,19 @@ def test_the_published_report_is_current():
             'regenerate docs/security/report.md: scripts/security_report.py')
     assert '| 组件登记 | {} 个直接依赖与 CI 动作 |'.format(len(cc.declared())) in _md, (
         'regenerate docs/security/report.md: scripts/security_report.py')
+
+
+def test_the_lock_cutoff_is_an_exact_instant_not_a_whole_day():
+    # uv reads a bare date as including that day: a release uploaded that
+    # afternoon, 13 days and some hours old, passed the 14-day cooldown.
+    # playwright 1.64.1 and uv 0.13.5 both did.
+    import update_locks
+    assert update_locks.cutoff(datetime.date(2026, 11, 5)) == '2026-10-22T00:00:00Z'
+
+
+def test_a_reviewed_license_is_allowed_and_says_why(monkeypatch):
+    assert 'text-unidecode' in cc.REVIEWED_LICENSES
+    _text, _why = cc.REVIEWED_LICENSES['text-unidecode']
+    assert 'Artistic' in _text and _why
+    # outside the review table the same text would be refused
+    assert not cc.license_ok(_text)

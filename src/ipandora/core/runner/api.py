@@ -173,7 +173,9 @@ def _process_environment(env: str) -> dict:
     (plugin.pytest_load_initial_conftests applies it). And the env overlay,
     which run() applies to this process only (plugin._apply_worker_env).
     """
-    return {_plugin.PYCACHE_VAR: _bytecode_cache(), _plugin.ENV_VAR: env or ''}
+    from ipandora.core import web
+    return {_plugin.PYCACHE_VAR: _bytecode_cache(), _plugin.ENV_VAR: env or '',
+            web.MEMORY_VAR: web.memory_path()}
 
 
 def run(selector: str = '', env: str = '', extra_args: Sequence[str] = (),
@@ -225,6 +227,9 @@ def run(selector: str = '', env: str = '', extra_args: Sequence[str] = (),
     # validated before anything is changed, so a bad option leaves no trace
     _args = _build_args(selector, extra_args) + _workers_args(workers) + _timeout_args(timeout)
     _settings_before, _env_file = _apply_env(env)
+    # after the env overlay: web.base_url is usually per environment
+    from ipandora.core import web
+    _args += web.pytest_args(_args, web.artifacts_dir(_run_id))
     _collector = ResultCollector()
 
     logger.info('run %s: pytest %s', _run_id, ' '.join(_args))
@@ -244,11 +249,12 @@ def run(selector: str = '', env: str = '', extra_args: Sequence[str] = (),
     _environ_before = {_k: os.environ.get(_k) for _k in _process_environment(env)}
     os.environ.update(_process_environment(env))
     try:
-        if quiet:
-            with redirect_stdout(_sink), redirect_stderr(_sink):
+        with web.nested_session():
+            if quiet:
+                with redirect_stdout(_sink), redirect_stderr(_sink):
+                    _exit = pytest.main(list(_args), plugins=[_collector])
+            else:
                 _exit = pytest.main(list(_args), plugins=[_collector])
-        else:
-            _exit = pytest.main(list(_args), plugins=[_collector])
     finally:
         for _k, _v in _environ_before.items():
             if _v is None:
@@ -284,6 +290,7 @@ def run(selector: str = '', env: str = '', extra_args: Sequence[str] = (),
         collect_error=_collect_error)
 
     _compare_with_baseline(_result, baseline)
+    web.remember(_result)
 
     if persist:
         store.save(_result)
