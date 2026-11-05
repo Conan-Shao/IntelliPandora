@@ -164,7 +164,15 @@ def run(selector: str = '', env: str = '', extra_args: Sequence[str] = (),
     _start = time.perf_counter()
     _sink = io.StringIO()
     _prefix_before = sys.pycache_prefix
+    _nowrite_before = sys.dont_write_bytecode
     sys.pycache_prefix = _bytecode_cache()
+    # Nothing a run compiles is written back. A .pyc is trusted when the
+    # source's mtime (whole seconds) and size match, so a test edited within
+    # the same second without changing length -- `== 1` to `== 2` -- kept
+    # running its old bytecode. That is exactly what an agent fixing a test
+    # through the MCP server does. Test modules are small; recompiling them
+    # every run costs milliseconds, a stale verdict costs the whole loop.
+    sys.dont_write_bytecode = True
     _modules_before = set(sys.modules)
     try:
         if quiet:
@@ -174,6 +182,7 @@ def run(selector: str = '', env: str = '', extra_args: Sequence[str] = (),
             _exit = pytest.main(list(_args), plugins=[_collector])
     finally:
         sys.pycache_prefix = _prefix_before
+        sys.dont_write_bytecode = _nowrite_before
         _forget_project_modules(_modules_before, _collector.rootdir)
         _duration = time.perf_counter() - _start
         if _env_file:

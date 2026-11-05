@@ -33,6 +33,15 @@ v1.11.0
 * fix: the crypto key landed inside the tracked package tree and three separate gates failed to recognise it; it now lives in ~/.ipandora/crypto at 0700/0600
 * fix: AESCryptographer held a base64 str where AES wants raw bytes after generating a key, so the first run of a fresh install always raised
 * fix: MANIFEST.in named the distribution instead of the package path; scripts/check_packaging.py now checks the built wheel, because whether data files reach it depends on the setuptools version doing the build
+* fix: the `mcp` extra was bounded <2 while the server imports mcp.server.mcpserver, which only 2.x has -- `pip install intellipandora[mcp]` installed an MCP server that could not start. Now mcp>=2.0,<3
+* add the `test` extra (httpretty) for the suite's own HTTP tests. CI installed .[ai,mcp] without it and every run since 1.11.0 began failed at collection
+* fix: run() writes no bytecode while it runs. A test file edited within the same second, at the same size, kept its stale .pyc -- pyc validity is mtime-in-seconds plus size -- so a second run in one process could execute the old test
+* security: every third-party component is admitted, registered (docs/security/components.md) and checked by CI against what the code declares; licenses are checked against an allowlist; vulnerability exceptions carry a reason and an expiry date. See docs/design/15
+* security: CI and development install from hash-pinned lock files (requirements/*.txt, scripts/update_locks.py) that only accept releases at least 14 days old; GitHub Actions are pinned to commit SHAs. The stale, unpinned requirements.txt is gone
+* security: .github/workflows/security.yml scans on every PR, every merge and daily -- pip-audit per lock file, bandit over src/, licenses, the registry, exception expiry -- and keeps the public report, docs/security/report.md, current
+* security: releases are published only from .github/workflows/release.yml through PyPI Trusted Publishing, with attestations and a CycloneDX SBOM attached to the GitHub release. `make upload` is gone
+* security: pyproject.toml pins the build backend (setuptools>=84.1,<85); what a wheel contains no longer depends on the machine that built it
+* security: bandit findings in src/ fixed (sha1 marked usedforsecurity=False, asserts used for argument checks replaced by exceptions, the minidom round-trip in the JUnit writer replaced by ET.indent) or annotated with a reason; the example at the bottom of crypto.py, which carried a ciphertext, was removed
 
 v1.10.0
 ==============

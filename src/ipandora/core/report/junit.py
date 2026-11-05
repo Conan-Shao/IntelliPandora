@@ -43,9 +43,13 @@ pass. Two guards for that:
     into the pass count.
 """
 import re
-import xml.etree.ElementTree as ET
+# Builds XML from report data and never parses input, so the XML-parsing
+# attacks bandit warns about (B405) have nothing to act on. Pretty-printing
+# used to round-trip through minidom.parseString, which *is* a parser; it is
+# ET.indent now, and nothing here parses anything.
+# bandit B405: this module builds XML and never parses it
+import xml.etree.ElementTree as ET  # nosec B405
 from typing import Dict, List
-from xml.dom import minidom
 
 from ipandora.core.report.model import ReportCase, ReportData, Status
 
@@ -256,7 +260,6 @@ def to_junit(report: ReportData, indent: bool = True) -> str:
             errors='1', skipped='0', time='0.000'))
         _collect_error_case(_node, report)
 
-    _raw = ET.tostring(_root, encoding='unicode')
-    if not indent:
-        return '<?xml version="1.0" encoding="UTF-8"?>\n' + _raw
-    return minidom.parseString(_raw).toprettyxml(indent='  ', encoding=None)
+    if indent:
+        ET.indent(_root, space='  ')
+    return '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(_root, encoding='unicode') + '\n'

@@ -1,0 +1,27 @@
+# Dependabot proposes updates; it does not admit them. A PR that changes a
+# version range in setup.cfg / setup.py / requirements/*.in, or an action's
+# pinned SHA, fails `Components are registered` until the reviewer has done
+# the admission check and updated docs/security/components.md in the same PR
+# (docs/design/15-第三方组件安全准入与漏洞扫描.md §3). That failure is the
+# point: it is where a human looks at what is coming in.
+#
+# Security updates (Dependabot alerts) are switched on in the repository
+# settings, not here, and are not subject to the cooldown.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    # The same 14 days scripts/update_locks.py enforces: a release this new is
+    # the likeliest to be a malicious one that has not been yanked yet.
+    cooldown:
+      default-days: 14
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 14

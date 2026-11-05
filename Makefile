@@ -1,13 +1,29 @@
 # Makefile for Python project packaging
-.PHONY: install test package clean
+.PHONY: install install-tools locks security test smoke test-without-ai package clean
 # Define some variables
 PYTHON := python3
 PIP := pip3
 TARGET_DIR := dist
 
-# 安装所有依赖
+# 安装开发环境：与 CI 完全相同的锁定版本，逐个文件校验哈希
+# 依赖变了先 make locks，见 docs/design/15-第三方组件安全准入与漏洞扫描.md
 install:
-	pip install -r requirements.txt
+	$(PIP) install --require-hashes -r requirements/ci.txt
+	$(PIP) install --no-deps --no-build-isolation -e .
+
+# 构建与扫描工具（pip-audit、bandit、build、uv……），同样锁定并校验哈希
+install-tools:
+	$(PIP) install --require-hashes -r requirements/tools.txt
+
+# 重新生成锁文件：只接受发布满 14 天的版本
+locks:
+	$(PYTHON) scripts/update_locks.py
+
+# 本地跑一遍与 CI 相同的安全扫描，并更新 docs/security/report.md
+# 需要 make install install-tools（同一环境即可）
+security:
+	$(PYTHON) scripts/check_components.py
+	$(PYTHON) scripts/security_report.py
 
 # 运行测试
 test:
@@ -25,19 +41,15 @@ test-without-ai:
 	rm -rf /tmp/ipandora-noai/src/ipandora/ai
 	cd /tmp/ipandora-noai && pytest test/
 
-# 打包项目
+# 打包项目（需要 make install-tools）。发布到 PyPI 只走 .github/workflows/release.yml：
+# 本地没有、也不应该有 PyPI 凭据
 package:
-	$(PYTHON) setup.py sdist bdist_wheel
+	rm -rf build/ dist/ src/*.egg-info
+	$(PYTHON) -m build --no-isolation
+	$(PYTHON) scripts/check_packaging.py dist/*.whl
 
 # 清理临时文件
 clean:
 	rm -rf build/ dist/ src/*.egg-info
 	find . -type f -name '*.pyc' -delete
 	find . -type d -name '__pycache__' -delete
-
-# Upload the wheel file to PyPI (requires credentials)
-upload: package
-	twine upload -r pypi dist/*.whl
-
-check:
-	twine check dist/*

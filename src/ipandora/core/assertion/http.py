@@ -177,7 +177,8 @@ def schema_conforms(response: Any, schema: dict, name: str = None) -> Check:
     # the schema's own fingerprint, so a loosened schema shows up as a changed
     # judgement in the inventory instead of the same 'conforms' line
     _claim = 'body conforms to schema {}'.format(hashlib.sha1(
-        json.dumps(schema, sort_keys=True, default=str).encode('utf-8')).hexdigest()[:10])
+        json.dumps(schema, sort_keys=True, default=str).encode('utf-8'),
+        usedforsecurity=False).hexdigest()[:10])
     try:
         import jsonschema
     except ImportError:

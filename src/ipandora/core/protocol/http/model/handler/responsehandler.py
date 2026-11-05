@@ -117,10 +117,12 @@ def contain_dict(subset: dict = None, superset: dict = None) -> bool:
 
 
 def nice_index(index=0, length=0):
-    assert isinstance(index, int) and isinstance(length,
-                                                 int), u'index {}, length {} must be int.'.format(
-        index, length)
-    assert length > 0, u'length {} must be > 0'.format(length)
+    # explicit raises, not assert: `python -O` strips asserts, and this is
+    # library code that callers rely on to reject bad input
+    if not (isinstance(index, int) and isinstance(length, int)):
+        raise TypeError(u'index {}, length {} must be int.'.format(index, length))
+    if length <= 0:
+        raise ValueError(u'length {} must be > 0'.format(length))
     if index >= 0:
         _index = length - 1 if index >= length else index
     else:

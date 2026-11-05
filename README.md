@@ -1,5 +1,7 @@
 # IntelliPandora
 
+[![CI](https://github.com/Conan-Shao/IntelliPandora/actions/workflows/ci.yml/badge.svg)](https://github.com/Conan-Shao/IntelliPandora/actions/workflows/ci.yml) [![Security](https://github.com/Conan-Shao/IntelliPandora/actions/workflows/security.yml/badge.svg)](docs/security/report.md)
+
 > AI 时代的测试**判定层**，建在 pytest 之上：**agent 写，框架判，人审。**
 >
 > pytest 回答「有没有测试失败」；IntelliPandora 回答「这次通过可不可信」：验证了什么、没验证什么、比上次少验证了什么、失败该谁修。
@@ -41,6 +43,7 @@ AI 写测试之后，最后这个问题变成了关键：允许修改测试时�
 pip install intellipandora            # 内核，依赖只有 8 个
 pip install intellipandora[ai]        # 可选：失败归因接 LLM
 pip install intellipandora[mcp]       # 可选：agent 入口
+pip install intellipandora[system]    # 可选：系统信息工具（psutil）
 ```
 
 ## 用起来
@@ -133,15 +136,28 @@ def test_create_order():
 ## 开发
 
 ```shell
+make install && make install-tools   # 锁定版本、校验哈希，与 CI 一致
 pytest                               # 全部密闭，零网络依赖
 python scripts/smoke_import.py       # 每个模块都 import 得进来
 python scripts/check_layering.py     # core/ 不得依赖 ai/
 python scripts/check_secrets.py $(git ls-files)
 python scripts/check_packaging.py    # 必需数据文件要真的进 wheel
 python scripts/mutation.py core/report/junit.py   # 变异测试：故意改坏，看测试抓不抓得住
+make security                        # 依赖漏洞、代码扫描、许可证、组件登记
 ```
 
 📖 [开发手册](docs/dev/IntelliPandora_Dev.md)
+
+## 安全
+
+测试框架会进 CI、拿着测试账号和密钥在被测环境里执行代码，是投毒的高价值目标。所以框架引入的每一个第三方组件都先过准入，进来之后持续扫描：
+
+- **准入**：必要性、许可证、维护状态、发布满 14 天才采用。全部组件登记在 [组件登记表](docs/security/components.md)，代码里声明的依赖和登记表不一致，CI 不让合入。
+- **锁定**：CI 和开发环境从带哈希的锁文件安装，装的就是审查过的那一批文件；CI 动作固定到提交 SHA。
+- **扫描**：每个 PR、每次合入、每天定时，扫依赖漏洞（pip-audit）、自身代码（bandit）、许可证。结果公开在 **[安全报告](docs/security/report.md)**。
+- **发布**：只从 GitHub Actions 通过 PyPI Trusted Publishing 发布，附来源证明；每个版本附 CycloneDX SBOM。
+
+规则与理由见 [`docs/design/15`](docs/design/15-第三方组件安全准入与漏洞扫描.md)。
 
 ## License
 
