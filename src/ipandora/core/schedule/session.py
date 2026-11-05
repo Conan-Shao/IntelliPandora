@@ -100,6 +100,45 @@ class SessionManager(object):
         return _new_session.session
 
     @classmethod
+    def clone(cls, session: requests.Session) -> requests.Session:
+        """
+        A new session that sends what `session` sends: headers, cookies, auth,
+        TLS, proxy and redirect settings.
+
+        For core/concurrency.py. A thread cannot share the caller's session --
+        requests does not promise a Session is thread-safe -- and without this
+        it got an empty one, so concurrent requests went out logged-out. The
+        transport policy (retries, pool size) is mounted fresh, as for any new
+        session; adapters a test mounted by hand are not carried over.
+        """
+        _new = cls._build_session().session
+        _new.headers = CaseInsensitiveDict(session.headers)
+        _new.cookies = session.cookies.copy()
+        _new.auth = session.auth
+        _new.proxies = dict(session.proxies or {})
+        _new.params = dict(session.params or {})
+        _new.verify = session.verify
+        _new.cert = session.cert
+        _new.trust_env = session.trust_env
+        _new.max_redirects = session.max_redirects
+        _new.stream = session.stream
+        _new.hooks = {_k: list(_v) for _k, _v in (session.hooks or {}).items()}
+        return _new
+
+    @classmethod
+    def forget(cls):
+        """
+        Drop this thread's session.
+
+        Sessions are keyed by thread name and ident, and the OS reuses idents.
+        A short-lived thread that does not forget its session leaves it for
+        the next thread that happens to get the same name and ident -- cookies
+        and all. core/concurrency.py calls this as each of its threads ends.
+        """
+        with cls._lock:
+            cls._session_map.pop(cls.name(), None)
+
+    @classmethod
     def name(cls):
         _c = current_thread()
         # .name, not .getName() -- deprecated since 3.10
