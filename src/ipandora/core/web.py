@@ -1,0 +1,411 @@
+# -*- coding: utf-8 -*-
+"""
+@Author: Shao Feng
+@File  : web.py
+@Time  : 2026-11-05
+
+Playwright, as it is -- plus the two things a verdict layer needs from it.
+
+"Integrate, don't wrap": tests use Playwright and pytest-playwright directly,
+`page`, `expect`, `--browser`, `--headed` and all. Nothing here is an API to
+learn. It is installed into every process that runs cases (runner/plugin.py)
+and patches Playwright's classes for the duration of a run, so it works
+however a test imported them.
+
+1. **expect() is a judgement.** `expect(locator).to_have_text('100.50')` is not
+   an `assert` statement, so the assertion-pass hook never sees it, and a test
+   written only with expect -- which is how Playwright tests are written --
+   read as unverified. Each expect that holds is recorded as a Check, and one
+   that fails as a failed Check with Playwright's own message.
+
+2. **A selector that finds nothing is not automatically the test's fault.**
+   It may be stale (the page changed its markup, the button is still there)
+   or the element may really be gone (a regression). Calling every such
+   failure "test problem" is exactly how a self-healing tool hides a removed
+   button. The difference is checked deterministically: each locator a passing
+   case used is remembered by what it pointed at -- role and accessible name,
+   from Playwright's aria snapshot. When it later finds nothing, the page is
+   searched for an element with that role and name. Found: the selector is
+   stale, the product is fine. Not found: "待确认" -- possibly a defect, with
+   the screenshot. Never remembered: also "待确认". When unsure, this never
+   leans towards "not the product's problem".
+
+The screenshot and trace of a failure are pytest-playwright's own
+(`--screenshot only-on-failure`, `--tracing retain-on-failure`, which run()
+turns on); the collector picks them up from the report.
+
+PYTEST_DONT_REWRITE
+"""
+import json
+import os
+import re
+from contextlib import contextmanager
+from typing import Any, Dict, Optional
+
+import pytest
+
+from ipandora.core.assertion.check import Check, Source
+from ipandora.core.evidence import recorder
+
+MEMORY_VAR = 'IPANDORA_LOCATOR_MEMORY'
+"""Where remembered locators live; run() sets it for every process."""
+
+STALE = 'stale_selector'
+MISSING = 'missing'
+UNKNOWN = 'unknown'
+
+# Locator methods that resolve the locator to an element: these are where a
+# selector either finds what it means or does not.
+ACTIONS = ('click', 'dblclick', 'tap', 'hover', 'focus', 'fill', 'clear', 'press',
+           'press_sequentially', 'type', 'check', 'uncheck', 'set_checked',
+           'select_option', 'set_input_files', 'inner_text', 'text_content',
+           'inner_html', 'input_value', 'get_attribute')
+
+# kwargs that change how long to wait, not what is judged
+_NOT_PART_OF_THE_CLAIM = ('timeout',)
+
+_ARIA = re.compile(r'^- (?P<role>[\w-]+)(?: "(?P<name>(?:[^"\\]|\\.)*)")?(?::\s*(?P<text>.*))?$')
+
+_ORIGINALS = {}
+_MEMORY = {'path': None, 'data': None}
+
+
+def available() -> bool:
+    try:
+        import playwright.sync_api  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+# -- install / uninstall ------------------------------------------------------
+
+def install() -> bool:
+    """Patch Playwright's assertion and locator classes. False if Playwright is absent."""
+    if _ORIGINALS:
+        return True
+    if not available():
+        return False
+    from playwright.sync_api import (APIResponseAssertions, Expect, Locator,
+                                     LocatorAssertions, PageAssertions)
+    _patch(Expect, '__call__', _keeping_actual(Expect.__call__))
+    for _cls in (LocatorAssertions, PageAssertions, APIResponseAssertions):
+        for _name in dir(_cls):
+            if _name.startswith(('to_', 'not_to_')) and callable(getattr(_cls, _name)):
+                _patch(_cls, _name, _judged(getattr(_cls, _name), _name))
+    for _name in ACTIONS:
+        if hasattr(Locator, _name):
+            _patch(Locator, _name, _remembered(getattr(Locator, _name), _name))
+    return True
+
+
+def uninstall() -> None:
+    for (_cls, _name), _original in _ORIGINALS.items():
+        setattr(_cls, _name, _original)
+    _ORIGINALS.clear()
+    _MEMORY.update(path=None, data=None)
+
+
+def _patch(cls, name, replacement):
+    _ORIGINALS[(cls, name)] = getattr(cls, name)
+    replacement.__wrapped__ = _ORIGINALS[(cls, name)]
+    replacement.__doc__ = _ORIGINALS[(cls, name)].__doc__
+    setattr(cls, name, replacement)
+
+
+# -- 1. expect() as a judgement ------------------------------------------------
+
+_ACTUAL = '_ipandora_actual'
+
+
+def _keeping_actual(original):
+    """expect(x) hands back an assertions object; keep the public x on it."""
+    def _wrapper(self, actual, *args, **kwargs):
+        _assertions = original(self, actual, *args, **kwargs)
+        try:
+            setattr(_assertions, _ACTUAL, actual)
+        except AttributeError:
+            pass
+        return _assertions
+    return _wrapper
+
+
+def _target(assertions) -> str:
+    _kind = type(assertions).__name__
+    if _kind == 'LocatorAssertions':
+        return 'locator({!r})'.format(selector_of(getattr(assertions, _ACTUAL, None)) or '?')
+    return 'page' if _kind == 'PageAssertions' else 'response'
+
+
+def _shown(value) -> str:
+    _pattern = getattr(value, 'pattern', None)
+    if isinstance(_pattern, str):
+        return '/{}/'.format(_pattern)
+    return repr(value)
+
+
+def claim_for(target: str, method: str, args, kwargs) -> str:
+    """`expect locator('#amount') to_have_text '100.50'` -- stable across runs."""
+    _parts = ['expect', target, method] + [_shown(_a) for _a in args]
+    _parts += ['{}={}'.format(_k, _shown(_v)) for _k, _v in sorted(kwargs.items())
+               if _k not in _NOT_PART_OF_THE_CLAIM]
+    return ' '.join(_parts)
+
+
+def _judged(original, method: str):
+    def _wrapper(self, *args, **kwargs):
+        _claim = claim_for(_target(self), method, args, kwargs)
+        try:
+            _result = original(self, *args, **kwargs)
+        except AssertionError as exc:
+            _lines = [_l.strip() for _l in str(exc).splitlines() if _l.strip()]
+            recorder.add_checks([Check(name=_claim, ok=False, expr=' / '.join(_lines[:3]),
+                                       src=Source.ASSERT, claim=_claim)])
+            _locator = getattr(self, _ACTUAL, None)
+            if type(self).__name__ == 'LocatorAssertions' and not method.startswith('not_'):
+                _diagnose(_locator, method)
+            raise
+        recorder.add_checks([Check(name=_claim, ok=True, expr=_claim, src=Source.ASSERT,
+                                   claim=_claim)])
+        if type(self).__name__ == 'LocatorAssertions':
+            _note(getattr(self, _ACTUAL, None))
+        return _result
+    return _wrapper
+
+
+# -- 2. what a locator pointed at -----------------------------------------------
+
+def _remembered(original, method: str):
+    def _wrapper(self, *args, **kwargs):
+        _note(self)            # before: a click that navigates leaves nothing to look at after
+        try:
+            _result = original(self, *args, **kwargs)
+        except Exception as exc:  # noqa: BLE001 -- re-raised; only Playwright errors are diagnosed
+            if _is_playwright_error(exc):
+                _diagnose(self, method)
+            raise
+        _note(self)
+        return _result
+    return _wrapper
+
+
+def _is_playwright_error(exc) -> bool:
+    try:
+        from playwright.sync_api import Error
+    except ImportError:
+        return False
+    return isinstance(exc, Error)
+
+
+def selector_of(locator) -> str:
+    return getattr(getattr(locator, '_impl_obj', None), '_selector', '') or ''
+
+
+def identity_of(locator) -> Optional[Dict[str, str]]:
+    """
+    What one element is, in the terms a person would use: its role and
+    accessible name (`button "付款"`), from Playwright's aria snapshot.
+
+    None when the locator does not match exactly one element right now --
+    `count()` does not wait, so this never holds a test up.
+    """
+    try:
+        if locator.count() != 1:
+            return None
+        _line = locator.aria_snapshot(timeout=1000).splitlines()[0].strip()
+    except Exception:  # noqa: BLE001 -- best effort; a missing identity means "待确认" later
+        return None
+    _m = _ARIA.match(_line)
+    if not _m:
+        return None
+    _role, _name, _text = _m.group('role'), _m.group('name'), (_m.group('text') or '').strip()
+    if _role == 'text':
+        # `- text: "100.50"` quotes text that would otherwise read as YAML
+        _name, _text = _text, ''
+        if len(_name) >= 2 and _name[0] == _name[-1] == '"':
+            _name = _name[1:-1]
+    if not _name:
+        return None          # nothing a person would recognise it by
+    return {'role': _role, 'name': _name.replace('\\"', '"')}
+
+
+def _note(locator) -> None:
+    _evidence = recorder.current()
+    if _evidence is None or locator is None:
+        return
+    _selector = selector_of(locator)
+    if not _selector or _selector in _evidence.locators:
+        return
+    _identity = identity_of(locator)
+    if _identity:
+        _evidence.locators[_selector] = _identity
+
+
+def describe(identity: Dict[str, str]) -> str:
+    return '{} "{}"'.format(identity.get('role'), identity.get('name'))
+
+
+def find(page, identity: Dict[str, str]) -> int:
+    """How many elements on the page have this role and accessible name."""
+    if identity.get('role') == 'text':
+        return page.get_by_text(identity['name'], exact=True).count()
+    return page.get_by_role(identity['role'], name=identity['name'], exact=True).count()
+
+
+def _diagnose(locator, method: str) -> None:
+    """
+    The selector found nothing: stale, or is the element really gone?
+
+    Runs where the failure happens, while the page is still there to look at.
+    """
+    _evidence = recorder.current()
+    if _evidence is None or locator is None:
+        return
+    try:
+        if locator.count() > 0:
+            return           # it is there, just not in the state asked for: not a locator problem
+        _selector = selector_of(locator)
+        _identity = _evidence.locators.get(_selector) or remembered(_evidence.nodeid, _selector)
+        _entry = {'selector': _selector, 'action': method}
+        if not _identity:
+            _entry['verdict'] = UNKNOWN
+        else:
+            _found = find(locator.page, _identity)
+            _entry.update(verdict=STALE if _found else MISSING, identity=_identity, found=_found)
+    except Exception:  # noqa: BLE001 -- the diagnosis must never replace the real failure
+        return
+    _evidence.locator_failures.append(_entry)
+
+
+# -- memory across runs -------------------------------------------------------------
+
+def artifacts_dir(run_id: str) -> str:
+    from ipandora.core.runner import store
+    return os.path.join(os.path.dirname(store.runs_dir()), 'artifacts', run_id)
+
+
+def memory_path() -> str:
+    _path = os.environ.get(MEMORY_VAR)
+    if _path:
+        return _path
+    from ipandora.core.runner import store
+    return os.path.join(os.path.dirname(store.runs_dir()), 'locators.json')
+
+
+def _load() -> dict:
+    _path = memory_path()
+    if _MEMORY['path'] != _path:
+        try:
+            with open(_path, encoding='utf-8') as _f:
+                _data = json.load(_f)
+        except (OSError, ValueError):
+            _data = {}
+        _MEMORY.update(path=_path, data=_data if isinstance(_data, dict) else {})
+    return _MEMORY['data']
+
+
+def remembered(nodeid: str, selector: str) -> Optional[Dict[str, str]]:
+    return (_load().get(nodeid) or {}).get(selector)
+
+
+def remember(result) -> None:
+    """
+    Keep what each passing case's locators pointed at, for the next run.
+
+    Main process, after a run -- workers only read. A failing case is not
+    remembered: what it touched is exactly what is in question.
+    """
+    _updates = {_c.nodeid: _c.locators for _c in getattr(result, 'cases', ())
+                if _c.outcome == 'passed' and getattr(_c, 'locators', None)}
+    if not _updates:
+        return
+    _path = memory_path()
+    try:
+        with open(_path, encoding='utf-8') as _f:
+            _data = json.load(_f)
+    except (OSError, ValueError):
+        _data = {}
+    for _nodeid, _locators in _updates.items():
+        _data.setdefault(_nodeid, {}).update(_locators)
+    os.makedirs(os.path.dirname(_path) or '.', exist_ok=True)
+    _tmp = _path + '.tmp'
+    with open(_tmp, 'w', encoding='utf-8') as _f:
+        json.dump(_data, _f, ensure_ascii=False, indent=1, sort_keys=True)
+    os.replace(_tmp, _path)
+    _MEMORY.update(path=None, data=None)
+
+
+@contextmanager
+def nested_session():
+    """
+    Let run() start a pytest session while another one's test is running.
+
+    pytest-playwright wraps every test in Playwright's soft-assertion scope,
+    which is one process-wide global that refuses to nest. run() is meant to
+    be called anywhere in a process -- including from inside a test, which is
+    how this framework tests itself -- and the inner session's first test
+    failed with "nested soft assertion scopes are not supported". The outer
+    scope is set aside for the inner session and put back after.
+    """
+    try:
+        from playwright._impl import _assertions
+    except ImportError:
+        yield
+        return
+    _outer = getattr(_assertions, '_soft_errors', None)
+    _assertions._soft_errors = None
+    try:
+        yield
+    finally:
+        _assertions._soft_errors = _outer
+
+
+# -- config: conf/<env>.yaml `web:` onto pytest-playwright -----------------------------
+
+def pytest_args(existing, output_dir: str = '') -> list:
+    """
+    --screenshot / --tracing on failure, plus web.base_url and web.browser from
+    the config, for whatever the caller did not already pass.
+
+    `--output` gets a folder of its own per run: pytest-playwright empties its
+    output folder when a session starts, so with the shared default
+    (test-results) the next run would delete the screenshot an archived report
+    still points to.
+    """
+    import importlib.util
+    if importlib.util.find_spec('pytest_playwright') is None:
+        return []
+    from ipandora.core.schedule.runtime import Runtime
+    _given = ' '.join(existing)
+    _args = []
+    if '--screenshot' not in _given:
+        _args += ['--screenshot', 'only-on-failure']
+    if '--tracing' not in _given:
+        _args += ['--tracing', 'retain-on-failure']
+    if '--output' not in _given and output_dir:
+        _args += ['--output', output_dir]
+    if '--base-url' not in _given and Runtime.Web.base_url:
+        _args += ['--base-url', str(Runtime.Web.base_url)]
+    if '--browser' not in _given.replace('--browser-channel', '') and Runtime.Web.browser:
+        _args += ['--browser', str(Runtime.Web.browser)]
+    return _args
+
+
+class ContextDefaults:
+    """
+    web.viewport onto pytest-playwright's browser_context_args.
+
+    Registered as a plugin only when pytest-playwright is loaded, after it, so
+    this definition is the one pytest uses and the one it overrides is handed
+    in. What the suite's own conftest sets still wins over both.
+    """
+
+    @pytest.fixture(scope='session')
+    def browser_context_args(self, browser_context_args):
+        from ipandora.core.schedule.runtime import Runtime
+        _args = dict(browser_context_args)
+        _viewport = Runtime.Web.viewport
+        if _viewport and 'viewport' not in _args:
+            _args['viewport'] = {'width': int(_viewport['width']),
+                                 'height': int(_viewport['height'])}
+        return _args

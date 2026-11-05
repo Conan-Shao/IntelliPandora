@@ -151,6 +151,50 @@ class Runtime(object):
         def pool_maxsize(self, value):
             self._pool_maxsize = value
 
+    class Web(metaclass=ClassPropertyMeta):
+        """
+        Web defaults for pytest-playwright, from the `web:` section.
+
+        Mapped onto its own options rather than replacing them: `--base-url`,
+        `--browser`, and the viewport in browser_context_args. What a command
+        line or a suite's conftest sets explicitly still wins. See core/web.py.
+        """
+        _base_url = None
+        _browser = None
+        _viewport = None
+
+        @classproperty
+        def base_url(self):
+            if self._base_url is None:
+                self._base_url = DictUtils.safe_get(Runtime.settings, 'web', 'base_url') or ''
+            return self._base_url
+
+        @base_url.set
+        def base_url(self, value):
+            self._base_url = value
+
+        @classproperty
+        def browser(self):
+            if self._browser is None:
+                self._browser = DictUtils.safe_get(Runtime.settings, 'web', 'browser') or ''
+            return self._browser
+
+        @browser.set
+        def browser(self, value):
+            self._browser = value
+
+        @classproperty
+        def viewport(self):
+            """{'width': 1280, 'height': 720}, or {} for Playwright's default."""
+            if self._viewport is None:
+                _v = DictUtils.safe_get(Runtime.settings, 'web', 'viewport') or {}
+                self._viewport = dict(_v) if isinstance(_v, dict) else {}
+            return self._viewport
+
+        @viewport.set
+        def viewport(self, value):
+            self._viewport = value
+
     class Ai(metaclass=ClassPropertyMeta):
         """
         LLM access config. Disabled by default: nothing in core/ may depend on

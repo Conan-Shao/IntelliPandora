@@ -11,6 +11,9 @@ from typing import Any, Dict
 
 from ipandora.core.report.model import ReportCase, ReportData, Status
 from ipandora.core.report.redact import redact, redact_body
+
+MAX_EMBEDDED_SCREENSHOT = 2 * 1024 * 1024
+"""Bytes. Larger screenshots are linked by path instead of embedded."""
 from ipandora.core.triage import triage as run_triage
 
 # runner outcome -> report status
@@ -41,6 +44,30 @@ def _redact_exchange(exchange: Dict[str, Any]) -> Dict[str, Any]:
     for _side in ('request_body', 'response_body'):
         if _side in _out:
             _out[_side] = redact_body((exchange or {}).get(_side))
+    return _out
+
+
+def _artifact(artifact: dict) -> dict:
+    """
+    A failure's screenshot, embedded; its trace, as the command that opens it.
+
+    Embedded rather than linked: a report is archived and passed around (a CI
+    artifact, a link in a chat), and the run's own files do not travel with
+    it. A trace is a zip meant for Playwright's viewer, so it stays a path.
+    """
+    import base64
+    _kind = artifact.get('kind', '')
+    _path = artifact.get('path', '')
+    _out = {'kind': _kind, 'path': _path, 'src': '', 'command': ''}
+    if _kind == 'screenshot':
+        try:
+            if os.path.getsize(_path) <= MAX_EMBEDDED_SCREENSHOT:
+                with open(_path, 'rb') as _f:
+                    _out['src'] = 'data:image/png;base64,' + base64.b64encode(_f.read()).decode()
+        except OSError:
+            pass
+    elif _kind == 'trace':
+        _out['command'] = 'playwright show-trace "{}"'.format(_path)
     return _out
 
 
@@ -82,7 +109,8 @@ def build_from_run(result, title: str = None, include_triage: bool = True) -> Re
             # else, before it is ever written.
             checks=redact(list(getattr(_case, 'checks', []) or [])),
             exchanges=[_redact_exchange(_e)
-                       for _e in (getattr(_case, 'exchanges', []) or [])]))
+                       for _e in (getattr(_case, 'exchanges', []) or [])],
+            artifacts=[_artifact(_a) for _a in (getattr(_case, 'artifacts', []) or [])]))
 
     return ReportData(
         title=title or 'IntelliPandora Test Report',

@@ -32,6 +32,8 @@
 | psutil | extra:system | >=5.9,<8 | 系统信息工具 | BSD-3-Clause | 读取本机进程和资源信息 | 2026-11-05 |
 | pytest-xdist | extra:parallel | >=3.8,<4 | `--workers` 多进程并行 | MIT | 启动 N 个本机子进程运行用例，经 stdin/stdout 管道通信（execnet），不联网。pytest-dev 组织维护；3.8.0 发布于 2025-07，超过 12 个月无新版，但功能稳定、仍在维护，按此登记 | 2026-11-05 |
 | pytest-timeout | extra:parallel | >=2.4,<3 | `--timeout` 单条用例超时 | MIT | 用信号或看门狗线程中断超时用例。pytest-dev 组织维护；2.4.0 发布于 2025-05，超过 12 个月无新版，理由同 pytest-xdist | 2026-11-05 |
+| playwright | extra:web | >=1.64,<2 | Web 自动化驱动 | Apache-2.0 | **运行时下载浏览器**（`python -m playwright install chromium`），默认从微软 CDN 下载，可用 `PLAYWRIGHT_DOWNLOAD_HOST` 指向内部镜像；浏览器版本由 Playwright 版本锁定（1.64.0 → Chromium 1248）。也可以用 `--browser-channel chrome` 改用系统 Chrome。驱动是随包附带的 Node 进程，经管道通信。依赖 greenlet、pyee | 2026-11-05 |
+| pytest-playwright | extra:web | >=0.10,<0.11 | `page` / `browser` fixture、失败截图与 trace | Apache-2.0 | 每次会话开始时清空 `--output` 目录（框架为每次运行单独指定一个）。还是 0.x，锁到一个次版本，并有集成测试检查我们依赖的 fixture 和选项。传递依赖 text-unidecode 为 Artistic / GPL 双许可，按 Artistic 使用，见 `scripts/check_components.py` 的 REVIEWED_LICENSES | 2026-11-05 |
 | httpretty | extra:test | >=1.1,<2 | 测试里模拟 HTTP 响应 | MIT | 只在测试中替换 socket | 2026-11-05 |
 
 ## 构建与工具链
@@ -46,7 +48,7 @@
 | bandit | tool | ==1.9.4 | 自身代码的静态安全扫描 | Apache-2.0 | 只读源码 | 2026-11-05 |
 | cyclonedx-bom | tool | ==7.5.0 | 生成 SBOM | Apache-2.0 | 只读环境元数据 | 2026-11-05 |
 | build | tool | ==1.6.1 | 构建前端 | MIT | 在隔离环境中构建 | 2026-11-05 |
-| uv | tool | ==0.13.5 | 生成带哈希的锁文件 | MIT OR Apache-2.0 | 解析依赖时访问 PyPI | 2026-11-05 |
+| uv | tool | ==0.13.4 | 生成带哈希的锁文件 | MIT OR Apache-2.0 | 解析依赖时访问 PyPI | 2026-11-05 |
 
 ## CI 动作
 

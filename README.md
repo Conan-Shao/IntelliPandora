@@ -6,7 +6,7 @@
 >
 > pytest 回答「有没有测试失败」；IntelliPandora 回答「这次通过可不可信」：验证了什么、没验证什么、比上次少验证了什么、失败该谁修。
 >
-> 目前支持 HTTP 接口测试；UI 自动化（Web / App）在规划中。框架不绑定任何业务，业务相关的用例、流程、环境配置放在使用方自己的仓库里。
+> 目前支持 HTTP 接口测试和 Web 自动化（Playwright）；App 自动化在规划中。框架不绑定任何业务，业务相关的用例、流程、环境配置放在使用方自己的仓库里。
 
 agent 同一轮里既写代码又写测试，绿灯就可以被「做」出来。框架需要做的不只是执行测试，而是**为测试结果提供可信的依据**：判定确定、可复现、不调 LLM，而且判定本身的变化要能被看见。人、CI、agent 三个入口调用同一套 runner，跑出来的结果一致。
 
@@ -37,6 +37,7 @@ AI 写测试之后，最后这个问题变成了关键：允许修改测试时�
 | 超时 | 默认无，一个挂起的接口挂死整个套件 | 连接 10s / 读取 30s，每个请求都有界 |
 | TLS | 强制 `verify=False` | 默认开启 |
 | 并行执行 | `pytest -n 4` 快了，但每条用例都成了零判定 | `--workers 4`：判定、报告、基线比对与串行逐字节一致；`@pytest.mark.resource` 防止共用账号的用例撞车 |
+| Web 自动化 | 只用 `expect` 写的 Playwright 用例在判定上是空的；选择器找不到元素时，分不清是用例过时还是按钮真没了 | `expect` 计入判定清单；失败自动附截图和 trace；按元素的角色和名称复查页面，区分"选择器过时"和"待确认：可能是产品缺陷" |
 | 并发场景 | 自己开线程：新线程没有登录态，请求也不进报告 | `concurrently()`：同时起跑、带登录态、每个请求都在证据里，还会判断并发是否真的发生了 |
 
 ## 安装
@@ -47,6 +48,7 @@ pip install intellipandora[ai]        # 可选：失败归因接 LLM
 pip install intellipandora[mcp]       # 可选：agent 入口
 pip install intellipandora[system]    # 可选：系统信息工具（psutil）
 pip install intellipandora[parallel]  # 可选：并行执行 --workers、单条用例超时 --timeout
+pip install intellipandora[web]       # 可选：Web 自动化（Playwright），之后 python -m playwright install chromium
 ```
 
 ## 用起来

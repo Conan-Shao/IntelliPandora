@@ -236,7 +236,7 @@ class TestAcceptance:
                            that(codes.count(200), '成功扣款次数') == 1)
         '''), encoding='utf-8')
         _result = run(str(_suite), persist=False, quiet=True, baseline='')
-        assert _result.ok, _result.summary()
+        assert _result.ok, [(_c.outcome, _c.message) for _c in _result.cases]
         _case = _result.cases[0]
         _urls = [_e['url'] for _e in _case.exchanges]
         assert _urls.count(shop.url + '/pay/locked/R1') == 12

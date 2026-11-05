@@ -85,6 +85,12 @@ class ReportCase:
     """Every judgement, as the assertion layer made it -- not re-parsed text."""
     exchanges: List[Dict[str, Any]] = field(default_factory=list)
     """Every HTTP call, request and response."""
+    artifacts: List[Dict[str, Any]] = field(default_factory=list)
+    """
+    What a failed web case left behind: {'kind', 'path', 'src', 'command'}.
+    A screenshot carries `src`, the image itself, so the report still shows it
+    after the run's files are gone; a trace carries the command that opens it.
+    """
 
     @property
     def conclusive(self) -> bool:

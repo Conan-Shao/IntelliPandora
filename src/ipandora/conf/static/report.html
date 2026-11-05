@@ -192,6 +192,8 @@ pre{margin:0 0 10px;background:var(--code);border:1px solid var(--line);border-r
 pre.hdr{max-height:132px;color:var(--dim)}
 .jk{color:var(--jk)} .js{color:var(--js)} .jn{color:var(--jn)} .jb{color:var(--jb)}
 .hint{font-family:var(--mono);font-size:11px;color:var(--faint);margin:0 0 10px}
+.shot{display:block;max-width:100%;border:1px solid var(--line, #ddd);border-radius:6px;margin:6px 0 10px}
+.trace{font-family:var(--mono);font-size:11px;margin:0 0 10px;word-break:break-all}
 .errline{border-left:2px solid var(--fail);background:rgba(255,112,96,.09);
   padding:9px 13px;border-radius:0 6px 6px 0;font-family:var(--mono);font-size:12px;
   color:var(--fail);margin-bottom:12px;word-break:break-word}
@@ -461,6 +463,21 @@ footer{margin-top:50px;padding-top:16px;border-top:1px solid var(--line);
         </div>
         {%- elif case.status == 'PASS' %}
         <div class="hint">这条用例通过了，但没有留下任何判定 —— 它可能什么都没断言。</div>
+        {%- endif %}
+
+        {%- if case.artifacts %}
+        <div class="sub">失败现场</div>
+        {%- for a in case.artifacts %}
+        {%- if a.kind == 'screenshot' and a.src %}
+        <img class="shot" src="{{ a.src }}" alt="失败时的页面截图" loading="lazy">
+        {%- elif a.kind == 'screenshot' %}
+        <div class="trace">截图 <code>{{ a.path }}</code></div>
+        {%- elif a.kind == 'trace' %}
+        <div class="trace">trace（逐步回放失败过程）<br><code>{{ a.command }}</code></div>
+        {%- else %}
+        <div class="trace">{{ a.kind }} <code>{{ a.path }}</code></div>
+        {%- endif %}
+        {%- endfor %}
         {%- endif %}
 
         {%- if case.exchanges %}

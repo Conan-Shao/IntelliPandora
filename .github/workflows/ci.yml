@@ -41,12 +41,21 @@ jobs:
           pip install --require-hashes -r requirements/ci.txt
           pip install --no-deps --no-build-isolation -e .
 
+      # The browser the locked Playwright version was built against; it is
+      # not a Python package, so it is not in the lock. IPANDORA_REQUIRE_BROWSER
+      # makes the web tests fail instead of skipping when it is missing: a
+      # suite that quietly skips its browser tests in CI tests nothing.
+      - name: Install the browser for the web tests
+        run: python -m playwright install --with-deps chromium-headless-shell
+
       # Guards against the v1.1.0 class of bug: modules that raise at import
       # time. No test touched them, so nothing caught it.
       - name: Import smoke test
         run: python scripts/smoke_import.py
 
       - name: Tests
+        env:
+          IPANDORA_REQUIRE_BROWSER: '1'
         run: pytest test/ -v
 
   # LLM support must stay optional. If deleting ai/ breaks the suite, then
@@ -70,13 +79,16 @@ jobs:
           pip install --require-hashes -r requirements/ci-noai.txt
           pip install --no-deps --no-build-isolation -e .
 
+      - name: Install the browser for the web tests
+        run: python -m playwright install --with-deps chromium-headless-shell
+
       # Only the package is removed. Deleting test/testai along with it -- which
       # this step used to do -- meant the check could pass even if the suite
       # could not actually survive the removal; those tests now skip themselves.
       - name: Remove ai/ and run the suite
         run: |
           rm -rf src/ipandora/ai
-          pytest test/ -v
+          IPANDORA_REQUIRE_BROWSER=1 pytest test/ -v
 
   layering:
     runs-on: ubuntu-latest

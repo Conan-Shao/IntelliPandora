@@ -46,6 +46,12 @@ class CaseResult:
     and doctest items, whose assertEqual / expected-output checks are not
     `assert` statements -- calling those unverified would be a false alarm.
     """
+    artifacts: List[Dict[str, str]] = field(default_factory=list)
+    """Files a failure left behind: {'kind': 'screenshot'|'trace'|'video', 'path': ...}."""
+    locators: Dict[str, Dict[str, str]] = field(default_factory=dict)
+    """Web: selector -> what it pointed at. Remembered from passing runs (core/web.py)."""
+    locator_failures: List[Dict[str, Any]] = field(default_factory=list)
+    """Web: selectors that found nothing -- stale, missing, or unknown. Read by triage."""
 
     @property
     def unverified(self) -> bool:

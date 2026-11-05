@@ -4,6 +4,7 @@
 @File  : collector.py
 @Time  : 2026-08-01
 """
+import os
 import textwrap
 from typing import Dict, List
 
@@ -15,6 +16,9 @@ from ipandora.core.runner.result import CaseResult, ERROR, FAILED, PASSED, SKIPP
 # Kept importable from here: they moved to plugin.py, which is where a case
 # actually runs.
 OPAQUE_ITEMS = plugin.OPAQUE_ITEMS
+
+ARTIFACT_PREFIX = 'playwright_'
+"""pytest-playwright's user_properties keys: playwright_screenshot, _trace, _video."""
 
 
 def skip_reason(report) -> str:
@@ -134,6 +138,13 @@ class ResultCollector:
         run. Their own record_property entries are left alone.
         """
         _props = getattr(report, 'user_properties', None) or []
+        # pytest-playwright's screenshots and traces arrive the same way, on
+        # the teardown report, relative to the directory pytest started in
+        for _k, _v in _props:
+            if isinstance(_k, str) and _k.startswith(ARTIFACT_PREFIX):
+                _entry = {'kind': _k[len(ARTIFACT_PREFIX):], 'path': os.path.abspath(str(_v))}
+                if _entry not in case.artifacts:
+                    case.artifacts.append(_entry)
         _ours = [_v for _k, _v in _props if _k == plugin.KEY]
         if not _ours:
             return
@@ -144,6 +155,8 @@ class ResultCollector:
             # nothing older can be here
             case.checks.extend(_payload.get('checks') or [])
             case.exchanges.extend(_payload.get('exchanges') or [])
+            case.locators.update(_payload.get('locators') or {})
+            case.locator_failures.extend(_payload.get('locator_failures') or [])
             case.judgeable = bool(_payload.get('judgeable', case.judgeable))
             if 'dims' in _payload:
                 case.dims = dict(_payload['dims'])
