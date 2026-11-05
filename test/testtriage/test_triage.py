@@ -69,7 +69,7 @@ class TestClassification:
         assert not finding.blames_system_under_test
 
     def test_setup_error_is_a_broken_harness(self):
-        finding = classify('t::a', 'error', "fixture 'wallet' not found")
+        finding = classify('t::a', 'error', "fixture 'test_account' not found")
         assert finding.category == Category.HARNESS
         assert not finding.blames_system_under_test
 

@@ -91,16 +91,16 @@ class TestAssertAllReportsEverything:
 
 class TestRequireSkipsRatherThanFails:
     """
-    "The account had no balance" and "the code is wrong" must not look the
+    "The test account was never provisioned" and "the code is wrong" must not look the
     same on a dashboard.
     """
 
     def test_unmet_precondition_skips(self):
         with pytest.raises(pytest.skip.Exception):
-            require(Check(name='账号有余额', ok=False, expr='balance = 0'))
+            require(Check(name='测试账号已开通', ok=False, expr='provisioned = false'))
 
     def test_met_precondition_continues(self):
-        assert len(require(Check(name='账号有余额', ok=True))) == 1
+        assert len(require(Check(name='测试账号已开通', ok=True))) == 1
 
 
 class TestJsonPath:

@@ -66,7 +66,7 @@ EVIDENCE_SUITE = """
     def test_documented():
         '''这条用例有说明'''
         assert_all(passed('状态正确', 'status = 200', src=Source.API),
-                   gap('余额实际增加', 'balanceOf 未校验', src=Source.ONCHAIN))
+                   gap('订单实际落库', '只查了接口返回，未查数据库', src=Source.DERIVED))
 
     @pytest.mark.dims(kind='b', mode='y')
     def test_with_a_failure():

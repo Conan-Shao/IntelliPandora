@@ -1,12 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 500" width="760" height="500" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif" role="img" aria-label="IntelliPandora 架构：入口、执行、资产、评测四层">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 500" width="760" height="500" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif" role="img" aria-label="IntelliPandora 架构：入口、执行、使用方资产、评测四层">
   <defs>
     <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
       <path d="M0 0L10 5L0 10z" fill="#8a8f98"/>
     </marker>
     <style>
       .bx { fill: none; stroke: #c9ced6; stroke-width: 1.25; }
+      .dash { fill: none; stroke: #c9ced6; stroke-width: 1.25; stroke-dasharray: 5 4; }
       .main { fill: #2d7ff9; fill-opacity: .10; stroke: #2d7ff9; stroke-width: 2; }
-      .zone { fill: #f4f5f7; stroke: #c9ced6; stroke-width: 1.25; }
+      .zone { fill: #f4f5f7; stroke: #c9ced6; stroke-width: 1.25; stroke-dasharray: 5 4; }
       .t { fill: #16181d; font-size: 16px; }
       .tb { fill: #16181d; font-size: 16px; font-weight: 600; }
       .q { fill: #6b7280; font-size: 13.5px; }
@@ -14,7 +15,7 @@
       @media (prefers-color-scheme: dark) {
         .t, .tb { fill: #e8eaed; }
         .q { fill: #9aa0a6; }
-        .bx { stroke: #4a4f57; }
+        .bx, .dash { stroke: #4a4f57; }
         .zone { fill: #22252a; stroke: #4a4f57; }
         .ln { stroke: #8a8f98; }
       }
@@ -24,60 +25,53 @@
   <text x="24" y="34" class="tb" font-size="20">agent 只管写，用例由 IntelliPandora 执行</text>
 
   <g class="ln">
-    <path d="M86 122V160" marker-end="url(#a)"/>
-    <path d="M222 122V160" marker-end="url(#a)"/>
-    <path d="M412 122V160" marker-end="url(#a)"/>
-    <path d="M148 228V264" marker-end="url(#a)"/>
-    <path d="M404 228V264" marker-end="url(#a)"/>
-    <path d="M526 196H590" stroke-dasharray="4 4"/>
+    <path d="M110 122V160" marker-end="url(#a)"/>
+    <path d="M380 122V160" marker-end="url(#a)"/>
+    <path d="M650 122V160" marker-end="url(#a)"/>
+    <path d="M200 228V264" marker-end="url(#a)"/>
+    <path d="M560 228V264" marker-end="url(#a)"/>
   </g>
 
   <g>
-    <rect x="26" y="62" width="120" height="60" rx="8" class="bx"/>
-    <text x="86" y="98" text-anchor="middle" class="t">人</text>
+    <rect x="26" y="62" width="168" height="60" rx="8" class="bx"/>
+    <text x="110" y="98" text-anchor="middle" class="t">人</text>
   </g>
   <g>
-    <rect x="162" y="62" width="120" height="60" rx="8" class="bx"/>
-    <text x="222" y="98" text-anchor="middle" class="t">CI</text>
+    <rect x="296" y="62" width="168" height="60" rx="8" class="bx"/>
+    <text x="380" y="98" text-anchor="middle" class="t">CI</text>
   </g>
   <g>
-    <rect x="298" y="62" width="228" height="60" rx="8" class="bx"/>
-    <text x="412" y="88" text-anchor="middle" class="tb">agent</text>
-    <text x="412" y="110" text-anchor="middle" class="q">MCP · Claude Code + 测试插件</text>
-  </g>
-  <text x="550" y="97" class="q">三个入口共用同一个 runner</text>
-
-  <g>
-    <rect x="26" y="162" width="500" height="66" rx="8" class="main"/>
-    <text x="276" y="189" text-anchor="middle" class="tb">IntelliPandora 执行器（独立 CLI）</text>
-    <text x="276" y="212" text-anchor="middle" class="t" font-size="13.5">协议 · 断言 · 归因 · 录制回放 · 报告 + JUnit XML</text>
-  </g>
-  <text x="558" y="188" text-anchor="middle" class="q">按需对接</text>
-  <g>
-    <rect x="590" y="162" width="146" height="66" rx="8" class="bx"/>
-    <text x="663" y="189" text-anchor="middle" class="tb" font-size="15">Java 接口平台</text>
-    <text x="663" y="211" text-anchor="middle" class="q">团队已有</text>
+    <rect x="566" y="62" width="168" height="60" rx="8" class="bx"/>
+    <text x="650" y="88" text-anchor="middle" class="tb">agent</text>
+    <text x="650" y="110" text-anchor="middle" class="q">经 MCP 调用</text>
   </g>
 
   <g>
-    <rect x="26" y="266" width="244" height="58" rx="8" class="bx"/>
-    <text x="148" y="290" text-anchor="middle" class="tb" font-size="15">私有仓库</text>
-    <text x="148" y="311" text-anchor="middle" class="q">用例 · 业务 Flow · 配置</text>
-  </g>
-  <g>
-    <rect x="282" y="266" width="244" height="58" rx="8" class="bx"/>
-    <text x="404" y="290" text-anchor="middle" class="tb" font-size="15">测试数据和账号池</text>
-    <text x="404" y="311" text-anchor="middle" class="q">固定账号 · 状态归一</text>
+    <rect x="26" y="162" width="708" height="66" rx="8" class="main"/>
+    <text x="380" y="189" text-anchor="middle" class="tb">IntelliPandora 执行器（独立 CLI，三个入口共用同一个 runner）</text>
+    <text x="380" y="212" text-anchor="middle" class="t" font-size="13.5">HTTP 接口 · UI（规划中） · 断言 · 失败归因 · 报告 + JUnit XML</text>
   </g>
 
   <g>
-    <rect x="26" y="358" width="710" height="118" rx="8" class="zone"/>
-    <text x="42" y="384" class="tb" font-size="15">评测层（Python + Inspect，跑在 Docker 里）</text>
-    <rect x="42" y="400" width="332" height="58" rx="8" class="bx"/>
-    <text x="208" y="424" text-anchor="middle" class="tb" font-size="15">评测试插件</text>
-    <text x="208" y="445" text-anchor="middle" class="q">生成的用例能不能抓住注入的错误</text>
-    <rect x="390" y="400" width="332" height="58" rx="8" class="bx"/>
-    <text x="556" y="424" text-anchor="middle" class="tb" font-size="15">评 agentic wallet</text>
-    <text x="556" y="445" text-anchor="middle" class="q">意图 · 执行结果 · 安全 · 信息准确</text>
+    <rect x="26" y="266" width="348" height="58" rx="8" class="dash"/>
+    <text x="200" y="290" text-anchor="middle" class="tb" font-size="15">业务仓库（使用方）</text>
+    <text x="200" y="311" text-anchor="middle" class="q">用例 · 业务流程 · 环境配置</text>
+  </g>
+  <g>
+    <rect x="386" y="266" width="348" height="58" rx="8" class="dash"/>
+    <text x="560" y="290" text-anchor="middle" class="tb" font-size="15">测试数据（使用方）</text>
+    <text x="560" y="311" text-anchor="middle" class="q">账号 · 种子数据 · 状态归一</text>
+  </g>
+  <text x="26" y="344" class="q" font-size="12.5">虚线框不属于框架：业务相关的一切放在使用方，框架不感知</text>
+
+  <g>
+    <rect x="26" y="362" width="708" height="114" rx="8" class="zone"/>
+    <text x="42" y="388" class="tb" font-size="15">评测层（规划中）</text>
+    <rect x="42" y="402" width="332" height="58" rx="8" class="bx"/>
+    <text x="208" y="426" text-anchor="middle" class="tb" font-size="15">评用例生成</text>
+    <text x="208" y="447" text-anchor="middle" class="q">生成的用例质量够不够</text>
+    <rect x="390" y="402" width="328" height="58" rx="8" class="bx"/>
+    <text x="554" y="426" text-anchor="middle" class="tb" font-size="15">评 agent</text>
+    <text x="554" y="447" text-anchor="middle" class="q">意图 · 轨迹 · 安全</text>
   </g>
 </svg>

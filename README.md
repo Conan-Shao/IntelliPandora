@@ -1,6 +1,8 @@
 # IntelliPandora
 
-> AI 时代的接口测试框架内核：**agent 负责写，框架负责执行。**
+> AI 时代的通用测试框架内核：**agent 负责写，框架负责执行。**
+>
+> 目前支持 HTTP 接口测试；UI 自动化（Web / App）在规划中。框架不绑定任何业务——业务相关的用例、流程、环境配置放在使用方自己的仓库里。
 
 AI 写得出用例，但用例不能只有 agent 才跑得起来——那样 CI 接不上，别人很难直接跑，agent 参与执行还会把不确定性带进结果。
 
@@ -16,7 +18,6 @@ IntelliPandora 是被拆出来的那一半：**一个确定性的、独立运行
 | 断言失败 | 第一个失败就停 | `Check` 是值不是异常，`assert_all` 一次报全部 |
 | 失败原因 | 自己翻日志 | 归因到 defect / contract / environment / data / harness |
 | 跑完的结果 | 控制台一段文字 | HTML + JSON + **JUnit XML**，可直接进 CI 门禁 |
-| 依赖真实环境 | 环境不通就跑不了 | `--record` 录一次，`--replay` 之后不出网 |
 | 超时 | 默认无，一个挂起的接口挂死整个套件 | 连接 10s / 读取 30s，每个请求都有界 |
 | TLS | 强制 `verify=False` | 默认开启 |
 
@@ -34,10 +35,6 @@ pip install intellipandora[mcp]       # 可选：agent 入口
 ipandora run test/api                        # 跑完出 HTML + JSON + JUnit XML
 ipandora run test/api --junit-xml out.xml    # 给 CI 的那份放到指定位置
 ipandora run test/api --exclude-flaky        # 门禁模式：已知不稳定的用例不参与判定
-ipandora run test/api --record --cassette v1 # 录一盘磁带
-ipandora run test/api --replay --cassette v1 # 离线回放，不出网
-ipandora run test/api --verify --cassette v1 # 打真实系统，报告它与基线的差异
-ipandora cassette list                       # 磁带管理
 ipandora mcp                                 # 以 MCP server 方式供 agent 调用
 ```
 
@@ -89,11 +86,10 @@ def test_create_order():
 
 | | |
 |---|---|
-| `core/protocol` | 协议层。传输策略、响应解析、回放适配 |
+| `core/protocol` | 协议层。传输策略、响应解析 |
 | `core/assertion` | 断言层。`Check` / `assert_all` / `require` / `gap` |
 | `core/runner` | 库可调用的执行入口。CLI 和 MCP 都是它的薄壳 |
 | `core/report` | ReportData → HTML / JSON / JUnit XML + 历史归档 |
-| `core/cassette` | 流量录制回放、差异引擎、HAR/nginx/envoy 导入 |
 | `core/triage` | 失败归因（规则优先，LLM 可选） |
 | `core/evidence` | 请求响应证据采集 |
 | `core/mcp` | agent 入口 |

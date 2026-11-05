@@ -305,13 +305,13 @@ class TestJudgementsAndGaps:
         assert report.check_totals == {'passed': 1, 'failed': 1, 'gap': 1}
 
     def test_gaps_are_aggregated_with_a_count(self):
-        shared = judgement('余额实际增加', kind='gap', src='onchain')
+        shared = judgement('订单实际落库', kind='gap', src='derived')
         report = self._report(case('s.py::a', checks=[dict(shared)]),
                               case('s.py::b', checks=[dict(shared)]),
                               case('s.py::c', checks=[judgement('别的', kind='gap')]))
         by_name = {g['name']: g['count'] for g in report.gaps}
-        assert by_name == {'余额实际增加': 2, '别的': 1}
-        assert report.gaps[0]['name'] == '余额实际增加', 'most common should sort first'
+        assert by_name == {'订单实际落库': 2, '别的': 1}
+        assert report.gaps[0]['name'] == '订单实际落库', 'most common should sort first'
 
     def test_a_suite_that_only_checks_one_dimension_shows_it(self):
         report = self._report(case('s.py::a', checks=[

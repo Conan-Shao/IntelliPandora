@@ -205,7 +205,7 @@ class ReportData:
         """
         Declared gaps across the whole run, deduplicated with a count.
 
-        Aggregated on purpose: one case saying "balance not verified" is a
+        Aggregated on purpose: one case saying "row not checked in the DB" is a
         note, twelve cases saying it is the next thing to go build.
         """
         _seen = {}

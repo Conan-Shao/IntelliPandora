@@ -29,7 +29,7 @@ FAILING = '''
     def test_ok():
         """一条通过的用例"""
         assert_all(passed('状态正确', 'status = 200', src='api'),
-                   gap('余额实际增加', 'balanceOf 未校验', src='onchain'))
+                   gap('订单实际落库', '只查了接口返回，未查数据库', src='derived'))
 
     def test_broken():
         """一条失败的用例"""
@@ -91,7 +91,7 @@ class TestOneCommandProducesAReport:
         html = (run_dir / 'report.html').read_text(encoding='utf-8')
         # the check names, not just a pytest traceback
         assert '金额一致' in html and 'got 3, want 5' in html
-        assert '余额实际增加' in html
+        assert '订单实际落库' in html
 
     def test_the_json_is_machine_readable(self, tmp_path, reports):
         suite = write_suite(tmp_path, 'test_f.py', FAILING)

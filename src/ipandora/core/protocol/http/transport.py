@@ -76,14 +76,11 @@ def build_adapter(policy: TransportPolicy = None) -> HTTPAdapter:
     """
     An HTTPAdapter carrying the retry policy and pool sizing.
 
-    The class is ReplayAdapter rather than HTTPAdapter so that record and
-    replay have a seam without patching requests or touching any test. It is
-    inert unless a run turns it on: with no cassette it delegates straight to
-    HTTPAdapter, which is what it did before. Imported here rather than at
-    module scope because transport is imported during session construction and
-    replay imports the cassette package back.
+    A plain HTTPAdapter. It used to be a ReplayAdapter subclass, so every
+    request of every run passed through a record/replay check whether or not
+    anyone was recording. Record/replay has been removed -- see
+    docs/design/07-流量录制回放.md for why and how to get it back.
     """
-    from ipandora.core.protocol.http.replay import ReplayAdapter
     policy = policy or TransportPolicy()
     _retry = Retry(
         total=policy.max_retries,
@@ -94,7 +91,7 @@ def build_adapter(policy: TransportPolicy = None) -> HTTPAdapter:
         status_forcelist=RETRY_STATUS,
         allowed_methods=IDEMPOTENT_METHODS,
         raise_on_status=False)
-    return ReplayAdapter(
+    return HTTPAdapter(
         max_retries=_retry,
         pool_connections=policy.pool_maxsize,
         pool_maxsize=policy.pool_maxsize)
