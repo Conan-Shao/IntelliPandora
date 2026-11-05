@@ -177,3 +177,26 @@ class TestEnrichment:
         ipandora.ai.enable()
         ipandora.ai.disable()
         assert has_analyzer() is False
+
+
+class TestThePromptCarriesNoSecrets:
+    """The prompt leaves the machine: it is masked like the report, before it is cut."""
+
+    def test_masked(self):
+        _jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abcdefghijkl'
+        _run = RunResult(run_id='r', cases=[CaseResult(
+            nodeid='t.py::test_login', outcome='failed',
+            message="AssertionError\n  [FAIL] token | data.token = '{}' sent password=hunter2".format(_jwt))])
+        _prompt = ai_triage.build_prompt(triage(_run), _run)
+        assert _jwt not in _prompt and 'hunter2' not in _prompt
+
+    def test_masked_before_it_is_cut(self, monkeypatch):
+        # a 64-hex key cut short no longer looks like one: cut first, and most
+        # of it would go out
+        _key = 'a1' * 32
+        _message = 'x' * 40 + ' ' + _key
+        monkeypatch.setattr(ai_triage, 'MAX_CHARS_PER_FAILURE', 41 + 60)
+        _run = RunResult(run_id='r', cases=[CaseResult(nodeid='t.py::a', outcome='failed',
+                                                       message=_message)])
+        _prompt = ai_triage.build_prompt(triage(_run), _run)
+        assert _key[:60] not in _prompt

@@ -17,6 +17,7 @@ that. All this adds is prose explaining what the failures have in common.
 from typing import List
 
 from ipandora.ai.aifactory import AIProviderFactory
+from ipandora.core.report.redact import redact_text
 from ipandora.core.schedule.runtime import Runtime
 from ipandora.utils.log import logger
 
@@ -78,8 +79,11 @@ def build_prompt(report, result) -> str:
         _lines.append('- {} [{}]'.format(
             _case.nodeid, _finding.category if _finding else 'unknown'))
         if _case.message:
+            # Redacted before it is cut, and before it leaves the machine: this
+            # text goes to a model provider. Cutting first could split a token
+            # so that its shape no longer matches and half of it is sent.
             _lines.append('    {}'.format(
-                _case.message[:MAX_CHARS_PER_FAILURE].replace('\n', '\n    ')))
+                redact_text(_case.message)[:MAX_CHARS_PER_FAILURE].replace('\n', '\n    ')))
 
     if len(report.findings) > MAX_FAILURES_IN_PROMPT:
         _lines.append('... and {} more'.format(

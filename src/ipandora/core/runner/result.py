@@ -182,15 +182,18 @@ class RunResult:
             _out['newly_failing'] = self.against_baseline['newly_failing'][:SUMMARY_LIST_MAX]
             _out['newly_failing_hint'] = (
                 'these passed in the committed baseline and fail now')
+        # what an agent reads goes on to a model provider: masked like the report,
+        # and masked before it is cut (a cut token no longer matches its shape)
+        from ipandora.core.report.redact import redact_text
         if self.collect_error:
-            _out['collect_error'] = self.collect_error[:SUMMARY_MESSAGE_CHARS]
+            _out['collect_error'] = redact_text(self.collect_error)[:SUMMARY_MESSAGE_CHARS]
             return _out
         if self.failures:
             _out['failures'] = [
                 {'case': _c.name,
                  'nodeid': _c.nodeid,
                  'outcome': _c.outcome,
-                 'message': _c.message[:SUMMARY_MESSAGE_CHARS]}
+                 'message': redact_text(_c.message)[:SUMMARY_MESSAGE_CHARS]}
                 for _c in self.failures]
             _out['detail_hint'] = (
                 'call explain_failure("{}") for the full context'.format(self.run_id))
