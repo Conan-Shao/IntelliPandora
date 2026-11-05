@@ -158,6 +158,7 @@ def _scanners(monkeypatch, vulns=(), bandit_results=(), annotations=(), skipped=
     monkeypatch.setattr(sr.check_components, 'check_registry', lambda: [])
     monkeypatch.setattr(sr.check_components, 'declared', lambda: {'requests': ('runtime', '')})
     monkeypatch.setattr(sr, 'tool_versions', lambda: {'pip-audit': '2.10.1', 'bandit': '1.9.4'})
+    monkeypatch.setattr(sr, 'locked', lambda lock: set(_lic) - {'pip'})
 
 
 VULN = {'id': 'PYSEC-2026-1', 'aliases': ['GHSA-xxxx', 'CVE-2026-1'], 'fix_versions': ['2.33.0']}
@@ -226,6 +227,26 @@ def test_the_report_keeps_its_date_until_the_status_changes(monkeypatch, tmp_pat
     _scanners(monkeypatch, vulns=[VULN])
     assert sr.write(sr.assess('python', _later), _path, _later)
     assert '状态日期：2026-11-12' in open(_path, encoding='utf-8').read()
+
+
+def test_the_report_does_not_depend_on_the_machine_that_ran_it(monkeypatch):
+    # CI's venv seeds pip 25.0.1, a laptop's 24.0. Neither is in a lock file;
+    # listing it made the first scan on main propose a report change.
+    def _env(pip):
+        return {'requests': {'version': '2.32.0', 'license': 'Apache-2.0', 'allowed': True},
+                'pip': {'version': pip, 'license': 'MIT', 'allowed': True}}
+    _scanners(monkeypatch, licenses=_env('24.0'))
+    _a = sr.render(sr.assess('python', TODAY), TODAY.isoformat())
+    _scanners(monkeypatch, licenses=_env('25.0.1'))
+    _b = sr.render(sr.assess('python', TODAY), TODAY.isoformat())
+    assert _a == _b and '| pip |' not in _a
+
+
+def test_an_unlocked_distribution_is_still_license_checked(monkeypatch):
+    _scanners(monkeypatch, licenses={
+        'requests': {'version': '2.32.0', 'license': 'Apache-2.0', 'allowed': True},
+        'pip': {'version': '25.0.1', 'license': 'GPL-3.0', 'allowed': False}})
+    assert any('pip' in _b for _b in sr.assess('python', TODAY)['blocking'])
 
 
 def test_text_from_advisories_and_comments_cannot_inject_markup(monkeypatch):
