@@ -88,26 +88,31 @@ def selfcheck(dataset: Dataset, grade: Callable) -> List[Dict[str, Any]]:
     check; one that does not means the task or the grader is wrong, and any
     agent failing that task is not the agent's fault.
 
-    Returns one problem per task that fails: {'task_id', 'problem', 'checks'}.
+    Returns one problem per task that fails: {'task_id', 'kind', 'problem',
+    'checks'}. kind is 'fails' (the reference does not pass), 'grader' (the
+    grader raised or judged nothing), or 'missing' (no reference to check --
+    reported, but it proves nothing about the task).
     """
     _problems = []
     for _task in dataset.tasks:
         _reference = dataset.reference(_task)
         if _reference is None:
-            _problems.append({'task_id': _task.id, 'problem': '没有参考解', 'checks': []})
+            _problems.append({'task_id': _task.id, 'kind': 'missing', 'problem': '没有参考解',
+                              'checks': []})
             continue
         try:
             _checks = grade_one(_task, AgentResult(output=_reference), grade)
         except Exception as exc:  # noqa: BLE001
-            _problems.append({'task_id': _task.id, 'checks': [],
+            _problems.append({'task_id': _task.id, 'kind': 'grader', 'checks': [],
                               'problem': '评分器在参考解上报错：{}: {}'.format(type(exc).__name__, exc)})
             continue
         _probe = Trial(task_id=_task.id, index=0, checks=_checks)
         if _probe.success is None:
-            _problems.append({'task_id': _task.id, 'checks': _checks,
+            _problems.append({'task_id': _task.id, 'kind': 'grader', 'checks': _checks,
                               'problem': '评分器对参考解没有给出任何确定性判定'})
         elif not _probe.success:
-            _problems.append({'task_id': _task.id, 'checks': [_c for _c in _checks if not _c['ok']],
+            _problems.append({'task_id': _task.id, 'kind': 'fails',
+                              'checks': [_c for _c in _checks if not _c['ok']],
                               'problem': '参考解判不过'})
     return _problems
 
@@ -262,7 +267,9 @@ def evaluate(dataset: Dataset, agent: Callable, grade: Callable, trials: int = 1
     _manifest.framework = _manifest.framework or framework_version()
 
     _problems = selfcheck(_data, grade) if check_references else []
-    _broken = frozenset(_p['task_id'] for _p in _problems)
+    # only a reference that exists and fails proves the task wrong; a missing
+    # one is reported but does not move blame away from the agent
+    _broken = frozenset(_p['task_id'] for _p in _problems if _p.get('kind') == 'fails')
     _jobs = [(_task, _i) for _task in _data.tasks for _i in range(trials)]
     _start = time.perf_counter()
     if workers and workers > 1:

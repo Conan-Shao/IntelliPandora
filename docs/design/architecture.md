@@ -51,6 +51,7 @@ run()
 | `core/protocol/http/` | HTTP 层：传输策略（超时、重试、TLS）、响应解析 |
 | `core/web.py` | Playwright 原样使用；把 expect 记为判定；区分"选择器过时"和"元素真的没了"；把 `web.*` 配置映射为 pytest-playwright 的默认选项 |
 | `core/concurrency.py` | `concurrently()`：同时起跑，复制登录态，绑定证据，判断并发是否真的发生 |
+| `core/eval/` | 评测 agent（E0）：数据集与内容哈希、试验与判分（必需 / 权重 / 模型评委不计入）、统计（Wilson、pass@k、pass^k、McNemar、分层 bootstrap）、评测基线、人工标注、评测报告视图（`conf/static/eval.html`）。见 `docs/guide/eval.md` |
 | `core/triage/` | 失败归因，规则优先：defect / contract / environment / data / harness / unknown |
 | `core/report/` | 同一份 ReportData 生成 HTML、JSON、JUnit XML；凭据脱敏。首屏结论由 `model.py` 按计数拼出；`compare.py` 对比传入的报告或本机存档里的上一次运行（框架不存历史，本机存档由 `history.py` 写，最多 50 次）。对比基线的拆分在 `runner/inventory.py` 的 `against()`。`merge.py` 把多个分片的 report.json 合并成一份：同一用例只计一次，分片间结论不一致时列出并取更严重的结论 |
 | `core/schedule/` | 配置分层（包默认 → 项目 `conf/config.yaml` → `conf/<env>.yaml`）、`Runtime`、HTTP 会话 |

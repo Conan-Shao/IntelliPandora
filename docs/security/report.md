@@ -14,7 +14,7 @@
 | 依赖漏洞 | `requirements/ci.txt`：框架 + 全部可选组（ai、mcp、system、test） | 通过：59 个包，0 个已知漏洞 |
 | 依赖漏洞 | `requirements/ci-noai.txt`：框架 + mcp、test，不含 AI 组 | 通过：54 个包，0 个已知漏洞 |
 | 依赖漏洞 | `requirements/tools.txt`：构建与工具链（不安装到用户环境） | 通过：58 个包，0 个已知漏洞 |
-| 自身代码 | `src/`，bandit 静态扫描 | 通过：0 个未处理问题，12 处经评估标注（理由见下） |
+| 自身代码 | `src/`，bandit 静态扫描 | 通过：0 个未处理问题，15 处经评估标注（理由见下） |
 | 许可证 | 运行环境 60 个分发包、工具链 58 个（含间接依赖） | 通过：其余在白名单内，text-unidecode 经人工审查（见下） |
 | 组件登记 | 30 个直接依赖与 CI 动作 | 通过：与代码声明一致 |
 | 漏洞例外 | 例外登记表 | 通过：0 条 |
@@ -29,18 +29,21 @@ bandit 报出、经评估不构成问题的地方，在源码里标注 `# nosec`
 
 | 规则 | 文件 | 理由 |
 |---|---|---|
+| B110 | `src/ipandora/core/assertion/collector.py` | reporting must never fail a test |
+| B311 | `src/ipandora/core/eval/annotate.py` | sampling rows for people to label, not secrecy |
+| B311 | `src/ipandora/core/eval/stats.py` | resampling for a confidence interval, not secrecy |
+| B311 | `src/ipandora/core/eval/stats.py` | resampling for a confidence interval, not secrecy |
+| B110 | `src/ipandora/core/evidence/recorder.py` | reporting must never fail a test |
+| B110 | `src/ipandora/core/evidence/recorder.py` | reporting must never fail a test |
+| B110 | `src/ipandora/core/protocol/http/model/data/responseobject.py` | evidence capture must never fail a request |
+| B110 | `src/ipandora/core/protocol/http/model/data/responseobject.py` | evidence capture must never fail a request |
+| B405 | `src/ipandora/core/report/junit.py` | this module builds XML and never parses it |
 | B105 | `src/ipandora/core/report/model.py` | a status name, not a password |
 | B105 | `src/ipandora/core/report/model.py` | a verdict name, not a password |
-| B110 | `src/ipandora/core/assertion/collector.py` | reporting must never fail a test |
-| B110 | `src/ipandora/core/evidence/recorder.py` | reporting must never fail a test |
-| B110 | `src/ipandora/core/evidence/recorder.py` | reporting must never fail a test |
-| B110 | `src/ipandora/core/protocol/http/model/data/responseobject.py` | evidence capture must never fail a request |
-| B110 | `src/ipandora/core/protocol/http/model/data/responseobject.py` | evidence capture must never fail a request |
-| B110 | `src/ipandora/core/runner/plugin.py` | a lock that will not release must not turn a result red; the process exit frees it |
-| B311 | `src/ipandora/utils/variable.py` | test data |
-| B311 | `src/ipandora/utils/variable.py` | test data, not a secret |
-| B405 | `src/ipandora/core/report/junit.py` | this module builds XML and never parses it |
 | B704 | `src/ipandora/core/report/render.py` | all text went through html.escape; only our own span tags are raw |
+| B110 | `src/ipandora/core/runner/plugin.py` | a lock that will not release must not turn a result red; the process exit frees it |
+| B311 | `src/ipandora/utils/variable.py` | test data, not a secret |
+| B311 | `src/ipandora/utils/variable.py` | test data |
 
 ## 许可证
 
