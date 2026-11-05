@@ -1,0 +1,51 @@
+# -*- coding: utf-8 -*-
+"""
+An example to start from. It calls the demo service in conftest.py through the
+framework's HTTP layer, so every request and response is in the report, and
+judges the answer field by field.
+
+Run it:   ipandora run tests
+Then:     ipandora run tests --update-baseline    # accept these judgements
+          git add conf/judgements.json             # and commit the baseline
+"""
+from ipandora.core import api
+from ipandora.core.assertion import assert_all, field, require, status_is, status_ok
+
+
+class OrderApi:
+    """One class per service; one method per endpoint."""
+
+    def __init__(self, base_url: str):
+        self.base_url = base_url
+
+    @api.http.get('{base}/orders/{order_id}')
+    def get(self, order_id):
+        return dict(other_params={'base': self.base_url, 'order_id': order_id})
+
+
+def test_a_paid_order_reads_back_as_paid(demo_service):
+    """已支付的订单，查询结果是已支付、金额在上限内"""
+    r = OrderApi(demo_service).get(7)
+    assert_all(
+        status_ok(r),
+        field(r, 'data.status') == 'PAID',
+        field(r, 'data.fee') <= 100,
+        field(r, 'data.items').len() > 0,
+        field(r, 'data.items').each('qty') > 0,
+    )
+
+
+def test_an_unknown_order_is_a_404(demo_service):
+    """不存在的订单返回 404，并说明原因"""
+    r = OrderApi(demo_service).get(404)
+    assert_all(
+        status_is(r, 404),
+        field(r, 'message').contains('no such order'),
+    )
+
+
+def test_refunding_needs_a_paid_order(demo_service):
+    """退款前先确认订单已支付。前置条件不满足时用例被跳过并说明原因，而不是悄悄通过"""
+    r = OrderApi(demo_service).get(7)
+    require(field(r, 'data.status') == 'PAID')
+    assert_all(field(r, 'data.fee') > 0)

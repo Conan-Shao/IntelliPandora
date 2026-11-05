@@ -34,7 +34,7 @@ class Status:
 
     Never inferred from a run -- a run cannot report an assertion nobody
     wrote. It has to be declared against a requirement. See
-    docs/design/04-实施计划.md.
+    docs/design/decisions/04-实施计划.md.
     """
 
     UNVERIFIED = 'UNVERIFIED'

@@ -13,7 +13,7 @@ Python Playwright has no screenshot comparison (to_have_screenshot exists only
 in its JS runner), so this fills that gap -- deterministically, and as a Check
 like any other: one claim, one verdict, recorded in the inventory.
 
-**What it can and cannot see.** Measured on Chromium screenshots (docs/design/14
+**What it can and cannot see.** Measured on Chromium screenshots (docs/design/decisions/14
 §4): a button changing colour differs in ~1,000-13,000 pixels; a price changing
 from 100.50 to 100.60 differs in 7 -- pixelmatch reads glyph edges as
 anti-aliasing. Anti-aliasing noise between two renderings of the same shapes

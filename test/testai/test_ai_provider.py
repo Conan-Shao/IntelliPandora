@@ -12,7 +12,7 @@ import pytest
 
 # `ipandora.ai` is optional and deletable by design -- `rm -rf src/ipandora/ai
 # && pytest` staying green is one of the five structural guarantees in
-# docs/design/03-LLM接入边界.md. Tests *of* that package cannot run once it is
+# docs/design/decisions/03-LLM接入边界.md. Tests *of* that package cannot run once it is
 # gone, but they must not break collection either, or the guarantee is
 # unverifiable. This belongs here rather than in a conftest: a conftest is
 # imported earlier than any test module, and pulling ipandora in that early

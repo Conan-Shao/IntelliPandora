@@ -101,7 +101,7 @@ test_plain  [(6, "r['fee'] <= 100", '50 <= 100'), (2, 'v > 0', '50 > 0')]
 - **框架负责驱动不管的部分**：fixture 与生命周期、`conf/<env>.yaml` 配置、失败时自动采集截图 / trace / logcat、同一套判定（`field` / `that` / 判定清单 / 基线门禁）、UI 专属归因（元素找不到时先确定性地区分：选择器过时算用例问题，元素真的没了可能是产品缺陷，标为"待确认"）。
 - **按需安装**：`[web]` `[android]` `[ios]` `[visual]`，内核仍是 8 个依赖。
 
-两条腿合起来：**全栈是可信判定的覆盖面**。别人的一整套是"什么都能测"，我们的是"什么都能测，而且每一端的绿灯都同样可信"。路线和取舍见 [`docs/design/12-定位与路线.md`](../design/12-定位与路线.md)。
+两条腿合起来：**全栈是可信判定的覆盖面**。别人的一整套是"什么都能测"，我们的是"什么都能测，而且每一端的绿灯都同样可信"。路线和取舍见 [`docs/design/decisions/12-定位与路线.md`](../design/decisions/12-定位与路线.md)。
 
 ## 8. 不适合的场景
 
@@ -109,14 +109,14 @@ test_plain  [(6, "r['fee'] <= 100", '50 <= 100'), (2, 'v > 0', '50 > 0')]
 |---|---|
 | 纯单元测试，团队里没有 agent 参与写测试 | pytest 就够 |
 | 性能 / 压测 | Locust、k6 |
-| Mock / 挡板服务 | `responses`、`httpretty`，或独立的 mock 服务（框架不内置，见 [`docs/design/11`](../design/11-评测层mock方案评估.md)） |
+| Mock / 挡板服务 | `responses`、`httpretty`，或独立的 mock 服务（框架不内置，见 [`docs/design/decisions/11`](../design/decisions/11-评测层mock方案评估.md)） |
 | 今天就要做 App UI 回归 | UI 驱动层在规划中，眼下先用 Appium / uiautomator2 写 pytest 用例，判断用 `that()` |
 
 ## 9. 用不用 MCP
 
 ![用 MCP 和不用 MCP](../dev/static/mcp_vs_cli.svg)
 
-两条路最终调的是同一个 `core.runner.run()`。MCP 本身不是差异点，社区里已经有好几个 pytest MCP 运行器。我们的 MCP 不一样的地方在于它返回的内容：判定、归因、零判定，以及判定弱化标记。配置方法见[使用手册 2.2.8](user_guider.md#228-mcp-能力面)。
+两条路最终调的是同一个 `core.runner.run()`。MCP 本身不是差异点，社区里已经有好几个 pytest MCP 运行器。我们的 MCP 不一样的地方在于它返回的内容：判定、归因、零判定，以及判定弱化标记。配置方法见[使用手册 2.2.8](agents.md)。
 
 ---
 

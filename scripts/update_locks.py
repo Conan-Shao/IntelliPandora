@@ -14,7 +14,7 @@ What CI installs is resolved here, once, with three properties a plain
 - nothing published in the last COOLDOWN_DAYS days is eligible
   (`uv --exclude-newer`). Malicious releases are usually caught and yanked
   within days, which makes the newest release the riskiest one to adopt. The
-  admission rule in docs/design/15 is enforced by the resolver, not by memory;
+  admission rule in docs/design/decisions/15 is enforced by the resolver, not by memory;
 - one file covers Python 3.10-3.12 and every platform (`--universal`), so the
   CI matrix and a developer laptop install the same versions.
 

@@ -42,6 +42,9 @@ REQUIRED = (
     'ipandora/conf/config.yaml',            # every Runtime lookup
     'ipandora/conf/static/report.html',     # ipandora run --report
     'ipandora/conf/static/history.html',    # the run history index
+    'ipandora/templates/project/AGENTS.md',  # ipandora init
+    'ipandora/templates/project/tests/test_example.py.tmpl',
+    'ipandora/templates/project/_github/workflows/tests.yml.tmpl',
 )
 
 # Key material must never be packaged, whatever a stale checkout holds.

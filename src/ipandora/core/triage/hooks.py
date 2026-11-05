@@ -8,7 +8,7 @@ Optional enrichment slot for triage.
 
 core/ must never import ai/ -- basic test capability cannot be allowed to
 acquire a paid, latent, non-reproducible dependency (see
-docs/design/03-LLM接入边界.md). So core/ owns the *slot* and knows nothing
+docs/design/decisions/03-LLM接入边界.md). So core/ owns the *slot* and knows nothing
 about who fills it; ipandora.ai.enable() registers an analyzer into it.
 
 With nothing registered, everything here is a no-op returning ''. That is the

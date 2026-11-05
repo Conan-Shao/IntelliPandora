@@ -420,7 +420,7 @@ class ResourceLock:
     The standard library, not filelock: all this needs is a blocking lock with
     a timeout, and filelock shipped 26 releases in seven weeks and dropped
     Python 3.10 halfway through its 4.x line. A fast-moving dependency for a
-    dozen lines is a poor trade (docs/design/15 §3, necessity).
+    dozen lines is a poor trade (docs/design/decisions/15 §3, necessity).
 
     flock on POSIX; msvcrt.locking on Windows, which CI does not run. The lock
     belongs to the open file, so a process that dies releases it -- a crashed

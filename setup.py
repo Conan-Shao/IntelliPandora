@@ -65,21 +65,21 @@ setup(
     classifiers=CLASSIFIERS,
     # Bounded like install_requires, and for the same reason. `ai` stays an
     # extra because `rm -rf ai/ && pytest` staying green is a structural
-    # guarantee, not a convention -- see docs/design/03-LLM接入边界.md.
+    # guarantee, not a convention -- see docs/design/decisions/03-LLM接入边界.md.
     extras_require={
         # >=2.1: the 2.x line is what is tested; 1.x never was. Admitted 2026-11-05,
         # see docs/security/components.md.
         'ai': ['anthropic>=2.1,<3'],
         # `ipandora run --workers`, @pytest.mark.resource and --timeout. Kept
         # out of the core: a serial run needs none of it. See
-        # docs/design/14 §1 and docs/security/components.md.
+        # docs/design/decisions/14 §1 and docs/security/components.md.
         'parallel': ['pytest-xdist>=3.8,<4', 'pytest-timeout>=2.4,<3'],
         # Web: Playwright and its official pytest plugin, used as they are
-        # (docs/design/14 §3). pytest-playwright is 0.x, so bounded to one
+        # (docs/design/decisions/14 §3). pytest-playwright is 0.x, so bounded to one
         # minor. Browsers are a separate download pinned by the Playwright
         # version: python -m playwright install chromium.
         'web': ['playwright>=1.64,<2', 'pytest-playwright>=0.10,<0.11'],
-        # Image verdicts, matches_golden() (docs/design/14 §4). Pillow 13 needs
+        # Image verdicts, matches_golden() (docs/design/decisions/14 §4). Pillow 13 needs
         # Python 3.11, so 12 stays allowed for 3.10.
         'visual': ['pillow>=12,<14', 'pixelmatch>=0.4,<0.5'],
         # >=2: core/mcp/server.py imports mcp.server.mcpserver.MCPServer, which

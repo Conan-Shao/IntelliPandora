@@ -24,7 +24,7 @@ class TestMcpToolRegistration(unittest.TestCase):
                             '{} has no description'.format(tool.name))
 
     def test_run_tests_does_not_shell_out(self):
-        # docs/design/00 rules out shelling out to pytest and parsing stdout;
+        # docs/design/decisions/00 rules out shelling out to pytest and parsing stdout;
         # run_tests must go through the library runner instead
         import inspect
         source = inspect.getsource(server.run_tests)

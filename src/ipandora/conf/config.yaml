@@ -4,39 +4,40 @@
 #
 # The `mysql`, `file`, `email`, `addressesTo` and `report` sections that used
 # to sit above are gone with the code that read them.
-#
+
 # Transport reliability. verify defaults to true -- only turn it off for a
 # specific throwaway environment, and never repo-wide.
 http:
-  connect_timeout: 10
-  read_timeout: 30
-  verify: true
+  connect_timeout: 10   # seconds to establish a connection
+  read_timeout: 30      # seconds to wait for a response; every request is bounded
+  verify: true          # TLS certificate verification
   max_retries: 2        # idempotent methods only (GET/HEAD/PUT/DELETE/OPTIONS/TRACE)
-  backoff_factor: 0.3
-  pool_maxsize: 10
+  backoff_factor: 0.3   # seconds; retry n waits backoff_factor * 2^(n-1)
+  pool_maxsize: 10      # connections kept per host
+
 # Web (pip install intellipandora[web]). Defaults for pytest-playwright's own
 # options; a command-line --base-url / --browser, or a suite's conftest, wins.
-#   base_url: https://staging.example.com    # then page.goto('/orders')
-#   browser: chromium                        # chromium | firefox | webkit
-#   viewport: {width: 1280, height: 720}
 web:
-  base_url:
-  browser:
-  viewport:
+  base_url:             # e.g. https://staging.example.com, then page.goto('/orders')
+  browser:              # chromium | firefox | webkit; default chromium
+  viewport:             # e.g. {width: 1280, height: 720}; default Playwright's
+
 # LLM access is OFF by default and stays that way unless explicitly enabled.
 # It is never used at test-execution time -- only post-run (triage, report
-# summaries). See docs/design/03-LLM接入边界.md.
+# summaries). See docs/design/decisions/03-LLM接入边界.md.
 # Requires the optional extra: pip install intellipandora[ai]
 ai:
-  enabled: false
-  provider: mock
-  api_key:
+  enabled: false        # nothing calls an LLM unless this is true
+  provider: mock        # mock | anthropic
+  api_key:              # put it in conf/<env>.yaml that is not committed, never here
   model: claude-sonnet-5
-  base_url:
-  timeout: 30
-  max_tokens: 1024
-  max_calls_per_run: 20
+  base_url:             # a gateway in front of the provider, if any
+  timeout: 30           # seconds per call
+  max_tokens: 1024      # per call
+  max_calls_per_run: 20 # a hard cap: 0 means no calls at all
+
+# The MCP server behind `ipandora mcp` (pip install intellipandora[mcp]).
 mcp:
   enabled: true
-  name: intellipandora
-  transport: stdio
+  name: intellipandora  # the server name an agent sees
+  transport: stdio      # stdio | sse | streamable-http

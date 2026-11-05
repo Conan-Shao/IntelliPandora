@@ -61,7 +61,7 @@ def provider(monkeypatch):
 class TestOffByDefault:
     """
     The cost model depends on this: a green run of ten thousand tests must
-    make zero model calls. See docs/design/03-LLM接入边界.md.
+    make zero model calls. See docs/design/decisions/03-LLM接入边界.md.
     """
 
     def test_disabled_in_default_config(self):

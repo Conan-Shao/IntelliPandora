@@ -199,7 +199,7 @@ class Runtime(object):
         """
         LLM access config. Disabled by default: nothing in core/ may depend on
         it, and it is never consulted during test execution.
-        See docs/design/03-LLM接入边界.md.
+        See docs/design/decisions/03-LLM接入边界.md.
         """
         _enabled = None
         _provider = ''

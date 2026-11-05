@@ -16,6 +16,8 @@
 # `scripts/check_packaging.py` is: it looks inside the built wheel. It fails
 # the real 1.1.0 wheel and passes a build from this tree.
 recursive-include src/ipandora/conf *
+# what `ipandora init` writes into a new project
+recursive-include src/ipandora/templates *
 global-include CHANGELOG
 global-include AUTHORS.rst
 global-exclude __pycache__

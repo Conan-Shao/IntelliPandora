@@ -9,7 +9,7 @@ Optional LLM support.
 Nothing here is imported by core/, and nothing here runs unless it is turned
 on explicitly. `pip install intellipandora` does not install a model SDK, the
 default config sets `ai.enabled: false`, and deleting this package leaves a
-working framework -- CI asserts all three. See docs/design/03-LLM接入边界.md.
+working framework -- CI asserts all three. See docs/design/decisions/03-LLM接入边界.md.
 
 To turn it on:
 

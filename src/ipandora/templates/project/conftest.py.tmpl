@@ -1,0 +1,46 @@
+# -*- coding: utf-8 -*-
+"""
+Fixtures for this suite.
+
+`demo_service` starts a tiny order service on this machine, so the example in
+tests/test_example.py passes straight after `ipandora init` with nothing else
+running and no network. Replace it with your real system: put its address in
+conf/<env>.yaml and point the API class at it.
+"""
+import json
+import os
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+import pytest
+
+ORDERS = {'7': {'id': 7, 'status': 'PAID', 'fee': 50, 'items': [{'sku': 'A1', 'qty': 2}]}}
+
+
+class _DemoOrders(BaseHTTPRequestHandler):
+    def log_message(self, *args):
+        pass
+
+    def do_GET(self):
+        _order = ORDERS.get(self.path.rsplit('/', 1)[-1])
+        _body = json.dumps({'code': 0, 'data': _order} if _order else
+                           {'code': 404, 'message': 'no such order'}).encode()
+        self.send_response(200 if _order else 404)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', str(len(_body)))
+        self.end_headers()
+        self.wfile.write(_body)
+
+
+@pytest.fixture(scope='session')
+def demo_service():
+    # a local service must not be sent through a proxy configured for the
+    # outside world
+    os.environ['NO_PROXY'] = ','.join(filter(None, [os.environ.get('NO_PROXY'),
+                                                    '127.0.0.1', 'localhost']))
+    _server = ThreadingHTTPServer(('127.0.0.1', 0), _DemoOrders)
+    _server.daemon_threads = True
+    threading.Thread(target=_server.serve_forever, daemon=True).start()
+    yield 'http://127.0.0.1:{}'.format(_server.server_address[1])
+    _server.shutdown()
+    _server.server_close()

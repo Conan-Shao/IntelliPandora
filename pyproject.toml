@@ -2,10 +2,10 @@
 #
 # Pinned because what reaches the wheel depends on the setuptools that builds
 # it: the 1.1.0 wheel on PyPI shipped without config.yaml or the report
-# templates for exactly that reason (docs/design/08). Without this section the
+# templates for exactly that reason (docs/design/decisions/08). Without this section the
 # build used whatever setuptools the building machine had -- 79.0.1 here,
 # which carries two published advisories fixed in 84.1
-# (docs/design/15-第三方组件安全准入与漏洞扫描.md).
+# (docs/design/decisions/15-第三方组件安全准入与漏洞扫描.md).
 [build-system]
 requires = ["setuptools>=84.1,<85", "wheel>=0.45,<1"]
 build-backend = "setuptools.build_meta"

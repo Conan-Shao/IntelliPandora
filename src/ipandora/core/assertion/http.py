@@ -157,7 +157,7 @@ def field(response: Any, path: str, name: str = None) -> Field:
     See core/assertion/field.py for the comparison rules: strict types, bool
     is not a number, and anything unjudgeable is a failed Check, never an
     exception. All of it deterministic and offline -- see
-    docs/design/03-LLM接入边界.md.
+    docs/design/decisions/03-LLM接入边界.md.
 
     `name` replaces the generated check name ('data.fee <= 100') in reports.
     """

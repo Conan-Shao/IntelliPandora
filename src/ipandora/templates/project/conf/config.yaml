@@ -1,0 +1,14 @@
+# 项目配置。只写要改的键，其余沿用框架默认值（见框架文档 reference/config.md）。
+# 按环境叠加：conf/<env>.yaml，用 `ipandora run tests -e <env>` 选择。
+# 凭据不要写在这里：用环境变量，或者不提交的 conf/<env>.yaml。
+
+http:
+  connect_timeout: 10
+  read_timeout: 30
+  verify: true
+
+# Web 用例（需要 intellipandora[web]）：
+# web:
+#   base_url: https://staging.example.com
+#   browser: chromium
+#   viewport: {width: 1280, height: 720}

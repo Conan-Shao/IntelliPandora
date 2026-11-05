@@ -13,7 +13,7 @@
     make install          # requirements/ci.txt + 可编辑安装本项目
     make install-tools    # pip-audit、bandit、build、uv 等，requirements/tools.txt
     ```
-  > 加依赖或改版本范围：先按 [`docs/design/15`](../design/15-第三方组件安全准入与漏洞扫描.md) §3 做准入审查，在 [`docs/security/components.md`](../security/components.md) 登记，再 `make locks` 重新生成锁文件。锁文件只接受发布满 14 天的版本。没登记，CI 的 `Components are registered` 会失败；没重新生成锁文件，CI 装不上新依赖。
+  > 加依赖或改版本范围：先按 [`docs/design/decisions/15`](../design/decisions/15-第三方组件安全准入与漏洞扫描.md) §3 做准入审查，在 [`docs/security/components.md`](../security/components.md) 登记，再 `make locks` 重新生成锁文件。锁文件只接受发布满 14 天的版本。没登记，CI 的 `Components are registered` 会失败；没重新生成锁文件，CI 装不上新依赖。
 
 - **编译发布**
 > **只通过 CI 发布**：在 GitHub 上发布一个 release（标签 `vX.Y.Z`，与 `CHANGELOG` 第一行一致），`.github/workflows/release.yml` 会依次完成安全扫描、构建、版本与 wheel 内容检查、生成 SBOM、发布到 PyPI（附来源证明），最后把 SBOM 挂到 release 上。本地没有、也不应该有 PyPI 凭据。
@@ -33,7 +33,7 @@
   3. GitHub → Settings → Branches → 为 `main` 添加保护规则，要求 CI 与 Security 的检查通过才能合入。
 
 - **安全扫描**
-> `.github/workflows/security.yml` 在每个 PR、每次合入 main、每天定时各跑一次：依赖漏洞（pip-audit，逐个锁文件）、自身代码（bandit）、许可证、组件登记、例外到期。规则见 [`docs/design/15`](../design/15-第三方组件安全准入与漏洞扫描.md)，对外结论见 [`docs/security/report.md`](../security/report.md)。
+> `.github/workflows/security.yml` 在每个 PR、每次合入 main、每天定时各跑一次：依赖漏洞（pip-audit，逐个锁文件）、自身代码（bandit）、许可证、组件登记、例外到期。规则见 [`docs/design/decisions/15`](../design/decisions/15-第三方组件安全准入与漏洞扫描.md)，对外结论见 [`docs/security/report.md`](../security/report.md)。
 
     ```shell script
     make security         # 本地跑同样的扫描，并更新 docs/security/report.md

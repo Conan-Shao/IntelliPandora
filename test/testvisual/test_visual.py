@@ -4,7 +4,7 @@
 @File  : test_visual.py
 @Time  : 2026-11-05
 
-Image verdicts. Acceptance from docs/design/14 §4:
+Image verdicts. Acceptance from docs/design/decisions/14 §4:
 
 - anti-aliasing and font-rendering differences pass at the default settings;
   changing a button's colour fails, and the diff shows where;

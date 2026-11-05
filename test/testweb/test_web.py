@@ -5,7 +5,7 @@
 @Time  : 2026-11-05
 
 Web automation: Playwright and pytest-playwright as they are, plus what a
-verdict layer needs from them. Acceptance from docs/design/14 §3:
+verdict layer needs from them. Acceptance from docs/design/decisions/14 §3:
 
 - a case written only with expect() is not unverified;
 - a failure's screenshot is in the report and its trace opens;
