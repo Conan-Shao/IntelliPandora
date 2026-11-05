@@ -237,12 +237,14 @@ class TestSpeed:
 
     def test_four_workers_take_at_most_40_percent_of_serial(self, tmp_path):
         # IO-bound, as an API suite is: each case waits on a "response".
-        # Eight one-second waits. Worker start-up is a fixed cost of under a
-        # second, so this is ~2.8s against ~8s.
+        # Worker start-up is a fixed cost: ~0.8s here, 1.3s measured on a
+        # GitHub runner. With eight one-second cases that alone put a CI run
+        # at 40.2% -- the threshold measured start-up, not parallelism.
+        # Sixteen spread it out: ~5.3s against ~16s.
         _target = suite(tmp_path, '''
             import time
             import pytest
-            @pytest.mark.parametrize('i', range(8))
+            @pytest.mark.parametrize('i', range(16))
             def test_waits(i):
                 time.sleep(1.0)
                 assert i >= 0
