@@ -178,9 +178,18 @@ def _process_environment(env: str) -> dict:
             web.MEMORY_VAR: web.memory_path()}
 
 
+def _image_environment(run_id: str, update_goldens: bool) -> dict:
+    """Where image verdicts put their files, and whether they rewrite goldens."""
+    from ipandora.core import web
+    from ipandora.core.assertion import visual
+    return {visual.ARTIFACTS_VAR: web.artifacts_dir(run_id),
+            visual.UPDATE_VAR: '1' if update_goldens else ''}
+
+
 def run(selector: str = '', env: str = '', extra_args: Sequence[str] = (),
         persist: bool = True, quiet: bool = False, baseline: Optional[str] = None,
-        workers=None, timeout: Optional[float] = None) -> RunResult:
+        workers=None, timeout: Optional[float] = None,
+        update_goldens: bool = False) -> RunResult:
     """
     Execute tests and return a structured result.
 
@@ -210,6 +219,9 @@ def run(selector: str = '', env: str = '', extra_args: Sequence[str] = (),
                      way -- see plugin.py. Needs the `parallel` extra.
     :param timeout:  seconds a single case may take before it is failed, with
                      pytest-timeout. Needs the `parallel` extra.
+    :param update_goldens: matches_golden() writes the current image as the
+                     golden instead of comparing. `ipandora run --update-baseline`
+                     sets it, so goldens and the judgement baseline move together.
 
     Note: pytest runs in-process. The project modules a run imports -- test
     files, conftest.py, the suite's own helpers -- are dropped from
@@ -246,8 +258,9 @@ def run(selector: str = '', env: str = '', extra_args: Sequence[str] = (),
     # every run costs milliseconds, a stale verdict costs the whole loop.
     sys.dont_write_bytecode = True
     _modules_before = set(sys.modules)
-    _environ_before = {_k: os.environ.get(_k) for _k in _process_environment(env)}
-    os.environ.update(_process_environment(env))
+    _environ = dict(_process_environment(env), **_image_environment(_run_id, update_goldens))
+    _environ_before = {_k: os.environ.get(_k) for _k in _environ}
+    os.environ.update(_environ)
     try:
         with web.nested_session():
             if quiet:

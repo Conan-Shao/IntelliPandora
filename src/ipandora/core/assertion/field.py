@@ -243,6 +243,22 @@ class Field:
             return re.search(pattern, value) is not None
         return self._judge(_claim, _test, _claim)
 
+    def matches_golden(self, name: str, tolerance: float = 0.0, mask=(), threshold: float = 0.1,
+                       noise: str = 'edges') -> Check:
+        """
+        This image looks like its golden image: `that(page.screenshot(), '结算页')
+        .matches_golden('checkout')`. The value is PNG bytes, a path or a PIL
+        image. See core/assertion/visual.py for what it can and cannot see.
+        """
+        from ipandora.core.assertion import visual
+        if self._value is MISSING:
+            return Check(name=self._name or '{} matches golden {!r}'.format(self._label, name),
+                         ok=False, expr=self._reason, src=Source.VISUAL,
+                         claim='{} matches golden {!r}'.format(self._label, name))
+        return visual.matches_golden(self._value, name, label=self._label, tolerance=tolerance,
+                                     mask=mask, threshold=threshold, noise=noise,
+                                     check_name=self._name)
+
     # -- transforms: each returns a new Field -----------------------------
 
     def len(self) -> 'Field':

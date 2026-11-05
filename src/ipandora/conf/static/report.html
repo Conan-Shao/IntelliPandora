@@ -194,6 +194,9 @@ pre.hdr{max-height:132px;color:var(--dim)}
 .hint{font-family:var(--mono);font-size:11px;color:var(--faint);margin:0 0 10px}
 .shot{display:block;max-width:100%;border:1px solid var(--line, #ddd);border-radius:6px;margin:6px 0 10px}
 .trace{font-family:var(--mono);font-size:11px;margin:0 0 10px;word-break:break-all}
+.visual{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin:6px 0 12px}
+.visual figure{margin:0}.visual figcaption{font-family:var(--mono);font-size:10.5px;color:var(--faint);margin-bottom:4px}
+.visual img{display:block;max-width:100%;border:1px solid var(--line, #ddd);border-radius:6px}
 .errline{border-left:2px solid var(--fail);background:rgba(255,112,96,.09);
   padding:9px 13px;border-radius:0 6px 6px 0;font-family:var(--mono);font-size:12px;
   color:var(--fail);margin-bottom:12px;word-break:break-word}
@@ -465,9 +468,24 @@ footer{margin-top:50px;padding-top:16px;border-top:1px solid var(--line);
         <div class="hint">这条用例通过了，但没有留下任何判定 —— 它可能什么都没断言。</div>
         {%- endif %}
 
-        {%- if case.artifacts %}
+        {%- set visual = case.artifacts|selectattr('kind', 'in', ['golden', 'actual', 'diff'])|list %}
+        {%- for group in visual|map(attribute='group')|unique %}
+        <div class="sub">图像判定 · {{ group }}</div>
+        <div class="visual">
+          {%- for kind, title in [('golden', '基准图'), ('actual', '实际'), ('diff', '差异（红框为变化位置）')] %}
+          {%- for a in visual if a.group == group and a.kind == kind %}
+          <figure><figcaption>{{ title }}</figcaption>
+            {%- if a.src %}<img src="{{ a.src }}" alt="{{ title }}" loading="lazy">
+            {%- else %}<code>{{ a.path }}</code>{% endif %}</figure>
+          {%- endfor %}
+          {%- endfor %}
+        </div>
+        {%- endfor %}
+
+        {%- set others = case.artifacts|rejectattr('kind', 'in', ['golden', 'actual', 'diff'])|list %}
+        {%- if others %}
         <div class="sub">失败现场</div>
-        {%- for a in case.artifacts %}
+        {%- for a in others %}
         {%- if a.kind == 'screenshot' and a.src %}
         <img class="shot" src="{{ a.src }}" alt="失败时的页面截图" loading="lazy">
         {%- elif a.kind == 'screenshot' %}

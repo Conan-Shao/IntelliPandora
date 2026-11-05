@@ -302,7 +302,9 @@ def pytest_runtest_setup(item):
     exactly when someone wants to see what it asked for. And a fixture that
     logs in with the shared account is already using it.
     """
-    recorder.begin(item.nodeid)
+    _params = getattr(getattr(item, 'callspec', None), 'params', {}) or {}
+    recorder.begin(item.nodeid, path=getattr(item, 'path', ''),
+                   browser=_params.get('browser_name', ''))
     item.stash[_DECLARED] = _declarations(item)
     _acquire_resources(item)
 
@@ -375,6 +377,8 @@ def _pack(item):
             _payload['locators'] = dict(_evidence.locators)
         if _evidence.locator_failures:
             _payload['locator_failures'] = list(_evidence.locator_failures)
+        if _evidence.artifacts:
+            _payload['artifacts'] = list(_evidence.artifacts)
     if _INDEX in item.stash:
         _payload['index'] = item.stash[_INDEX]
     # Reports cross a process boundary under xdist, and execnet carries only

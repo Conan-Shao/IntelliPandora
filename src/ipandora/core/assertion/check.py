@@ -34,6 +34,8 @@ class Source:
     runner. What it checks is not known beyond its source text, so it gets
     a dimension of its own rather than being guessed into one of the above.
     """
+    VISUAL = 'visual'
+    """What it looks like: a screenshot against its golden image."""
 
 
 class Kind:

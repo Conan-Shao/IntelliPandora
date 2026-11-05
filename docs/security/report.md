@@ -11,12 +11,12 @@
 
 | 检查 | 范围 | 结果 |
 |---|---|---|
-| 依赖漏洞 | `requirements/ci.txt`：框架 + 全部可选组（ai、mcp、system、test） | 通过：57 个包，0 个已知漏洞 |
-| 依赖漏洞 | `requirements/ci-noai.txt`：框架 + mcp、test，不含 AI 组 | 通过：52 个包，0 个已知漏洞 |
+| 依赖漏洞 | `requirements/ci.txt`：框架 + 全部可选组（ai、mcp、system、test） | 通过：59 个包，0 个已知漏洞 |
+| 依赖漏洞 | `requirements/ci-noai.txt`：框架 + mcp、test，不含 AI 组 | 通过：54 个包，0 个已知漏洞 |
 | 依赖漏洞 | `requirements/tools.txt`：构建与工具链（不安装到用户环境） | 通过：58 个包，0 个已知漏洞 |
 | 自身代码 | `src/`，bandit 静态扫描 | 通过：0 个未处理问题，11 处经评估标注（理由见下） |
-| 许可证 | 运行环境 58 个分发包、工具链 58 个（含间接依赖） | 通过：其余在白名单内，text-unidecode 经人工审查（见下） |
-| 组件登记 | 28 个直接依赖与 CI 动作 | 通过：与代码声明一致 |
+| 许可证 | 运行环境 60 个分发包、工具链 58 个（含间接依赖） | 通过：其余在白名单内，text-unidecode 经人工审查（见下） |
+| 组件登记 | 30 个直接依赖与 CI 动作 | 通过：与代码声明一致 |
 | 漏洞例外 | 例外登记表 | 通过：0 条 |
 
 ## 漏洞明细
@@ -45,7 +45,7 @@ bandit 报出、经评估不构成问题的地方，在源码里标注 `# nosec`
 
 白名单为宽松许可证（MIT、BSD、Apache、ISC、MPL-2.0、PSF 等），不接受 GPL 系、SSPL、BUSL 等，理由见 [`docs/design/15`](../design/15-第三方组件安全准入与漏洞扫描.md) §3。
 
-<details><summary>运行环境（框架 + 全部可选组，即用户可能装上的全部）：58 个</summary>
+<details><summary>运行环境（框架 + 全部可选组，即用户可能装上的全部）：60 个</summary>
 
 | 分发包 | 版本 | 许可证 | 结果 |
 |---|---|---|---|
@@ -77,6 +77,8 @@ bandit 报出、经评估不构成问题的地方，在源码里标注 `# nosec`
 | mcp-types | 2.3.0 | MIT License | 通过 |
 | opentelemetry-api | 1.45.1 | Apache-2.0 | 通过 |
 | packaging | 26.3 | Apache-2.0 OR BSD-2-Clause | 通过 |
+| pillow | 13.0.0 | MIT-CMU | 通过 |
+| pixelmatch | 0.4.0 | ISC | 通过 |
 | playwright | 1.64.0 | Apache-2.0 | 通过 |
 | pluggy | 1.7.0 | MIT License | 通过 |
 | psutil | 7.2.2 | BSD-3-Clause | 通过 |

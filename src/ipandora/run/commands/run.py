@@ -53,7 +53,8 @@ class Command(CommandBase):
                           persist=not options.no_store,
                           baseline=_baseline,
                           workers=options.workers,
-                          timeout=options.timeout)
+                          timeout=options.timeout,
+                          update_goldens=options.update_baseline)
         except (MissingExtra, ValueError) as exc:
             print('  ERROR  {}'.format(exc), file=sys.stderr)
             sys.exit(2)
@@ -216,9 +217,10 @@ class Command(CommandBase):
             help='do not compare judgements with any baseline')
         self.parser.add_argument(
             '--update-baseline', action='store_true',
-            help='accept this run\'s judgements as the new baseline. Commit '
-                 'the file: its diff is what a reviewer reads to see which '
-                 'judgements changed')
+            help='accept this run\'s judgements as the new baseline, and write '
+                 'every matches_golden() image as its new golden. Commit both: '
+                 'their diff is what a reviewer reads to see which judgements '
+                 'changed')
         self.parser.add_argument(
             '--fail-on-weakened', action='store_true',
             help='exit non-zero when judgements got weaker than the baseline '
