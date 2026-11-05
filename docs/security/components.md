@@ -27,7 +27,7 @@
 
 | 组件 | 类别 | 版本范围 | 用途 | 许可证 | 运行期行为 | 审查日期 |
 |---|---|---|---|---|---|---|
-| anthropic | extra:ai | >=0.40,<1 | 可选的 LLM 失败归因 | MIT | 调用 Anthropic API；默认关闭，有调用上限 | 2026-11-05 |
+| anthropic | extra:ai | >=2.1,<3 | 可选的 LLM 失败归因 | MIT | 调用 Anthropic API；默认关闭，有调用上限。2.x 已核对框架用到的接口（`Anthropic()`、`messages.create`、`TextBlock.text`）未变 | 2026-11-05 |
 | mcp | extra:mcp | >=2.0,<3 | 作为 agent 的 MCP 服务端 | MIT | 通过 stdio 与 agent 通信 | 2026-11-05 |
 | psutil | extra:system | >=5.9,<8 | 系统信息工具 | BSD-3-Clause | 读取本机进程和资源信息 | 2026-11-05 |
 | httpretty | extra:test | >=1.1,<2 | 测试里模拟 HTTP 响应 | MIT | 只在测试中替换 socket | 2026-11-05 |

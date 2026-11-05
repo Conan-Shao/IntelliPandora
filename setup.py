@@ -67,7 +67,9 @@ setup(
     # extra because `rm -rf ai/ && pytest` staying green is a structural
     # guarantee, not a convention -- see docs/design/03-LLM接入边界.md.
     extras_require={
-        'ai': ['anthropic>=0.40,<1'],
+        # >=2.1: the 2.x line is what is tested; 1.x never was. Admitted 2026-11-05,
+        # see docs/security/components.md.
+        'ai': ['anthropic>=2.1,<3'],
         # >=2: core/mcp/server.py imports mcp.server.mcpserver.MCPServer, which
         # only 2.x has. This said <2 from 1.11.0 on, so `pip install
         # intellipandora[mcp]` resolved to mcp 1.x and `ipandora mcp` failed
