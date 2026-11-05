@@ -17,6 +17,7 @@ be harmless costs someone a re-run; a leaked credential does not get un-leaked.
 import json
 import re
 from typing import Any
+from urllib.parse import unquote_plus
 
 MASK = '***REDACTED***'
 
@@ -54,15 +55,47 @@ VALUE_PATTERNS = (
 # BIP-39 style seed phrases: 12 or 24 lowercase words in a row.
 MNEMONIC = re.compile(r'\b(?:[a-z]{3,8}\s+){11}[a-z]{3,8}\b')
 
+# One key=value run of a form body, a query string or a cookie line:
+# `password=hunter2` in `username=alice&password=hunter2`.
+SEGMENT = re.compile(r'[^&?;\s]+')
+
+
+def _redact_pairs(text: str) -> str:
+    """
+    Mask the value of every key=value pair whose key names a credential.
+
+    A form-encoded login body went through the value-shape patterns only, and
+    `password=hunter2` has no shape -- so it reached the report as written,
+    exactly where it is most likely to appear. The key is what gives it away,
+    the same rule JSON bodies already followed. Only the value is replaced;
+    the rest of the text is left byte for byte.
+    """
+    def _segment(match):
+        _seg = match.group(0)
+        if '=' not in _seg:
+            return _seg
+        # split on every '=': `body=password=hunter2` hides a pair inside a
+        # value, and base64 padding (`token=abc==`) belongs to the value
+        _parts = _seg.split('=')
+        for _i, _key in enumerate(_parts[:-1]):
+            if _key and _is_secret_key(unquote_plus(_key)):
+                if not '='.join(_parts[_i + 1:]).strip('='):
+                    return _seg                 # `token=`: nothing to hide
+                return '{}={}'.format('='.join(_parts[:_i + 1]), MASK)
+        return _seg
+    return SEGMENT.sub(_segment, text)
+
 
 def redact_text(value: str) -> str:
-    """Mask credential-shaped substrings in free text."""
+    """Mask credential-shaped substrings in free text, and credential-named key=value pairs."""
     if not isinstance(value, str) or not value:
         return value
     _out = value
     for _pattern in VALUE_PATTERNS:
         _out = _pattern.sub(MASK, _out)
     _out = MNEMONIC.sub(MASK, _out)
+    if '=' in _out:
+        _out = _redact_pairs(_out)
     return _out
 
 

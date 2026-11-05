@@ -95,3 +95,75 @@ class TestNestedStructures:
 
     def test_non_string_scalars_pass_through(self):
         assert redact([1, 2.5, True, None]) == [1, 2.5, True, None]
+
+
+class TestKeyValuePairs:
+    """
+    Form bodies, query strings, cookie lines: `password=hunter2` has no shape,
+    only a name. Found while reviewing login support (decisions/17 §7): a
+    form-encoded login body reached the report exactly as it was sent.
+    """
+
+    @pytest.mark.parametrize('text,secret', [
+        ('username=alice&password=hunter2&grant_type=password', 'hunter2'),
+        ('client_id=app&client_secret=s3cr3t-value', 's3cr3t-value'),
+        ('grant_type=refresh_token&refresh_token=r-1234567', 'r-1234567'),
+        ('https://api.example.com/orders?page=2&access_token=abc123', 'abc123'),
+        ('sid=1; session_id=zz-99; path=/', 'zz-99'),
+        ('login with password=hunter2 failed', 'hunter2'),
+        ('pass%77ord=encoded-key', 'encoded-key'),
+        ('api_key=k&q=1', '=k&'),
+        ('sent body=password=hunter2', 'hunter2'),
+        ('token=abc123==', 'abc123'),
+    ])
+    def test_the_value_of_a_credential_named_pair_is_masked(self, text, secret):
+        _out = redact_text(text)
+        assert secret not in _out and MASK in _out
+
+    def test_everything_else_is_left_byte_for_byte(self):
+        _text = 'username=alice&password=hunter2&grant_type=password&scope=read%20write'
+        assert redact_text(_text) == ('username=alice&password={}&grant_type=password'
+                                      '&scope=read%20write'.format(MASK))
+
+    @pytest.mark.parametrize('text', [
+        "data.status = 'PAID' (expected 'PAID'); fee=120",
+        'page=2&size=20',
+        'token=',                          # nothing to hide
+        'token==',                         # nor here
+        'a==b',
+    ])
+    def test_ordinary_text_is_untouched(self, text):
+        assert redact_text(text) == text
+
+    def test_a_pair_inside_a_value_keeps_its_key(self):
+        assert redact_text('sent body=password=hunter2') == 'sent body=password={}'.format(MASK)
+
+    def test_a_form_body_is_redacted_as_a_body(self):
+        from ipandora.core.report.redact import redact_body
+        assert 'hunter2' not in redact_body('username=alice&password=hunter2')
+
+    def test_through_the_report(self):
+        from ipandora.core.report.builder import _redact_exchange
+        from ipandora.core.report.render import to_curl
+        _ex = _redact_exchange({'method': 'POST', 'url': 'https://x/login?otp_token=777777',
+                                'request_body': 'username=alice&password=hunter2',
+                                'request_headers': {'Content-Type': 'application/x-www-form-urlencoded'}})
+        _text = repr(_ex) + to_curl(_ex)
+        assert 'hunter2' not in _text and '777777' not in _text
+
+
+class TestWhatLeavesForAnAgent:
+    """explain_failure / run_tests output goes to an agent, and usually on to a model provider."""
+
+    def test_summary_and_explain_are_masked(self, monkeypatch):
+        from ipandora.core.runner import api, store
+        from ipandora.core.runner.result import CaseResult, RunResult
+        _message = ('AssertionError: login failed\n  [FAIL] token is valid | '
+                    "data.token = '{}' body=password=hunter2".format(JWT))
+        _run = RunResult(run_id='run-x', cases=[CaseResult(
+            nodeid='t.py::test_login', outcome='failed', message=_message, detail=_message)])
+        _summary = repr(_run.summary())
+        assert JWT not in _summary and 'hunter2' not in _summary
+        monkeypatch.setattr(store, 'load', lambda run_id: _run)
+        _explained = repr(api.explain('run-x'))
+        assert JWT not in _explained and 'hunter2' not in _explained

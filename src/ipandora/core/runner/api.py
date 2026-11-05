@@ -373,16 +373,20 @@ def explain(run_id: str) -> Optional[dict]:
     _report = triage(_result)
     _report.analysis = hooks.analyze(_report, _result)
 
+    # The run store keeps everything as it was; what leaves through here goes
+    # to an agent, and from there usually to a model provider. Same masking
+    # as the report.
+    from ipandora.core.report.redact import redact, redact_text
     return {
         'run_id': _result.run_id,
-        'selector': _result.selector,
+        'selector': redact_text(_result.selector),
         'env': _result.env,
         'summary': _result.headline(),
-        'collect_error': _result.collect_error,
-        'triage': _report.to_dict(),
+        'collect_error': redact_text(_result.collect_error),
+        'triage': redact(_report.to_dict()),
         'failures': [
             {'case': _c.name, 'nodeid': _c.nodeid, 'outcome': _c.outcome,
              'duration': round(_c.duration, 3),
-             'message': _c.message, 'detail': _c.detail}
+             'message': redact_text(_c.message), 'detail': redact_text(_c.detail)}
             for _c in _result.failures],
     }
