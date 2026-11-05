@@ -24,7 +24,7 @@ AI 写测试之后，最后这个问题变成了关键：允许修改测试时�
 
 另一条腿是**开箱的全栈方案**：HTTP 今天可用，Web / App 按"集成，不封装"接入，驱动 API 原样暴露，框架只补配置、证据、判定和归因。
 
-📖 [定位：为什么不直接用 pytest](docs/usr/定位与对比.md)：哪些能力 pytest 生态已经有、哪些是独有的、为什么这样设计 · [路线](docs/design/12-定位与路线.md)（含并发）· [前瞻：agent 验证](docs/design/13-agent验证.md)
+📖 [定位：为什么不直接用 pytest](docs/guide/why.md)：哪些能力 pytest 生态已经有、哪些是独有的、为什么这样设计 · [路线](docs/design/decisions/12-定位与路线.md)（含并发）· [前瞻：agent 验证](docs/design/decisions/13-agent验证.md)
 
 ## 它解决什么
 
@@ -52,6 +52,14 @@ pip install intellipandora[parallel]  # 可选：并行执行 --workers、单条
 pip install intellipandora[web]       # 可选：Web 自动化（Playwright），之后 python -m playwright install chromium
 pip install intellipandora[visual]    # 可选：图像判定 matches_golden()
 ```
+
+从零开始一个用例项目（配置、能离线跑通的示例、给 agent 的 AGENTS.md、带门禁的 CI 样例）：
+
+```shell
+ipandora init my-tests && cd my-tests && ipandora run tests
+```
+
+📖 [快速开始](docs/guide/quickstart.md)
 
 ## 用起来
 
@@ -89,7 +97,7 @@ def test_create_order():
 
 失败时：`data.items[*].price > 0 — 1 of 3 items failed: data.items[1].price = Decimal('-1') (expected > 0)`。
 
-📖 [使用手册](docs/usr/user_guider.md)
+📖 [使用手册](docs/guide/README.md)
 
 ## 用不用 MCP
 
@@ -115,7 +123,7 @@ def test_create_order():
 
 一天跑 10000 次用例，LLM 调用 0 次。这不是约定，是四条结构性保证：默认安装不含任何 LLM SDK；`ai.enabled: false`；`core/` 不得 import `ai/`（CI 用 AST 检查）；**`rm -rf src/ipandora/ai && pytest` 必须全绿**（CI 里真的在跑）。
 
-📖 [`docs/design/03-LLM接入边界.md`](docs/design/03-LLM接入边界.md)
+📖 [`docs/design/decisions/03-LLM接入边界.md`](docs/design/decisions/03-LLM接入边界.md)
 
 ## 代码结构
 
@@ -132,13 +140,15 @@ def test_create_order():
 | `core/mcp` | agent 入口 |
 | `ai/` | 可选 LLM 支持，可整包删除 |
 
-## 设计文档
+## 文档
 
-全部决策与返工记录在 [`docs/design/`](docs/design/)：
-
-- [`README.md`](docs/design/README.md) — 索引与一页纸结论
-- [`09-对齐新规划的现状复核.md`](docs/design/09-对齐新规划的现状复核.md) — 现状逐项对照架构图
-- [`10-迭代方案.md`](docs/design/10-迭代方案.md) — 整改、能力拓展、agent 评测、安全两条线
+| 给谁 | 在哪 |
+|---|---|
+| 使用者，按任务组织 | [`docs/guide/`](docs/guide/README.md)：快速开始、判定与基线、HTTP、并行与并发、Web、图像、配置、报告、CI、agent |
+| 查参数和配置项 | [`docs/reference/`](docs/reference/cli.md)：从代码生成，CI 检查它和代码一致 |
+| 想知道它怎么工作 | [`docs/design/architecture.md`](docs/design/architecture.md)：当前架构，随代码更新 |
+| 想知道为什么这样设计 | [`docs/design/decisions/`](docs/design/decisions/README.md)：决策与返工记录 |
+| agent | [`llms.txt`](llms.txt) 是文档索引；在本仓库开发框架读 [`AGENTS.md`](AGENTS.md)；在用例项目里写用例读 `ipandora init` 生成的 AGENTS.md |
 
 ## 开发
 
@@ -164,7 +174,7 @@ make security                        # 依赖漏洞、代码扫描、许可证�
 - **扫描**：每个 PR、每次合入、每天定时，扫依赖漏洞（pip-audit）、自身代码（bandit）、许可证。结果公开在 **[安全报告](docs/security/report.md)**。
 - **发布**：只从 GitHub Actions 通过 PyPI Trusted Publishing 发布，附来源证明；每个版本附 CycloneDX SBOM。
 
-规则与理由见 [`docs/design/15`](docs/design/15-第三方组件安全准入与漏洞扫描.md)。
+规则与理由见 [`docs/design/decisions/15`](docs/design/decisions/15-第三方组件安全准入与漏洞扫描.md)。
 
 ## License
 

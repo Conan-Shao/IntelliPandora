@@ -1,6 +1,6 @@
 # 第三方组件登记表
 
-> 框架引入的每一个第三方组件都登记在这里，并且已经过准入审查（准入规则见 [`docs/design/15`](../design/15-第三方组件安全准入与漏洞扫描.md) §3）。
+> 框架引入的每一个第三方组件都登记在这里，并且已经过准入审查（准入规则见 [`docs/design/decisions/15`](../design/decisions/15-第三方组件安全准入与漏洞扫描.md) §3）。
 >
 > **这张表由 CI 核对**（`scripts/check_components.py`）：凡是 `setup.cfg`、`setup.py`、`requirements/*.in` 里声明的依赖，或 `.github/workflows/` 里引用的动作，都必须在表中出现，并且版本写法要完全一致；表里多出来、实际已不再使用的条目也会被拦下。不在表里的组件无法合入。
 >

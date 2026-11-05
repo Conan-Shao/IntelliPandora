@@ -1,0 +1,35 @@
+# IntelliPandora
+
+> A verdict layer on top of pytest for HTTP, Web (Playwright), concurrency and image checks. pytest answers "did any test fail"; IntelliPandora answers "can this pass be trusted": what each case actually judged, which cases judged nothing, and whether the suite judges less than its committed baseline. Deterministic: no LLM takes part in a verdict.
+
+Documentation is Markdown in the repository and is the single source. The reference pages are generated from the code.
+
+## Start here
+
+- [Quick start](docs/guide/quickstart.md): install, `ipandora init`, first run, accept the judgement baseline
+- [Why not plain pytest](docs/guide/why.md): what pytest and its plugins already do, and what this adds
+- [AGENTS.md template for test projects](src/ipandora/templates/project/AGENTS.md): rules for agents writing tests, each tied to a gate or a report signal
+
+## Guide
+
+- [Judgements, unverified cases and the baseline](docs/guide/judgements.md): assert_all, field(), that(), require(), conf/judgements.json, --fail-on-weakened
+- [HTTP](docs/guide/http.md): API classes, responses, timeouts, retries, TLS
+- [Parallel and concurrent](docs/guide/parallel.md): --workers, @pytest.mark.resource, --timeout, concurrently()
+- [Web](docs/guide/web.md): Playwright as is; expect() as judgements; stale selector vs missing element
+- [Images](docs/guide/visual.md): matches_golden(), what pixel comparison can and cannot see
+- [Configuration](docs/guide/config.md): conf/, per-environment overlays, Runtime
+- [Reports and triage](docs/guide/reports.md): HTML/JSON/JUnit, failure categories, calling run() from Python
+- [CI](docs/guide/ci.md): exit codes, --fail-on-weakened, baseline review, browsers and goldens in CI
+- [Agents](docs/guide/agents.md): MCP tools run_tests / explain_failure / list_runs / build_report
+
+## Reference
+
+- [CLI](docs/reference/cli.md): every subcommand and option, generated from argparse
+- [Configuration keys](docs/reference/config.md): generated from src/ipandora/conf/config.yaml
+
+## Working on the framework
+
+- [AGENTS.md](AGENTS.md): layering, gates, how to admit a dependency
+- [Architecture](docs/design/architecture.md)
+- [Decision records](docs/design/decisions/README.md)
+- [Security report](docs/security/report.md) and [component registry](docs/security/components.md)

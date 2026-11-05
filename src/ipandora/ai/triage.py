@@ -9,7 +9,7 @@ Optional LLM enrichment for failure triage.
 This is the *only* place in the framework that calls a model, and it runs
 after a test run has already finished and been classified. Cost therefore
 scales with failures, not with how many tests you run: a green suite of ten
-thousand cases makes zero calls. See docs/design/03-LLM接入边界.md.
+thousand cases makes zero calls. See docs/design/decisions/03-LLM接入边界.md.
 
 It never decides a category -- the deterministic rules in core/triage do
 that. All this adds is prose explaining what the failures have in common.

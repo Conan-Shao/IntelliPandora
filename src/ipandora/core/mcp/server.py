@@ -115,7 +115,7 @@ def build_report(run_id: str, directory: str, title: str = '') -> dict:
 
 
 
-# Deliberately NOT exposed -- see docs/design/04-实施计划.md:
+# Deliberately NOT exposed -- see docs/design/decisions/04-实施计划.md:
 #
 #   provision(spec)   needs core/fixture (P2)
 #   impact(diff)      needs a call-graph source (P5)

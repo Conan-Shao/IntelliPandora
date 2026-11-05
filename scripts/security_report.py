@@ -239,7 +239,7 @@ def render(s, date: str) -> str:
         '> 只有结论变化时才会更新本页，所以下面的日期是**状态最近一次变化的日期**，不是最近一次扫描的日期。'
         '最近一次扫描的结果见 [Actions]({})。'.format(ACTIONS),
         '>',
-        '> 组件如何准入见 [`docs/design/15`](../design/15-第三方组件安全准入与漏洞扫描.md)，'
+        '> 组件如何准入见 [`docs/design/decisions/15`](../design/decisions/15-第三方组件安全准入与漏洞扫描.md)，'
         '已准入的组件见 [组件登记表](components.md)，已登记的漏洞例外见 [例外登记](exceptions.md)。',
         '',
         '状态日期：{}'.format(date),
@@ -298,7 +298,7 @@ def render(s, date: str) -> str:
         _out.append('无。')
     _out += ['', '## 许可证', '',
              '白名单为宽松许可证（MIT、BSD、Apache、ISC、MPL-2.0、PSF 等），不接受 GPL 系、SSPL、'
-             'BUSL 等，理由见 [`docs/design/15`](../design/15-第三方组件安全准入与漏洞扫描.md) §3。', '']
+             'BUSL 等，理由见 [`docs/design/decisions/15`](../design/decisions/15-第三方组件安全准入与漏洞扫描.md) §3。', '']
     for _env, _title in (('runtime', '运行环境（框架 + 全部可选组，即用户可能装上的全部）'),
                          ('tools', '构建与工具链')):
         _out += ['<details><summary>{}：{} 个</summary>'.format(_title, len(_lic[_env])), '',
@@ -360,7 +360,7 @@ def main(argv) -> int:
         print('  ' + _problem, file=sys.stderr)
     if _s['blocking']:
         print('\n{} blocking finding(s). See docs/security/report.md for the full picture and '
-              'docs/design/15-第三方组件安全准入与漏洞扫描.md for what to do.'.format(
+              'docs/design/decisions/15-第三方组件安全准入与漏洞扫描.md for what to do.'.format(
                   len(_s['blocking'])), file=sys.stderr)
         return 1
     print('OK: no known vulnerabilities, no unannotated code findings, licenses allowed, '

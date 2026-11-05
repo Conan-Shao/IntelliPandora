@@ -6,7 +6,7 @@
 
 concurrently(): N operations at once from inside one test.
 
-Acceptance from docs/design/14 §2, against a real HTTP server in this process:
+Acceptance from docs/design/decisions/14 §2, against a real HTTP server in this process:
 
 - a charge endpoint with a check-then-act race: concurrently() reproduces the
   double charge every time, and the locked implementation passes;

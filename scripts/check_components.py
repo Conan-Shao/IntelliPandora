@@ -17,7 +17,7 @@ Three checks, all offline:
    same version spec. An entry the code no longer uses fails too: a registry
    that drifts from the code is a registry nobody can trust. This is what
    makes "admitted before it is introduced" enforceable rather than a
-   convention (docs/design/15 §3).
+   convention (docs/design/decisions/15 §3).
 2. **Licenses are on the allowlist**, for every distribution in the current
    environment -- transitive ones included, since that is what ships.
 3. **Vulnerability exceptions have not expired.** docs/security/exceptions.md
@@ -39,7 +39,7 @@ EXCEPTIONS = os.path.join(REPO, 'docs', 'security', 'exceptions.md')
 
 # SPDX-ish tokens a license string may contain. Matching is on tokens so
 # "Apache-2.0 OR BSD-3-Clause" and the classifier "Apache Software License"
-# both pass. Copyleft is not here on purpose -- see docs/design/15 §3.
+# both pass. Copyleft is not here on purpose -- see docs/design/decisions/15 §3.
 ALLOWED = ('MIT', 'BSD', 'Apache', 'ISC', 'MPL-2.0', 'Mozilla Public License 2.0',
            'PSF', 'Python Software Foundation', 'HPND', 'Unlicense', 'CC0',
            'Zlib', '0BSD')
@@ -54,7 +54,7 @@ LICENSE_OVERRIDES = {
 
 # Licenses outside the allowlist, accepted one by one after a review: the
 # license as we use it, and why. Each is shown as such in the public report.
-# docs/design/15 §3: copyleft never enters the core; an optional group needs
+# docs/design/decisions/15 §3: copyleft never enters the core; an optional group needs
 # its own review -- this is where that review is written down.
 REVIEWED_LICENSES = {
     'text-unidecode': (
@@ -255,7 +255,7 @@ def main(argv) -> int:
     for _problem in _problems:
         print('  ' + _problem, file=sys.stderr)
     if _problems:
-        print('\nSee docs/design/15-第三方组件安全准入与漏洞扫描.md: a component is admitted '
+        print('\nSee docs/design/decisions/15-第三方组件安全准入与漏洞扫描.md: a component is admitted '
               '(and registered in docs/security/components.md) before it is introduced.',
               file=sys.stderr)
         return 1

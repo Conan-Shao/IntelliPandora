@@ -15,7 +15,7 @@ permissions:
 # and for scripts/check_components.py, which checks the pin against
 # docs/security/components.md. Dependencies come from the hashed lock files
 # under requirements/, so CI installs exactly what was reviewed. See
-# docs/design/15-第三方组件安全准入与漏洞扫描.md.
+# docs/design/decisions/15-第三方组件安全准入与漏洞扫描.md.
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -48,6 +48,13 @@ jobs:
       - name: Install the browser for the web tests
         run: python -m playwright install --with-deps chromium-headless-shell
 
+      # Every relative link resolves, and docs/reference/ -- generated from
+      # the argparse definitions and config.yaml -- matches the code. Here
+      # rather than in `layering`: generating the CLI reference imports the
+      # package. The guide's code examples are run by test/testdocs.
+      - name: Docs are current
+        run: python scripts/check_docs.py
+
       # Guards against the v1.1.0 class of bug: modules that raise at import
       # time. No test touched them, so nothing caught it.
       - name: Import smoke test
@@ -60,7 +67,7 @@ jobs:
 
   # LLM support must stay optional. If deleting ai/ breaks the suite, then
   # something in core/ grew a dependency on it.
-  # See docs/design/03-LLM接入边界.md
+  # See docs/design/decisions/03-LLM接入边界.md
   test-without-ai:
     runs-on: ubuntu-latest
     steps:

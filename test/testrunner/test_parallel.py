@@ -12,7 +12,7 @@ case came back unverified. Faster and wrong is worse than slow. So the first
 thing pinned here is sameness -- the inventory, case by case and byte for
 byte -- and only then speed, environment, resources and timeouts.
 
-Acceptance criteria from docs/design/14 §1, each one a test below.
+Acceptance criteria from docs/design/decisions/14 §1, each one a test below.
 """
 import json
 import os

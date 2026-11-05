@@ -5,7 +5,7 @@ Enforce that core/ never depends on ai/.
 
 LLM support is optional and disabled by default. If core/ could import ai/,
 the framework's basic capability would quietly acquire a paid, latent,
-non-reproducible dependency. See docs/design/03-LLM接入边界.md.
+non-reproducible dependency. See docs/design/decisions/03-LLM接入边界.md.
 
 Detection is AST-based: it looks at real import statements, so documentation
 that *mentions* ipandora.ai -- which core/triage necessarily does, since it
@@ -75,7 +75,7 @@ def main() -> int:
 
     if _violations:
         print('\nRegister an analyzer through core/triage/hooks.py instead, the way '
-              'ipandora.ai.enable() does.\nSee docs/design/03-LLM接入边界.md',
+              'ipandora.ai.enable() does.\nSee docs/design/decisions/03-LLM接入边界.md',
               file=sys.stderr)
         return 1
 

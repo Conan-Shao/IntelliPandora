@@ -3,7 +3,7 @@
 > 本页由 `scripts/security_report.py` 生成。每个 PR、每次合入 main、以及每天定时都会扫描一次（[`security.yml`](https://github.com/Conan-Shao/IntelliPandora/actions/workflows/security.yml)）。
 > 只有结论变化时才会更新本页，所以下面的日期是**状态最近一次变化的日期**，不是最近一次扫描的日期。最近一次扫描的结果见 [Actions](https://github.com/Conan-Shao/IntelliPandora/actions/workflows/security.yml)。
 >
-> 组件如何准入见 [`docs/design/15`](../design/15-第三方组件安全准入与漏洞扫描.md)，已准入的组件见 [组件登记表](components.md)，已登记的漏洞例外见 [例外登记](exceptions.md)。
+> 组件如何准入见 [`docs/design/decisions/15`](../design/decisions/15-第三方组件安全准入与漏洞扫描.md)，已准入的组件见 [组件登记表](components.md)，已登记的漏洞例外见 [例外登记](exceptions.md)。
 
 状态日期：2026-11-05
 
@@ -43,7 +43,7 @@ bandit 报出、经评估不构成问题的地方，在源码里标注 `# nosec`
 
 ## 许可证
 
-白名单为宽松许可证（MIT、BSD、Apache、ISC、MPL-2.0、PSF 等），不接受 GPL 系、SSPL、BUSL 等，理由见 [`docs/design/15`](../design/15-第三方组件安全准入与漏洞扫描.md) §3。
+白名单为宽松许可证（MIT、BSD、Apache、ISC、MPL-2.0、PSF 等），不接受 GPL 系、SSPL、BUSL 等，理由见 [`docs/design/decisions/15`](../design/decisions/15-第三方组件安全准入与漏洞扫描.md) §3。
 
 <details><summary>运行环境（框架 + 全部可选组，即用户可能装上的全部）：60 个</summary>
 

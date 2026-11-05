@@ -20,7 +20,7 @@ people to ignore red builds.
 
 An optional LLM pass can add a natural-language root cause on top, but it
 never decides a category and is off by default -- see
-docs/design/03-LLM接入边界.md, and ipandora.ai.enable() to turn it on.
+docs/design/decisions/03-LLM接入边界.md, and ipandora.ai.enable() to turn it on.
 """
 from ipandora.core.triage.category import BLAMES_SYSTEM_UNDER_TEST, Category, Confidence
 from ipandora.core.triage.hooks import analyze, has_analyzer, register_analyzer

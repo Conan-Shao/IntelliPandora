@@ -1,5 +1,7 @@
 # IntelliPandora 演进设计
 
+> 这里是决策与返工记录，已有的内容不再改写。当前架构见 [`../architecture.md`](../architecture.md)，使用方法见 [`docs/guide/`](../../guide/README.md)。
+
 > 2026-08 · 设计阶段文档，尚无对应实现
 
 ---

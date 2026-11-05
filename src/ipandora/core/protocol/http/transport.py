@@ -79,7 +79,7 @@ def build_adapter(policy: TransportPolicy = None) -> HTTPAdapter:
     A plain HTTPAdapter. It used to be a ReplayAdapter subclass, so every
     request of every run passed through a record/replay check whether or not
     anyone was recording. Record/replay has been removed -- see
-    docs/design/07-流量录制回放.md for why and how to get it back.
+    docs/design/decisions/07-流量录制回放.md for why and how to get it back.
     """
     policy = policy or TransportPolicy()
     _retry = Retry(
