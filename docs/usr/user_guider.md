@@ -372,6 +372,43 @@ def test_refund(): ...
 
 **库调用和 MCP**：`run('tests', workers=4, timeout=120)`；MCP 的 `run_tests(selector, env, workers)`。没装 `parallel` 却要求并行时会直接报错并提示安装，不会悄悄改成串行。
 
+#### 2.1.7 并发场景测试
+
+上一节是让**用例之间**并行、跑得快；这一节是在**一条用例里**同时发起 N 个操作，判断产品在并发下对不对：同一笔订单只扣一次款、库存不超卖、幂等键真的生效。不需要安装额外的组件。
+
+```python
+from ipandora.core.assertion import assert_all
+from ipandora.core.assertion.field import field, that
+from ipandora.core.assertion.http import status_code
+from ipandora.core.concurrency import concurrently
+
+
+def test_pay_exactly_once():
+    shop = ShopApi()
+    shop.login()                                     # 登录态会带到每个并发请求
+
+    results = concurrently(lambda: shop.pay('order-1', key='idem-1'), n=20)
+    codes = [status_code(r.value) for r in results]
+
+    assert_all(
+        results.overlap_check(),                     # 先确认并发真的发生了
+        that(codes, '各请求状态').each().is_in([200, 409]),
+        that(codes.count(200), '成功扣款次数') == 1,     # 恰好一次
+        field(shop.order('order-1'), 'data.paid_amount') == 100,   # 终态
+    )
+```
+
+- **同时起跑**：所有线程准备好之后才一起放行。
+- **登录态**：每个并发线程拿到调用方 session 的副本，包括请求头、cookie、认证、TLS 和代理设置。如果不这样做，新线程用的是一个空 session，所有并发请求都会以未登录身份发出去，而一堆 401 看起来很像"只有一个成功"。并发期间响应里新设置的 cookie 只留在各自的线程里。
+- **证据**：每个并发请求都记在这条用例下，报告里能看到全部 N 个请求和各自的响应。
+- **结果**：`results` 按给出的顺序排列，每一项有 `value`（返回值）、`error`（抛出的异常）、`start`（相对第一个起跑的偏移）、`duration`。异常**不会抛出**，而是交给你来判定，因为并发下"除了一个之外全部报错"往往正是期望的结果。
+- **几个操作互相竞争**：传一个列表，每个执行一次：`concurrently([lambda: shop.pay(o), lambda: shop.refund(o)])`。
+- **并发真的发生了吗**：线程被唤醒有先后。如果某个操作在最后一个起跑之前就已经结束，这次实际上有一部分是串行的，要触发的竞态可能根本没有机会出现。`results.overlapped` 会告诉你是否所有操作同时在进行，`results.overlap_check()` 把它变成一条判定。建议放在 `assert_all` 的第一条：串行跑的并发测试永远不会重复扣款，没有它，这样的测试会通过。
+- **起跑前就失败**：某个线程在准备阶段出错，或者没能在 `timeout`（默认 60 秒）内就绪时，整组都不执行，抛出 `NotConcurrent`。不会退化成"少一个"或"一个接一个"地照样判定。
+- **卡住的操作**：超过 `timeout` 还没结束的，结果里记为 `TimeoutError`，不会一直等下去。
+
+**边界**：这是并发下的正确性测试，不是压测，不提供 RPS 目标和延迟分位数，那是 Locust、k6 的事。
+
 ### 2.2 辅助功能
 
 #### 2.2.1 测试数据注入

@@ -109,6 +109,9 @@ class Recorder:
 
     def __init__(self):
         self._local = threading.local()
+        # Several threads write into one case's evidence during concurrently();
+        # appends are guarded so that holds on interpreters without a GIL too.
+        self._write = threading.Lock()
 
     # -- lifecycle ---------------------------------------------------------
 
@@ -131,6 +134,20 @@ class Recorder:
         self._local.current = None
         return _current
 
+    def current(self) -> Optional[CaseEvidence]:
+        """This thread's case evidence, for handing to another thread; None outside a case."""
+        return getattr(self._local, 'current', None)
+
+    def bind(self, evidence: Optional[CaseEvidence]) -> None:
+        """
+        Make this thread record into a case another thread opened.
+
+        For core/concurrency.py: the threads it starts belong to the case that
+        started them, and without this every request they made was dropped --
+        the evidence is per-thread and a new thread has no case.
+        """
+        self._local.current = evidence
+
     def reset(self) -> None:
         self._local.current = None
 
@@ -145,19 +162,24 @@ class Recorder:
         if _current is None:
             return
         for _check in checks or ():
-            _current.checks.append({
+            _entry = {
                 'name': getattr(_check, 'name', ''),
                 'ok': bool(getattr(_check, 'ok', False)),
                 'kind': getattr(_check, 'kind', 'assert'),
                 'expr': getattr(_check, 'expr', ''),
                 'src': getattr(_check, 'src', ''),
                 'claim': getattr(_check, 'claim', '') or getattr(_check, 'name', ''),
-            })
+            }
+            with self._write:
+                _current.checks.append(_entry)
 
     def current_checks(self) -> List[Dict[str, Any]]:
         """The checks recorded so far for this thread's case; [] outside one."""
         _current = getattr(self._local, 'current', None)
-        return list(_current.checks) if _current is not None else []
+        if _current is None:
+            return []
+        with self._write:
+            return list(_current.checks)
 
     def add_exchange(self, exchange: Exchange) -> None:
         _current = getattr(self._local, 'current', None)
@@ -165,7 +187,9 @@ class Recorder:
             return
         exchange.request_body = _clip(_readable(exchange.request_body))
         exchange.response_body = _clip(_readable(exchange.response_body))
-        _current.exchanges.append(exchange.to_dict())
+        _entry = exchange.to_dict()
+        with self._write:
+            _current.exchanges.append(_entry)
 
 
 recorder = Recorder()

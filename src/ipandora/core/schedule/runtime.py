@@ -315,6 +315,24 @@ class Runtime(object):
         second read silently returned [].
         """
         _local = threading.local()
+        _SHARED = ('case_steps', 'case_list', 'cur_case_name')
+
+        @classmethod
+        def share(cls) -> dict:
+            """This thread's case state, by reference, for adopt() in another thread."""
+            return {_k: getattr(cls._local, _k) for _k in cls._SHARED if hasattr(cls._local, _k)}
+
+        @classmethod
+        def adopt(cls, state: dict) -> None:
+            """
+            Record steps into the case another thread is running.
+
+            For core/concurrency.py: its threads belong to the case that
+            started them, so their steps go where that case's steps go. The
+            same objects, not copies.
+            """
+            for _k, _v in (state or {}).items():
+                setattr(cls._local, _k, _v)
 
         @classmethod
         def _steps_store(cls) -> dict:
