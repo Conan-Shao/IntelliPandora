@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>{{ title }}</title>
+{% include 'conf/static/_style.html' %}
+<style>
+.ci{display:block}
+.ci .zero{stroke:var(--skip-mark)}
+.ci .worse{stroke:var(--warn-mark);fill:var(--warn-mark)}
+.ci .better{stroke:var(--pass-mark);fill:var(--pass-mark)}
+.ci .same{stroke:var(--skip-mark);fill:var(--skip-mark)}
+.steps{margin:0;padding:0;list-style:none;font-size:13px}
+.steps li{display:grid;grid-template-columns:64px 72px minmax(0,1fr);gap:8px;padding:7px 0;border-top:1px solid var(--line-soft)}
+.steps li.err{background:var(--fail-row)}
+.steps .t{font-family:var(--mono);color:var(--muted)}
+.steps .k{font-weight:600}
+.steps .x{overflow-wrap:anywhere;white-space:pre-wrap}
+.judge{border:1px dashed var(--skip-mark);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+</style>
+</head>
+<body>
+{%- set s = summary %}
+{%- set cmp = comparison %}
+
+<header class="top">
+  <div class="wrap">
+    <div class="brand">{{ title }}</div>
+    <div class="meta">
+      <span>{{ run_id }}</span>
+      {%- if manifest.dataset %}<span>评测集 {{ manifest.dataset }}{% if manifest.dataset_version %}@{{ manifest.dataset_version }}{% endif %}</span>{% endif %}
+      <span>{{ s.tasks }} 个任务 × 每题 {{ s.k }} 次</span>
+      {%- if manifest.harness %}<span>被测 {{ manifest.harness }}</span>{% endif %}
+      {%- if manifest.model %}<span>模型 {{ manifest.model }}</span>{% endif %}
+      <span>耗时 {{ '%.1f'|format(run.duration) }} s</span>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+<section class="card verdict" aria-labelledby="verdict" data-verdict="{{ verdict.status }}">
+  <div class="main">
+    <span class="stamp {{ 'fail' if verdict.status == 'worse' else ('pass' if verdict.status == 'better' else 'review') }}">{{ verdict.label }}</span>
+    <h1 id="verdict">{{ verdict.sentence }}</h1>
+    <ul>
+      {%- if cmp and not cmp.not_comparable %}
+      <li>按任务配对：{{ cmp.worse }} 题变差、{{ cmp.better }} 题变好、{{ cmp.same }} 题不变。</li>
+      {%- if cmp.noise %}<li>判定变好或变差还要求差值超过基础设施噪声 ±{{ '%.1f'|format(100 * cmp.noise) }} 个百分点。</li>{% endif %}
+      {%- if cmp.only_in_base or cmp.only_in_now %}<li>只在一边出现的任务不参与比较：基线独有 {{ cmp.only_in_base|length }} 题，本次独有 {{ cmp.only_in_now|length }} 题。</li>{% endif %}
+      {%- endif %}
+      {%- if s.judge_checks %}<li>模型评委的 {{ s.judge_checks }} 条判定只展示，不参与成功率和结论{% if s.judge_uncertain %}；其中 {{ s.judge_uncertain }} 条"不确定"{% endif %}。</li>{% endif %}
+      {%- if s.infra %}<li>{{ s.infra }} 次试验因基础设施问题没有结果，不计入成功率。</li>{% endif %}
+      {%- if selfcheck %}<li><b>{{ selfcheck|length }} 道题的参考解判不过</b>，这些题上的失败归为"任务有问题"。</li>{% endif %}
+    </ul>
+  </div>
+  <dl>
+    <dt>对比基线</dt><dd>{% if cmp %}<code>{{ cmp.baseline_run or '—' }}</code>{% else %}无<span class="sub">用 <code>--update-baseline</code> 写入</span>{% endif %}</dd>
+    <dt>评测集</dt><dd><code>{{ manifest.dataset_hash[:12] or '—' }}</code><span class="sub">内容哈希；划分 {{ manifest.split or '全部' }}</span></dd>
+    <dt>环境</dt><dd>{% if manifest.resources %}{% for k, v in manifest.resources|dictsort %}{{ k }}={{ v }}{% if not loop.last %} · {% endif %}{% endfor %}{% else %}未记录资源配置{% endif %}</dd>
+  </dl>
+</section>
+
+<section class="tiles" aria-label="评测指标">
+  <div class="tile">
+    <span class="k">成功率 · {{ s.decided }} 次试验</span>
+    <span class="v"><b>{{ pct(s.success_rate) }}</b></span>
+    {%- if s.interval %}<span class="d">95% 区间 {{ pct(s.interval[0]) }} – {{ pct(s.interval[1]) }}（Wilson）</span>{% endif %}
+  </div>
+  <div class="tile">
+    <span class="k">稳定性 · pass^{{ s.k }}</span>
+    <span class="v"><b>{{ pct(s.pass_hat_k) }}</b></span>
+    <span class="d">{{ s.tasks_all_k }} / {{ s.tasks }} 题 {{ s.k }} 次全过</span>
+    <span class="s">pass@{{ s.k }} {{ pct(s.pass_at_k) }}</span>
+  </div>
+  <div class="tile">
+    <span class="k">平均分 · 含部分分</span>
+    <span class="v"><b>{{ '—' if s.mean_score is none else '%.2f'|format(s.mean_score) }}</b></span>
+    <span class="d">必需判定全成立才算成功</span>
+  </div>
+  <div class="tile">
+    <span class="k">判定来源</span>
+    <span class="v"><b>{{ s.deterministic_checks }}</b><span>条确定性</span></span>
+    <span class="d">模型评委 {{ s.judge_checks }} 条，不计入</span>
+  </div>
+  <div class="tile">
+    <span class="k">成本 · 每次试验</span>
+    {%- if s.cost_per_trial %}
+    {%- for key, value in s.cost_per_trial|dictsort %}<span class="d"><b>{{ '%.3g'|format(value) }}</b> {{ key }}</span>{% endfor %}
+    {%- else %}<span class="v"><b>—</b></span><span class="s">agent 没有报告成本</span>{% endif %}
+  </div>
+</section>
+
+{%- if tag_rows %}
+<section class="card" aria-labelledby="tags">
+  <div class="row"><h2 id="tags">{{ '按标签对比基线' if cmp else '按标签' }}</h2>{% if cmp %}<span class="sub">横条是差值的 95% 区间；跨过 0 就是"无法区分"</span>{% endif %}</div>
+  <div class="scroll" style="margin-top:12px">
+    <table class="t wide">
+      <thead><tr><th scope="col">标签</th><th scope="col">任务</th>{% if cmp %}<th scope="col">基线</th>{% endif %}<th scope="col">本次</th>{% if cmp %}<th scope="col">差值</th><th scope="col">区间</th><th scope="col">判断</th>{% else %}<th scope="col">95% 区间</th>{% endif %}</tr></thead>
+      <tbody>
+      {%- for r in tag_rows %}
+      <tr>
+        <td><b>{{ r.value }}</b><div class="sub">{{ r.tag }}</div></td>
+        <td>{{ r.tasks }}</td>
+        {%- if cmp %}<td>{{ pct(r.base_rate) }}</td>{% endif %}
+        <td>{{ pct(r.now_rate) }}</td>
+        {%- if cmp %}
+        <td class="fx">{{ '%+.1f'|format(100 * r.difference) }}</td>
+        <td><svg class="ci" viewBox="0 0 260 20" width="260" height="20" role="img" aria-label="差值区间 {{ '%+.1f'|format(100 * r.low) }} 到 {{ '%+.1f'|format(100 * r.high) }}">
+          {%- set cls = 'worse' if r.verdict == 'worse' else ('better' if r.verdict == 'better' else 'same') %}
+          <line class="zero" x1="{{ r.bar.zero }}" y1="2" x2="{{ r.bar.zero }}" y2="18" stroke-width="1"></line>
+          <line class="{{ cls }}" x1="{{ r.bar.low }}" y1="10" x2="{{ r.bar.high }}" y2="10" stroke-width="3" stroke-linecap="round"></line>
+          <circle class="{{ cls }}" cx="{{ r.bar.mid }}" cy="10" r="5"></circle></svg></td>
+        <td><b>{{ {'worse': '变差', 'better': '变好'}.get(r.verdict, '无法区分') }}</b></td>
+        {%- else %}
+        <td>{% if r.interval %}{{ pct(r.interval[0]) }} – {{ pct(r.interval[1]) }}{% else %}—{% endif %}</td>
+        {%- endif %}
+      </tr>
+      {%- endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{%- endif %}
+
+{%- if by_category %}
+<section class="card" aria-labelledby="cats">
+  <div class="row"><h2 id="cats">没有成功的试验 · 按归因</h2><span class="sub">规则能分的先分；分不了的是"待人工阅读"，附轨迹</span></div>
+  <div class="tiles" style="margin-top:12px">
+    {%- for c in by_category %}
+    <div class="tile"><span class="k">{{ c.label }}</span><span class="v"><b>{{ c.count }}</b><span>次</span></span></div>
+    {%- endfor %}
+  </div>
+</section>
+{%- endif %}
+
+{%- if cmp and cmp.worst %}
+<section class="card" aria-labelledby="worst">
+  <h2 id="worst">变差的任务</h2>
+  <div class="scroll" style="margin-top:12px">
+    <table class="t">
+      <thead><tr><th scope="col">任务</th><th scope="col">基线</th><th scope="col">本次</th></tr></thead>
+      <tbody>{% for w in cmp.worst[:20] %}<tr><td><a href="#task-{{ w.task_id }}" class="mono">{{ w.task_id }}</a></td><td class="fx">{{ w.base[0] }} / {{ w.base[1] }}</td><td class="fx"><b>{{ w.now[0] }} / {{ w.now[1] }}</b></td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
+</section>
+{%- endif %}
+
+{%- if selfcheck %}
+<section class="card" aria-labelledby="self">
+  <h2 id="self">参考解自检没有通过</h2>
+  <p class="sub">参考解判不过，说明任务或评分器有问题，不是 agent 的问题。</p>
+  <ul class="list">{% for p in selfcheck %}<li><code>{{ p.task_id }}</code><span>{{ p.problem }}</span>{% for c in p.checks %}<span class="sub">{{ c.name }}：{{ c.expr }}</span>{% endfor %}</li>{% endfor %}</ul>
+</section>
+{%- endif %}
+
+{%- if failed_trials %}
+<section aria-labelledby="trials">
+  <div class="row" style="margin-bottom:12px"><h2 id="trials">没有成功的试验</h2><span class="sub">{{ failed_total }} 次{% if failed_total > failed_trials|length %}，列出前 {{ failed_trials|length }} 次{% endif %}</span></div>
+  <div class="cases">
+  {%- for t in failed_trials %}
+  <details class="case" id="task-{{ t.task_id }}" {% if loop.index <= 3 %}open{% endif %}>
+    <summary>
+      <span class="st {{ 'FAIL' if t.status == 'graded' else 'SKIPPED' }}">{{ category_label.get(t.category, t.category) }}</span>
+      <span><span class="ct mono">{{ t.task_id }}</span><span class="cid" style="display:block">第 {{ t.index + 1 }} 次试验 · {{ t.trajectory|length }} 步 · {{ '%.1f'|format(t.seconds) }} s{% if t.score is not none %} · 得分 {{ '%.2f'|format(t.score) }}{% endif %}</span></span>
+    </summary>
+    <div class="body">
+      {%- if t.error %}<pre>{{ t.error }}</pre>{% endif %}
+      {%- set det = t.checks|rejectattr('src', 'equalto', 'llm_judge')|list %}
+      {%- set jud = t.checks|selectattr('src', 'equalto', 'llm_judge')|list %}
+      {%- if det %}
+      <div><h3>判定</h3>
+        <table class="checks" style="margin-top:8px"><thead><tr><th scope="col">结果</th><th scope="col">判定</th><th scope="col">实际</th><th scope="col">权重</th></tr></thead><tbody>
+        {%- for c in det|sort(attribute='ok') %}
+        <tr class="{{ 'ok' if c.ok else 'bad' }}"><td class="r">{{ '成立' if c.ok else '不成立' }}</td><td class="e">{{ c.name }}{% if not c.required %}<span class="sub">（非必需）</span>{% endif %}</td><td class="e">{{ c.expr or '—' }}</td><td class="s">{{ '%g'|format(c.weight) }}</td></tr>
+        {%- endfor %}
+        </tbody></table></div>
+      {%- endif %}
+      {%- if jud %}
+      <div class="judge"><span class="sub">模型评委 · 只展示，不计入</span>
+        {%- for c in jud %}<span><b>{{ '不确定' if c.uncertain else ('成立' if c.ok else '不成立') }}</b> {{ c.name }}{% if c.expr %}<span class="sub"> · {{ c.expr }}</span>{% endif %}</span>{% endfor %}
+      </div>
+      {%- endif %}
+      {%- if t.trajectory %}
+      <div><h3>轨迹</h3>
+        <ol class="steps" style="margin-top:8px">
+        {%- for e in t.trajectory %}
+        <li class="{{ 'err' if e.error else '' }}"><span class="t">{{ '%.1f'|format(e.t or 0) if e.t is number else (e.t or '') }}</span><span class="k">{{ e.kind or '' }}{% if e.name %} · {{ e.name }}{% endif %}</span><span class="x">{{ e.text or '' }}{% if e.error %} — {{ e.error }}{% endif %}</span></li>
+        {%- endfor %}
+        </ol></div>
+      {%- endif %}
+      {%- if t.output is not none %}<details class="raw"><summary>agent 的输出</summary><pre>{{ t.output }}</pre></details>{% endif %}
+    </div>
+  </details>
+  {%- endfor %}
+  </div>
+</section>
+{%- endif %}
+
+<section class="card" aria-labelledby="manifest">
+  <h2 id="manifest">版本清单</h2>
+  <p class="sub">分数依赖的一切。两次运行的数据集哈希、划分或资源不同，分数不可比。</p>
+  <div class="scroll" style="margin-top:8px"><table class="t"><tbody>
+    {%- for key, value in manifest.to_dict()|dictsort %}<tr><th scope="row">{{ key }}</th><td class="fx">{{ value if value not in (none, '', {}) else '—' }}</td></tr>{% endfor %}
+  </tbody></table></div>
+</section>
+
+<footer>
+  <span>IntelliPandora</span><span>{{ run_id }}</span><span>生成于 {{ generated }}</span>
+  <span>结论只来自确定性判定和统计检验；模型评委校准达标前不参与</span>
+</footer>
+</main>
+</body>
+</html>

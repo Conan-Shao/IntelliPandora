@@ -1,0 +1,27 @@
+# A toy dataset for `ipandora eval`: pull the order id and amount out of a
+# customer message. Small on purpose -- it shows the format, the reference
+# self-check, trials, pass^k and the report, not a benchmark.
+name: order-extraction
+version: 1
+tasks:
+  - id: plain
+    input: 订单 A1001 金额 120.50 元，请退款
+    expected: {order: A1001, amount: '120.50'}
+    tags: {kind: 常规}
+    reference: {order: A1001, amount: '120.50'}
+  - id: comma-amount
+    input: Order A1002 total 1,299.00, please cancel
+    expected: {order: A1002, amount: '1299.00'}
+    tags: {kind: 数字格式}
+    reference: {order: A1002, amount: '1299.00'}
+  - id: two-orders
+    input: 订单 A1003 已退，另一笔 A1004 金额 88.00 未退
+    expected: {order: A1004, amount: '88.00'}
+    tags: {kind: 多个订单}
+    reference: refs/two-orders.json
+  - id: no-order
+    input: 我想问问你们的营业时间
+    expected: {order: null, amount: null}
+    tags: {kind: 常规}
+    polarity: dont
+    reference: {order: null, amount: null}

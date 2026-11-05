@@ -42,6 +42,8 @@ REQUIRED = (
     'ipandora/conf/config.yaml',            # every Runtime lookup
     'ipandora/conf/static/report.html',     # ipandora run --report
     'ipandora/conf/static/history.html',    # the run history index
+    'ipandora/conf/static/_style.html',     # shared by report.html and eval.html
+    'ipandora/conf/static/eval.html',       # ipandora eval run
     'ipandora/templates/project/AGENTS.md',  # ipandora init
     'ipandora/templates/project/tests/test_example.py.tmpl',
     'ipandora/templates/project/_github/workflows/tests.yml.tmpl',

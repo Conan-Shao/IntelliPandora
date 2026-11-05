@@ -5,6 +5,14 @@
 
 `ipandora <子命令> [参数]`。每个子命令也可以用 `-h` 查看同样的内容。
 
+## `ipandora eval`
+
+agent evaluation: run a spec, self-check references, label samples
+
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `eval_action` |  |  |
+
 ## `ipandora init`
 
 start a test project: config, a passing example, AGENTS.md and CI with the gate
