@@ -35,6 +35,7 @@ pip install intellipandora[mcp]       # 可选：agent 入口
 ipandora run test/api                        # 跑完出 HTML + JSON + JUnit XML
 ipandora run test/api --junit-xml out.xml    # 给 CI 的那份放到指定位置
 ipandora run test/api --exclude-flaky        # 门禁模式：已知不稳定的用例不参与判定
+ipandora run test/api -e staging             # 叠加 ./conf/staging.yaml，只作用于本次运行
 ipandora mcp                                 # 以 MCP server 方式供 agent 调用
 ```
 

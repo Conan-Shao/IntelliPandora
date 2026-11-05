@@ -146,9 +146,17 @@ def json_matches(response: Any, path: str, condition: dict, name: str = None) ->
     Assert a field satisfies a comparator condition.
 
     Uses the same operators as ResponseHandler.filter:
-    $eq $gt $in $notIn $contains $startWith
+
+        $eq $gt $gte $lt $lte    numeric when the operand is a number
+        $in $notIn               membership
+        $contains $startWith     substring (contains is case-insensitive)
+        $regex                   re.search, strings only
 
         json_matches(resp, 'data.total', {'$gt': 0})
+        json_matches(resp, 'data.fee', {'$gte': 0, '$lte': 100})    # a range
+        json_matches(resp, 'data.version', {'$regex': r'^\\d+\\.\\d+\\.\\d+$'})
+
+    Several operators in one condition must all hold.
 
     All comparators are deterministic and offline by design -- see
     docs/design/03-LLM接入边界.md.
@@ -159,9 +167,9 @@ def json_matches(response: Any, path: str, condition: dict, name: str = None) ->
         return Check(name=_label, ok=False, expr=_reason, src=Source.API)
 
     for _op, _operand in condition.items():
-        _method = str(_op).replace('$', 'cmp_')
+        _method = Compare.method_for(_op)
         _comparator = Compare(a=_value, b=_operand)
-        if not hasattr(_comparator, _method):
+        if not _method:
             return Check(name=_label, ok=False,
                          expr='unknown operator {!r}'.format(_op), src=Source.API)
         try:

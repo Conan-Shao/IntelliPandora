@@ -138,7 +138,7 @@ class Command(CommandBase):
             help='what to run: a path, a path::node, or a -k expression')
         self.parser.add_argument(
             '-e', '--env', default='',
-            help='environment name, recorded in the report')
+            help='environment name: overlays ./conf/<env>.yaml (or $IPANDORA_CONFIG_DIR/<env>.yaml) for this run, and is recorded in the report')
         self.parser.add_argument(
             '--title', default=None,
             help='report title. Default: IntelliPandora Test Report')
