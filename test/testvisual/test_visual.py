@@ -336,11 +336,20 @@ def shots():
 
 class TestRealBrowserScreenshots:
 
-    def test_rendering_noise_passes_and_a_colour_change_fails(self, tmp_path, case, shots):
+    def test_the_same_page_rendered_again_passes(self, tmp_path, case, shots):
         golden(tmp_path, Image.open(io.BytesIO(shots['base'])))
         assert that(shots['again']).matches_golden('checkout').ok
-        _shifted = that(shots['subpixel text']).matches_golden('checkout')
+
+    def test_a_colour_change_fails_where_text_drift_is_absorbed_by_a_small_tolerance(
+            self, tmp_path, case, shots):
+        # A 0.4px shift of a paragraph depends on how the machine rasterises the
+        # glyphs: 0 pixels left after the 3x3 filter locally, 18 (0.0075%) on a
+        # GitHub runner, where dense CJK strokes still form small solid blocks.
+        # A button changing colour is ~50 times that, so a 0.1% tolerance keeps
+        # one and not the other.
+        golden(tmp_path, Image.open(io.BytesIO(shots['base'])))
+        assert shots['subpixel text'] != shots['base']        # it is a different image
+        _shifted = that(shots['subpixel text']).matches_golden('checkout', tolerance=0.001)
         assert _shifted.ok, _shifted.expr
-        assert shots['subpixel text'] != shots['base']        # it was a different image
-        _changed = that(shots['button colour']).matches_golden('checkout')
+        _changed = that(shots['button colour']).matches_golden('checkout', tolerance=0.001)
         assert not _changed.ok and '位置' in _changed.expr
