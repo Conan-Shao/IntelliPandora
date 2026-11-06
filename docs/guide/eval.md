@@ -40,6 +40,8 @@ print(summary['success_rate'], summary['interval'], summary['pass_hat_k'])   # 0
 
 ## 任务格式
 
+准备数据集时看 [评测数据集规范](eval-dataset.md)：完整的字段、`expected` 的判定词汇、参考解、埋点和入库检查，标明了哪些已支持、哪些在计划中。
+
 ```yaml
 name: coding-tasks
 version: 3
