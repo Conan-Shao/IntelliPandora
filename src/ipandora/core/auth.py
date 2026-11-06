@@ -160,6 +160,29 @@ class Provider:
         """Which identities this provider logs in. Default: all but default and anonymous."""
         return name not in (DEFAULT, ANONYMOUS)
 
+    # -- parallel runs (§2.3; plan A2) ------------------------------------------------
+
+    single_session = False
+    """True, or the names of the identities, whose account allows one session
+    at a time: logging in anywhere else logs the first session out. Every
+    worker of a parallel run then shares one login instead of each logging in
+    and knocking the others out."""
+
+    accounts = {}
+    """An account pool: {'buyer': ['buyer01', ..., 'buyer08']}. Each process
+    -- each parallel worker -- leases one account of the identity for the
+    whole run, so workers never share an account's data. login() logs in
+    `auth.account(name)`. More workers than accounts: a worker waits for an
+    account to be given back."""
+
+    def shares(self, name: str) -> bool:
+        if isinstance(self.single_session, bool):
+            return self.single_session
+        return name in (self.single_session or ())
+
+    def accounts_for(self, name: str):
+        return list((self.accounts or {}).get(name) or ())
+
     # -- the browser (page_as, core/web.py; §2.5) ----------------------------------
 
     login_url = None
@@ -228,6 +251,13 @@ _STATE = {'provider': None}
 BROWSER_STATES = {}
 """identity -> Playwright storage state from a page login; this process only, never on disk."""
 _CACHE = {}         # name -> (version, Credential)
+_LEASES = {}        # name -> (account, ResourceLock): this process's account of a pool
+
+AUTH_DIR_VAR = 'IPANDORA_AUTH_DIR'
+"""A private directory (0700) for this run's shared credentials; run() makes
+and removes it. Never the report or artifacts directory, which CI uploads."""
+
+LEASE_TIMEOUT_VAR = 'IPANDORA_RESOURCE_TIMEOUT'
 _LOCKS = {}         # name -> Lock: one login at a time per identity
 _GUARD = threading.Lock()
 _LOCAL = threading.local()
@@ -264,6 +294,9 @@ def reset() -> None:
         _CACHE.clear()
         _LOCKS.clear()
         BROWSER_STATES.clear()
+        for _account, _lock in _LEASES.values():
+            _lock.release()
+        _LEASES.clear()
     from ipandora.core.schedule.session import SessionManager
     SessionManager.forget_identities()
 
@@ -381,10 +414,128 @@ def credential(name: Optional[str] = None, session=None):
         _entry = _CACHE.get(_name)
         if _entry is not None and not _entry[1].due():
             return _entry
+        if _shared_dir(_name):
+            return _shared_obtain(_name, session, seen_version=None)
         _new = _obtain(_name, _entry[1] if _entry and _entry[1].due() else None, session)
         _entry = ((_entry[0] + 1) if _entry else 1, _new)
         _CACHE[_name] = _entry
         return _entry
+
+
+# -- shared across workers: single-session accounts ----------------------------------------
+
+def _shared_dir(name: str) -> str:
+    _p = _STATE['provider']
+    _dir = os.environ.get(AUTH_DIR_VAR, '')
+    return _dir if (_dir and _p is not None and _p.shares(name) and os.path.isdir(_dir)) else ''
+
+
+def _shared_path(name: str) -> str:
+    import hashlib
+    return os.path.join(_shared_dir(name), hashlib.sha256(name.encode('utf-8')).hexdigest()[:16])
+
+
+def _dump(credential: Credential) -> dict:
+    _cookies = credential.cookies
+    if _cookies is not None and not isinstance(_cookies, dict):
+        _cookies = [{'name': _c.name, 'value': _c.value, 'domain': _c.domain, 'path': _c.path,
+                     'secure': _c.secure, 'expires': _c.expires} for _c in _cookies]
+    return {'headers': dict(credential.headers), 'cookies': _cookies,
+            'params': dict(credential.params), 'expires_at': credential.expires_at,
+            'issued_at': credential.issued_at, 'data': credential.data}
+
+
+def _load(data: dict) -> Credential:
+    _cookies = data.get('cookies')
+    if isinstance(_cookies, list):
+        import requests
+        _jar = requests.cookies.RequestsCookieJar()
+        for _c in _cookies:
+            _jar.set(_c['name'], _c['value'], domain=_c.get('domain') or '', path=_c.get('path') or '/',
+                     secure=bool(_c.get('secure')), expires=_c.get('expires'))
+        _cookies = _jar
+    return Credential(headers=dict(data.get('headers') or {}), cookies=_cookies,
+                      params=dict(data.get('params') or {}), expires_at=data.get('expires_at'),
+                      issued_at=data.get('issued_at') or time.time(), data=dict(data.get('data') or {}))
+
+
+def _read_shared(name: str):
+    try:
+        with open(_shared_path(name) + '.json', encoding='utf-8') as _f:
+            _raw = json.load(_f)
+        return int(_raw['version']), _load(_raw['credential'])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def _write_shared(name: str, entry) -> None:
+    _path = _shared_path(name) + '.json'
+    _tmp = '{}.{}.tmp'.format(_path, os.getpid())
+    _fd = os.open(_tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(_fd, 'w', encoding='utf-8') as _f:
+        json.dump({'version': entry[0], 'credential': _dump(entry[1])}, _f, default=str)
+    os.replace(_tmp, _path)
+
+
+def _shared_obtain(name: str, session, seen_version: Optional[int]):
+    """
+    The one login every worker shares (§2.3). Under a file lock: a credential
+    another worker already saved is taken as it is -- unless it is due, or
+    is the very one that was just rejected -- otherwise this worker logs in
+    and saves it. Versions live in the file, so they mean the same thing in
+    every worker.
+    """
+    from ipandora.core.runner.plugin import ResourceLock
+    _timeout = float(os.environ.get(LEASE_TIMEOUT_VAR) or 300)
+    _lock = ResourceLock(_shared_path(name) + '.lock')
+    if not _lock.acquire(_timeout):
+        raise login_failed(name, TimeoutError('another worker held the shared login for {:g}s'.format(
+            _timeout)), 'shared')
+    try:
+        _disk = _read_shared(name)
+        if _disk is not None and not _disk[1].due() and _disk[0] != seen_version:
+            _CACHE[name] = _disk
+            return _disk
+        _new = _obtain(name, _disk[1] if _disk else None, session)
+        _entry = ((_disk[0] if _disk else 0) + 1, _new)
+        _write_shared(name, _entry)
+        _CACHE[name] = _entry
+        return _entry
+    finally:
+        _lock.release()
+
+
+# -- account pools -------------------------------------------------------------------------
+
+def account(name: Optional[str] = None) -> str:
+    """
+    The account this process logs `name` in as: its leased account from the
+    provider's pool, or `name` itself when there is no pool. For login().
+    """
+    _name = current() if name is None else name
+    _p = _STATE['provider']
+    _pool = _p.accounts_for(_name) if _p is not None else []
+    if not _pool:
+        return _name
+    with _GUARD:
+        if _name in _LEASES:
+            return _LEASES[_name][0]
+    from ipandora.core.runner.plugin import ResourceLock, lock_path
+    _deadline = time.monotonic() + float(os.environ.get(LEASE_TIMEOUT_VAR) or 300)
+    while True:
+        for _account in _pool:
+            _lock = ResourceLock(lock_path('account:{}'.format(_account)))
+            if _lock.acquire(0):
+                with _GUARD:
+                    if _name in _LEASES:        # another thread of this process won
+                        _lock.release()
+                        return _LEASES[_name][0]
+                    _LEASES[_name] = (_account, _lock)
+                return _account
+        if time.monotonic() >= _deadline:
+            raise login_failed(_name, TimeoutError('all {} accounts of the pool were taken by other '
+                                                   'workers or runs'.format(len(_pool))), 'account pool')
+        time.sleep(0.1)
 
 
 def forget(name: str) -> None:
@@ -423,6 +574,8 @@ def renew(name: str, seen_version: int, session):
     in a second time.
     """
     with _lock_for(name):
+        if _shared_dir(name):
+            return _shared_obtain(name, session, seen_version=seen_version)
         _entry = _CACHE.get(name)
         if _entry is not None and _entry[0] != seen_version:
             return _entry

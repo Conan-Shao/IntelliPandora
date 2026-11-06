@@ -117,6 +117,20 @@ def test_two_roles(page_as):
 - 接口登录转 cookie 时，没有域名的 cookie 用 `web.base_url` 的主机名补全。
 - **trace 里有凭据**：Playwright 的 trace 记录请求头和请求体，没法脱敏。失败现场只作为私有制品保存；敏感环境在配置里设 `web.trace: off`。
 
-## 还没做的
+## 并行运行（`--workers`）
 
-- 并行时多个 worker 共用一份凭据（单会话账号）和账号池：计划 A2。目前每个 worker 进程各登录一次，各自的浏览器登录态也各存一份。
+默认每个 worker 进程各登录一次。两种账号需要声明：
+
+```python
+class ShopLogin(auth.Provider):
+    single_session = {'admin'}                        # 或 True：所有身份
+    accounts = {'buyer': ['buyer01', 'buyer02', 'buyer03', 'buyer04']}
+
+    def login(self, name, session):
+        user = auth.account(name)                     # 账号池里这个 worker 租到的账号；没有池时就是 name
+        ...
+```
+
+- **单会话账号**（在别处登录会把前一个踢下线）：`single_session`。所有 worker 共用一次登录：第一个用到的 worker 登录，把凭据写进这次运行的私有临时目录（目录 0700、文件 0600，运行结束删除），其他 worker 读它。读写有文件锁保护；凭据被拒、需要刷新时，也只有一个 worker 去登录。
+- **账号池**：`accounts`。每个 worker 在整次运行里租用池里的一个账号，worker 之间不共用账号的数据。`login()` 里用 `auth.account(name)` 拿到租到的账号。账号比 worker 少时，没租到的 worker 等别人归还，等待上限和 `@pytest.mark.resource` 一样（默认 300 秒）。
+- 同一个单会话账号既用接口登录又用页面登录，同样会互相踢下线。这种账号的 Web 登录态用接口登录转换（`page_as` 的默认方式），或者给 Web 单独配账号。
