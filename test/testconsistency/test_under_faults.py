@@ -17,6 +17,7 @@ import json
 import os
 import queue
 import subprocess
+import textwrap
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -133,14 +134,16 @@ class TestAcceptance:
         write(0)                                   # the initial value, in the history: a read of nil judges nothing
         assert eventually(lambda: that(kv.get(), '副本上的值') == 0, within=5).ok
         read()
-        with faults.injected(faults.latency('replication', 300, stream='upstream')):
+        # a second of lag: the read below must come before the write reaches
+        # the replica, and a loaded CI machine can stall for a few hundred ms
+        with faults.injected(faults.latency('replication', 1000, stream='upstream')):
             write(1)
             assert read() == 0                     # the write is acknowledged; the replica has not seen it
             _strict = _h.check('cas-register')
             _eventual = eventually(lambda: that(kv.get(), '副本上的值') == 1, within=5)
         assert not _strict.ok
         assert "can't read 0 from register 1" in _strict.expr
-        assert '它完成时故障正在生效：latency(replication, jitter=0, latency=300, upstream)' in _strict.expr
+        assert '它完成时故障正在生效：latency(replication, jitter=0, latency=1000, upstream)' in _strict.expr
         assert '其中 2 个操作发生在注入的故障期间' in _strict.expr
         assert _eventual.ok                        # declared eventually consistent: it converges
 
@@ -238,3 +241,79 @@ class TestEvidence:
         _h.call('write', 1, lambda: None)
         _h.check('cas-register')
         assert os.listdir(str(tmp_path)) == []
+
+
+class TestCr9:
+    """Found in code review CR9 (docs/design/reviews/09-CR9.md)."""
+
+    @pytest.mark.parametrize('workers', [None, 2], ids=['serial', 'parallel'])
+    def test_a_run_triages_it_as_a_defect_and_reports_the_history(self, allowed, needs_checker, tmp_path,
+                                                                    monkeypatch, workers):
+        if workers:
+            pytest.importorskip('xdist', reason='parallel runs need the `parallel` extra')
+        from ipandora.core.report.builder import build_from_run
+        from ipandora.core.report.render import to_html
+        from ipandora.core.runner import run
+        from ipandora.core.schedule import config
+        from ipandora.core.schedule.runtime import Runtime
+        from ipandora.core.triage import triage
+        faults.Toxiproxy(allowed.url).proxy('db', '127.0.0.1:0', '127.0.0.1:9')
+        monkeypatch.setattr(Runtime, 'settings', config.deep_merge(
+            Runtime.settings, {'faults': {'allowed': True, 'toxiproxy': allowed.url}}))
+        _conf = tmp_path / 'conf'
+        _conf.mkdir()
+        (_conf / 'config.yaml').write_text('faults:\n  allowed: true\n  toxiproxy: {}\n'.format(allowed.url),
+                                           encoding='utf-8')
+        monkeypatch.setenv('IPANDORA_CONFIG_DIR', str(_conf))
+        _suite = tmp_path / 'suite'
+        _suite.mkdir()
+        (_suite / 'test_kv.py').write_text(textwrap.dedent('''
+            from ipandora.core import consistency, faults
+            from ipandora.core.assertion import assert_all
+
+            def test_stale_read_under_lag():
+                history, replica = consistency.History(), {'v': 0}
+                history.call('write', 0, lambda: None)
+                with faults.injected(faults.latency('db', 50)):
+                    history.call('write', 1, lambda: None)           # acknowledged, not yet replicated
+                    history.call('read', None, lambda: replica['v'], result=lambda r: r)
+                    assert_all(history.check('cas-register'))
+        '''), encoding='utf-8')
+        _result = run(str(_suite), persist=False, quiet=True, baseline='', workers=workers)
+        _case = _result.cases[0]
+        assert _case.outcome == 'failed'
+        assert sorted(_a['kind'] for _a in _case.artifacts) == ['checker-result', 'history']
+        assert [_f.category for _f in triage(_result).findings] == ['defect']     # the fault is the condition
+        _html = to_html(build_from_run(_result))
+        assert '操作历史' in _html and '--model cas-register' in _html
+
+    def test_a_value_under_a_secret_field_name_is_masked_in_the_kept_files(self, monkeypatch, tmp_path):
+        monkeypatch.setenv('IPANDORA_ARTIFACTS_DIR', str(tmp_path))
+        _answer(monkeypatch, {'valid?': False, 'op': {'value': {'token': 'plain-looking-1', 'n': 1}}})  # pragma: allowlist secret
+        _h = History()
+        _h.call('write', {'token': 'plain-looking-1', 'n': 1}, lambda: None)  # pragma: allowlist secret
+        recorder.begin('t::kv')
+        try:
+            _h.check('cas-register')
+        finally:
+            _evidence = recorder.end('t::kv')
+        for _a in _evidence.artifacts:
+            _text = open(_a['path'], encoding='utf-8').read()
+            assert 'plain-looking-1' not in _text and '***REDACTED***' in _text, _a['kind']
+        assert ':n 1' in open(_evidence.artifacts[0]['path'], encoding='utf-8').read()
+        assert _h.ops[0]['value']['token'] == 'plain-looking-1'          # the checker still sees the real history
+
+    def test_evidence_that_cannot_be_written_does_not_cost_the_verdict(self, monkeypatch, tmp_path, caplog):
+        _blocked = tmp_path / 'a-file'
+        _blocked.write_text('')
+        monkeypatch.setenv('IPANDORA_ARTIFACTS_DIR', str(_blocked / 'artifacts'))     # cannot be created
+        _answer(monkeypatch, {'valid?': True})
+        _h = History()
+        _h.call('write', 1, lambda: None)
+        recorder.begin('t::kv')
+        try:
+            _c = _h.check('cas-register')
+        finally:
+            _evidence = recorder.end('t::kv')
+        assert _c.ok and _evidence.artifacts == []
+        assert 'could not keep the history of t::kv' in caplog.text
