@@ -28,6 +28,7 @@ Documentation is Markdown in the repository and is the single source. The refere
 - [Dependent services](docs/guide/stack.md): stack.compose() starts the project's compose file, waits for health checks, gives the published ports, always takes it down, and keeps service logs of failed cases
 - [Fault injection](docs/guide/faults.md): latency, resets, timeouts through Toxiproxy inside one case, always undone, recorded, and triaged apart from real outages
 - [Evaluating agents](docs/guide/eval.md): datasets with a content hash, k trials per task, Wilson interval, pass@k / pass^k, paired comparison with the baseline (a regression gate by overall / tag / task, and saturation monitoring), reference self-check, human labelling; multi-turn business agents with a scripted user and end-state / tool-call checks (`dialogue`); agent safety by planted canaries, injections, decoys and an egress allowlist (`safety`); graders for coding agents -- change scope, zero-judgement tests, weakened judgements, mutation score (`coding`, `ipandora eval code`); Inspect logs read into the same run (`ipandora eval inspect`) and graders as Inspect scorers
+- [Evaluation dataset spec](docs/guide/eval-dataset.md): the contract for preparing agent-evaluation datasets (YAML/JSONL tasks, the `expected` vocabulary for deterministic grading, references, planted safety probes, coding tasks, quality checklist); each item marked supported or planned, and every example loads with today's loader
 
 ## Reference
 
