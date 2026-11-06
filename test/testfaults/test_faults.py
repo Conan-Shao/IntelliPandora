@@ -308,3 +308,116 @@ class TestCr7:
         with faults.injected(faults.latency('db', 10)):
             run(str(tmp_path / 's'), persist=False, quiet=True, baseline='')
             assert len(allowed.proxies['db'].toxics) == 1
+
+
+class TestR1:
+    """Gaps mutation testing found (R1): each test fails on a mutant that survived before."""
+
+    @pytest.mark.parametrize('how', ['option', 'variable'])
+    @pytest.mark.parametrize('name', ['prod', 'Production'])
+    def test_production_is_recognised_however_it_is_named(self, monkeypatch, how, name):
+        # the old test replaced _env_name itself: the real detection was never run
+        from ipandora.core.schedule.runtime import Runtime
+        monkeypatch.setattr(faults, '_settings', lambda: {'allowed': True})
+        monkeypatch.setattr(Runtime.Option, 'env', name if how == 'option' else '', raising=False)
+        monkeypatch.setenv('IPANDORA_ENV', name if how == 'variable' else '')
+        assert faults._env_name() == name
+        assert not faults.allowed()
+        with pytest.raises(faults.FaultsNotAllowed, match="never allowed in the '{}' environment".format(name)):
+            with faults.injected(faults.latency('db', 1)):
+                pass
+
+    def test_the_run_option_wins_over_the_variable(self, monkeypatch):
+        from ipandora.core.schedule.runtime import Runtime
+        monkeypatch.setattr(Runtime.Option, 'env', 'ci', raising=False)
+        monkeypatch.setenv('IPANDORA_ENV', 'prod')
+        assert faults._env_name() == 'ci'
+        monkeypatch.setattr(Runtime.Option, 'env', '', raising=False)
+        monkeypatch.delenv('IPANDORA_ENV')
+        assert faults._env_name() == ''
+
+    def test_allowed_reads_the_config_and_takes_only_true(self, monkeypatch):
+        from ipandora.core.schedule import config
+        from ipandora.core.schedule.runtime import Runtime
+        monkeypatch.setattr(Runtime.Option, 'env', 'ci', raising=False)
+        for _value, _expected in ((True, True), ('yes', False), (1, False), (None, False)):
+            monkeypatch.setattr(Runtime, 'settings', config.deep_merge(Runtime.settings, {'faults': {'allowed': _value}}))
+            assert faults.allowed() is _expected, _value
+        with pytest.raises(faults.FaultsNotAllowed, match=r"off in this environment \(ci\).*local and CI environments only"):
+            faults._require_allowed()
+
+    def test_constructors_say_what_toxiproxy_needs(self):
+        assert (faults.latency('db', 10).attributes, faults.latency('db', 10).stream) == (
+            {'latency': 10, 'jitter': 0}, 'downstream')
+        assert faults.timeout('db').attributes == {'timeout': 0} and faults.timeout('db', 5).attributes == {'timeout': 5}
+        _r = faults.reset_peer('db', after_ms=20, stream='upstream', toxicity=0.5)
+        assert (_r.kind, _r.attributes, _r.stream, _r.toxicity) == ('reset_peer', {'timeout': 20}, 'upstream', 0.5)
+        assert faults.reset_peer('db').attributes == {'timeout': 0} and faults.reset_peer('db').toxicity == 1.0
+        assert faults.latency('db', 10, jitter=3, stream='upstream', toxicity=0.25).describe() == \
+            'latency(db, jitter=3, latency=10, upstream, toxicity=0.25)'
+        assert faults.down('db').describe() == 'down(db)'
+
+    def test_down_leaves_a_marker_toxiproxy_accepts(self, db, allowed):
+        with faults.injected(faults.down('db')) as _records:
+            _marker = allowed.proxies['db'].toxics[0]
+            assert (_marker['type'], _marker['attributes']) == ('latency', {'latency': 0, 'jitter': 0})
+            assert _marker['name'] == _records[0]['name'] and _marker['name'].startswith(faults.PREFIX)
+            assert not allowed.proxies['db'].enabled
+        _r = _records[0]
+        assert set(_r) >= {'kind', 'proxy', 'stream', 'toxicity', 'attributes', 'name', 'description', 'started',
+                           'ended', 'via'}
+        assert (_r['stream'], _r['toxicity'], _r['via']) == ('downstream', 1.0, allowed.url)
+
+    def test_the_client_finds_toxiproxy_and_says_what_went_wrong(self, monkeypatch, allowed):
+        monkeypatch.setattr(faults, '_settings', lambda: {})
+        monkeypatch.delenv('TOXIPROXY_URL', raising=False)
+        assert faults.Toxiproxy().url == faults.DEFAULT_URL
+        monkeypatch.setenv('TOXIPROXY_URL', 'http://toxi.test:8474/')
+        assert faults.Toxiproxy().url == 'http://toxi.test:8474'
+        monkeypatch.setattr(faults, '_settings', lambda: {'toxiproxy': allowed.url + '/'})
+        assert faults.Toxiproxy().url == allowed.url                    # the config wins over the variable
+        assert faults.Toxiproxy('http://explicit.test').url == 'http://explicit.test'
+        monkeypatch.setenv('HTTP_PROXY', 'http://127.0.0.1:9')            # never through a proxy
+        _client = faults.Toxiproxy(allowed.url)
+        assert _client.version() == 'fake-2.0' and _client.proxies() == {}
+        with pytest.raises(faults.ToxiproxyError, match=r'POST /proxies/nope/toxics answered 404: .*proxy not found'):
+            _client.add_toxic(faults.Fault('nope', 'latency', name='x'))
+        _client.remove_toxic('nope', 'x')                               # 404 on removal: already gone, fine
+
+    def test_proxy_is_updated_only_when_it_points_elsewhere(self, allowed, upstream):
+        _client = faults.Toxiproxy(allowed.url)
+        _created = _client.proxy('svc', '127.0.0.1:0', upstream)
+        allowed.calls.clear()
+        _client.proxy('svc', _created['listen'], upstream)
+        assert [_c[0] for _c in allowed.calls] == ['GET']                # nothing to change: only looked
+        _moved = _client.proxy('svc', _created['listen'], '127.0.0.1:9')
+        assert _moved['upstream'] == '127.0.0.1:9' and allowed.calls[-1][:2] == ('POST', '/proxies/svc')
+
+    def test_clean_leaves_proxies_alone_that_we_did_not_disable(self, db, allowed):
+        _client = faults.Toxiproxy(allowed.url)
+        allowed.proxies['db'].toxics.append({'name': 'someone-else', 'type': 'latency', 'attributes': {}})
+        allowed.proxies['db'].enabled = False                             # disabled, but not by us
+        assert faults.clean(_client) == []
+        assert not allowed.proxies['db'].enabled and len(allowed.proxies['db'].toxics) == 1
+
+    def test_during_names_every_fault_in_effect(self, db, allowed):
+        assert faults.during() == ''
+        with faults.injected(faults.latency('db', 1), faults.timeout('db', 5)):
+            assert faults.during() == ' ({}: latency(db, jitter=0, latency=1), timeout(db, timeout=5))'.format(
+                faults.INJECTED_MARKER)
+
+    def test_a_held_proxy_says_who_has_it_and_for_how_long(self, db, monkeypatch, tmp_path):
+        from ipandora.core.runner.plugin import ResourceLock, lock_path
+        monkeypatch.setenv('IPANDORA_RESOURCE_TIMEOUT', '0.2')
+        _other = ResourceLock(lock_path('fault:db'))
+        assert _other.acquire(1)
+        try:
+            with pytest.raises(TimeoutError, match=r'resource fault:db after 0\.2s'):
+                with faults.injected(faults.latency('db', 1)):
+                    pass
+        finally:
+            _other.release()
+        monkeypatch.setenv('IPANDORA_RESOURCE_TIMEOUT', 'soon')            # unreadable: the default, not a crash
+        with faults.injected(faults.latency('db', 1)):
+            assert 'db' in faults._HELD
+        assert 'db' not in faults._HELD
