@@ -296,3 +296,114 @@ def test_a_reviewed_license_is_allowed_and_says_why(monkeypatch):
     assert 'Artistic' in _text and _why
     # outside the review table the same text would be refused
     assert not cc.license_ok(_text)
+
+
+# -- CR1 F4 (docs/design/reviews/01-CR1.md) -----------------------------------
+
+@pytest.mark.parametrize('text', [
+    'Proprietary - all rights reserved; redistribution not permitted',   # 'mit' in 'permitted'
+    'Commercial, see disclaimer',                                         # 'isc' in 'disclaimer'
+    'UNLICENSED',                                                         # npm: proprietary
+])
+def test_allowed_names_are_whole_words_not_substrings(text):
+    assert not cc.license_ok(text)
+
+
+@pytest.mark.parametrize('text', ['MIT-0', 'MIT-CMU', '0BSD', 'ISC License (ISCL)', 'Unlicense'])
+def test_whole_word_matching_still_admits_real_licenses(text):
+    assert cc.license_ok(text)
+
+
+def test_an_action_pinned_differently_in_two_workflows_fails(tmp_path, monkeypatch):
+    _repo = _fake_repo(tmp_path, '      - uses: actions/checkout@{}  # v7.0.1\n'.format(SHA))
+    (_repo / '.github' / 'workflows' / 'release.yml').write_text(
+        '      - uses: actions/checkout@{}  # v6.0.0\n'.format('b' * 40), encoding='utf-8')
+    monkeypatch.setattr(cc, 'REPO', str(_repo))
+    _registry(tmp_path, monkeypatch, [('requests', 'runtime', '>=2.31,<3'),
+                                      ('anthropic', 'extra:ai', '>=0.40,<1'),
+                                      ('actions/checkout', 'action', 'v7.0.1@' + SHA)])
+    assert any('pinned to different versions' in _p for _p in cc.check_registry())
+
+
+def test_the_project_template_workflow_is_checked_too(tmp_path, monkeypatch):
+    _repo = _fake_repo(tmp_path, '      - uses: actions/checkout@{}  # v7.0.1\n'.format(SHA))
+    _tpl = _repo / 'src' / 'ipandora' / 'templates' / 'project' / '_github' / 'workflows'
+    _tpl.mkdir(parents=True)
+    (_tpl / 'tests.yml.tmpl').write_text(
+        '      - uses: actions/checkout@{}  # v6.0.0\n'.format('b' * 40), encoding='utf-8')
+    monkeypatch.setattr(cc, 'REPO', str(_repo))
+    _registry(tmp_path, monkeypatch, [('requests', 'runtime', '>=2.31,<3'),
+                                      ('anthropic', 'extra:ai', '>=0.40,<1'),
+                                      ('actions/checkout', 'action', 'v7.0.1@' + SHA)])
+    assert any('tests.yml.tmpl' in _p for _p in cc.check_registry())
+
+
+def test_the_report_verdict_counts_unlocked_licenses(monkeypatch):
+    _scanners(monkeypatch, licenses={
+        'requests': {'version': '2.32.0', 'license': 'Apache-2.0', 'allowed': True},
+        'stray': {'version': '1.0', 'license': 'GPL-3.0', 'allowed': False}})
+    monkeypatch.setattr(sr, 'locked', lambda lock: {'requests'})
+    _md = sr.render(sr.assess('python', TODAY), TODAY.isoformat())
+    assert '| 许可证 |' in _md and '**未通过**' in _md.split('| 许可证 |')[1].split('\n')[0]
+
+
+def test_the_lock_labels_come_from_update_locks():
+    import update_locks
+    _labels = dict(sr.LOCKS)
+    for _extra in update_locks.LOCKS['ci.txt'][1]:
+        assert _extra in _labels['requirements/ci.txt']
+
+
+def test_a_bare_cutoff_date_is_its_first_instant():
+    import update_locks
+    assert update_locks.normalised_cutoff('2026-10-22') == '2026-10-22T00:00:00Z'
+    assert update_locks.normalised_cutoff('2026-10-22T12:00:00Z') == '2026-10-22T12:00:00Z'
+    with pytest.raises(ValueError):
+        update_locks.normalised_cutoff('2026-13-45')
+
+
+def test_mutation_guesses_tests_for_a_package_and_a_module():
+    import mutation
+    assert mutation.guess_tests('src/ipandora/core/assertion') == 'test/testassertion'
+    assert mutation.guess_tests('src/ipandora/core/report/junit.py') == 'test/testreport'
+
+
+def test_mutation_scopes_a_crlf_config(tmp_path, monkeypatch):
+    import mutation
+    (tmp_path / 'setup.cfg').write_bytes(b'[metadata]\r\nname = x\r\n[mutmut] \r\npaths = src\r\n')
+    monkeypatch.setattr(mutation, 'REPO', str(tmp_path))
+    mutation.write_scoped_config('src/ipandora/x.py', 'test/testx')
+    _text = (tmp_path / 'setup.cfg').read_text(encoding='utf-8')
+    assert 'only_mutate = src/ipandora/x.py' in _text
+
+
+def test_the_cli_reference_documents_subcommands():
+    import check_docs
+    _md = check_docs.cli_reference()
+    for _sub in ('ipandora eval run', 'ipandora eval selfcheck', 'ipandora eval samples',
+                 'ipandora eval agreement'):
+        assert '`{}`'.format(_sub) in _md
+    assert '`--split`' in _md
+
+
+def test_the_config_reference_keeps_lists_and_top_level_keys(tmp_path, monkeypatch):
+    import check_docs
+    _cfg = tmp_path / 'config.yaml'
+    _cfg.write_text('log_level: INFO\nhttp:\n  exclude:\n    - a\n    - b\n  retries: 2\n',
+                    encoding='utf-8')
+    monkeypatch.setattr(check_docs, 'CONFIG', str(_cfg))
+    _md = check_docs.config_reference()
+    assert '| `log_level` | `INFO` |' in _md
+    assert '| `http.exclude` | `[a, b]` |' in _md
+
+
+def test_the_packaging_check_leaves_the_checkout_alone(tmp_path):
+    import check_packaging
+    _marker = os.path.join(REPO, 'build', 'cr1-marker')
+    os.makedirs(os.path.dirname(_marker), exist_ok=True)
+    open(_marker, 'w').close()
+    try:
+        check_packaging.build_wheel(str(tmp_path), isolated=False)
+        assert os.path.exists(_marker)
+    finally:
+        os.remove(_marker)

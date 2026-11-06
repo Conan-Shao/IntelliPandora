@@ -51,6 +51,7 @@
 | cyclonedx-bom | tool | ==7.5.0 | 生成 SBOM | Apache-2.0 | 只读环境元数据 | 2026-11-05 |
 | build | tool | ==1.6.1 | 构建前端 | MIT | 在隔离环境中构建 | 2026-11-05 |
 | uv | tool | ==0.13.4 | 生成带哈希的锁文件 | MIT OR Apache-2.0 | 解析依赖时访问 PyPI | 2026-11-05 |
+| mutmut | tool | ==3.8.0 | 变异测试（`scripts/mutation.py`），检验测试能否发现被改坏的实现 | BSD-3-Clause | 在临时副本里改写源码并运行测试；不联网。3.8.1 发布未满 14 天，选 3.8.0；依赖 textual、libcst 等，许可证均在白名单内 | 2026-11-06 |
 
 ## CI 动作
 

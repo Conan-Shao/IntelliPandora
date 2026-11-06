@@ -77,35 +77,72 @@ def check_links():
 
 # -- generated reference -----------------------------------------------------------
 
+def _subparsers(parser):
+    return next((_a for _a in parser._actions if isinstance(_a, argparse._SubParsersAction)), None)
+
+
+def _options_table(parser):
+    _rows = []
+    for _action in parser._actions:
+        if isinstance(_action, (argparse._HelpAction, argparse._SubParsersAction)):
+            continue
+        if _action.option_strings:
+            _flags = ', '.join('`{}`'.format(_o) for _o in _action.option_strings)
+            if _action.nargs != 0:
+                _flags += ' `{}`'.format(_action.metavar or _action.dest.upper())
+        else:
+            _flags = '`{}`'.format(_action.metavar or _action.dest)
+        _default = _action.default
+        _shown = '' if _default in (None, False, [], argparse.SUPPRESS) else '`{}`'.format(_default)
+        _rows.append('| {} | {} | {} |'.format(
+            _flags, _shown, ' '.join((_action.help or '').split()).replace('|', '\\|')))
+    return (['| 参数 | 默认值 | 说明 |', '|---|---|---|'] + _rows + ['']) if _rows else []
+
+
+def _command_section(prefix: str, parser, level: int):
+    """
+    One command, then each of its subcommands one heading level down.
+
+    Subcommands are walked: the reference used to stop at the first level, so
+    `ipandora eval` showed one row, `eval_action`, and none of `eval run`,
+    `selfcheck`, `samples` or `agreement` or their options -- and the gate
+    passed, comparing the reference with the same incomplete output.
+    """
+    _out = _options_table(parser)
+    _sub = _subparsers(parser)
+    if _sub is not None:
+        for _name in sorted(_sub.choices):
+            _help = next((_c.help for _c in _sub._choices_actions if _c.dest == _name), '')
+            _out += ['{} `{} {}`\n'.format('#' * level, prefix, _name), '{}\n'.format(_help or '')]
+            _out += _command_section('{} {}'.format(prefix, _name), _sub.choices[_name], level + 1)
+    return _out
+
+
 def cli_reference() -> str:
     sys.path.insert(0, os.path.join(REPO, 'src'))
     from ipandora.run.commandmanager import CommandManager
     _manager = CommandManager()
-    _sub = next(_a for _a in _manager.ap._actions if isinstance(_a, argparse._SubParsersAction))
     _out = [_HEADER.format('the argparse definitions in src/ipandora/run/commands/'),
             '# 命令行参考\n',
             '`ipandora <子命令> [参数]`。每个子命令也可以用 `-h` 查看同样的内容。\n']
-    for _name in sorted(_sub.choices):
-        _parser = _sub.choices[_name]
-        _help = next((_c.help for _c in _sub._choices_actions if _c.dest == _name), '')
-        _out += ['## `ipandora {}`\n'.format(_name), '{}\n'.format(_help or '')]
-        _rows = []
-        for _action in _parser._actions:
-            if isinstance(_action, argparse._HelpAction):
-                continue
-            if _action.option_strings:
-                _flags = ', '.join('`{}`'.format(_o) for _o in _action.option_strings)
-                if _action.nargs != 0:
-                    _flags += ' `{}`'.format(_action.metavar or _action.dest.upper())
-            else:
-                _flags = '`{}`'.format(_action.metavar or _action.dest)
-            _default = _action.default
-            _shown = '' if _default in (None, False, [], argparse.SUPPRESS) else '`{}`'.format(_default)
-            _rows.append('| {} | {} | {} |'.format(
-                _flags, _shown, ' '.join((_action.help or '').split()).replace('|', '\\|')))
-        if _rows:
-            _out += ['| 参数 | 默认值 | 说明 |', '|---|---|---|'] + _rows + ['']
+    _out += _command_section('ipandora', _manager.ap, 2)
     return '\n'.join(_out).rstrip() + '\n'
+
+
+def _block_list(lines, at: int, indent: int) -> str:
+    """`key:` followed by `- a` lines: the value is the list, not null."""
+    _items = []
+    for _line in lines[at + 1:]:
+        _stripped = _line.strip()
+        if not _stripped or _stripped.startswith('#'):
+            continue
+        _depth = len(_line) - len(_line.lstrip())
+        if _depth <= indent and not (_depth == indent and _stripped.startswith('- ')):
+            break
+        if not _stripped.startswith('- '):
+            break
+        _items.append(_stripped[2:].split(' #')[0].strip())
+    return '[{}]'.format(', '.join(_items)) if _items else ''
 
 
 def config_reference() -> str:
@@ -132,6 +169,8 @@ def config_reference() -> str:
             continue
         _rest = _m.group(3)
         _value, _, _inline = ('', '', _rest[1:]) if _rest.startswith('#') else _rest.partition(' #')
+        if not _value.strip():
+            _value = _block_list(_lines, _i, len(_m.group(1)))
         _entries.append((len(_m.group(1)), _m.group(2), _value.strip(),
                          ' '.join(_notes + ([_inline.strip()] if _inline.strip() else [])), _i))
         _notes = []
@@ -146,6 +185,9 @@ def config_reference() -> str:
                 _sections[_key] = _note
             _stack.append((_indent, _key))
             continue
+        if not _stack:
+            # a top-level scalar: it has no section to sit in, and was dropped
+            _sections.setdefault(_key, '')
         _rows.append((_path.split('.')[0], _path, _value or 'null', _note))
     for _top in _sections:
         _out.append('## `{}`\n'.format(_top))

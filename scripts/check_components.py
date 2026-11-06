@@ -43,7 +43,7 @@ EXCEPTIONS = os.path.join(REPO, 'docs', 'security', 'exceptions.md')
 ALLOWED = ('MIT', 'BSD', 'Apache', 'ISC', 'MPL-2.0', 'Mozilla Public License 2.0',
            'PSF', 'Python Software Foundation', 'HPND', 'Unlicense', 'CC0',
            'Zlib', '0BSD')
-DENIED = ('GPL', 'AGPL', 'LGPL', 'SSPL', 'Commons Clause', 'BUSL')
+DENIED = ('GPL', 'AGPL', 'LGPL', 'SSPL', 'Commons Clause', 'BUSL', 'Proprietary', 'UNLICENSED')
 
 # Distributions whose metadata does not state a license in a parseable way,
 # checked by hand against their repository. Each needs a reason.
@@ -104,11 +104,26 @@ def declared():
             if _r and _r[0] not in _out:
                 _out[_r[0]] = (_category, _r[1])
 
-    for _wf in sorted(glob.glob(os.path.join(REPO, '.github', 'workflows', '*.yml'))):
-        for _line in open(_wf, encoding='utf-8'):
+    # Every workflow, and the one `ipandora init` writes into new projects:
+    # it pins the same actions, and Dependabot never sees a template, so
+    # without this it kept an old SHA after the repo's own were bumped.
+    # Each occurrence is checked, not one per action name: with a dict keyed
+    # by name, the last workflow read hid any other pinning the same action
+    # to a different SHA.
+    _workflows = sorted(glob.glob(os.path.join(REPO, '.github', 'workflows', '*.yml'))) + sorted(
+        glob.glob(os.path.join(REPO, 'src', 'ipandora', 'templates', 'project', '_github',
+                               'workflows', '*.tmpl')))
+    for _wf in _workflows:
+        _rel = os.path.relpath(_wf, REPO)
+        for _n, _line in enumerate(open(_wf, encoding='utf-8'), 1):
             _m = re.match(r'^\s*-?\s*uses:\s*([^@\s]+)@([0-9a-f]{40})\s*#\s*(v[\w.]+)', _line)
             if _m:
-                _out[norm(_m.group(1))] = ('action', '{}@{}'.format(_m.group(3), _m.group(2)))
+                _name = norm(_m.group(1))
+                _spec = ('action', '{}@{}'.format(_m.group(3), _m.group(2)))
+                if _name in _out and _out[_name] != _spec:
+                    _out['!differs:{} ({}:{} pins {})'.format(_name, _rel, _n, _spec[1])] = _spec
+                else:
+                    _out[_name] = _spec
             elif re.match(r'^\s*-?\s*uses:\s*\S+@', _line) and 'uses: ./' not in _line:
                 _out['!unpinned:' + _line.strip()] = ('action', 'NOT PINNED TO A SHA')
     return _out
@@ -131,6 +146,9 @@ def check_registry():
     for _name, (_category, _spec) in sorted(_declared.items()):
         if _name.startswith('!unpinned:'):
             _problems.append('action not pinned to a commit SHA: {}'.format(_name[10:]))
+            continue
+        if _name.startswith('!differs:'):
+            _problems.append('the same action is pinned to different versions: {}'.format(_name[9:]))
             continue
         if _name not in _registered:
             _problems.append('not in the registry: {} ({} {})'.format(_name, _category, _spec))
@@ -158,10 +176,22 @@ def license_of(dist) -> str:
     return (_meta.get('License') or '').strip().splitlines()[0] if _meta.get('License') else ''
 
 
+def _names(text: str, name: str) -> bool:
+    """`name` as a whole word of `text`: 'MIT' in 'MIT-0', not in 'permitted'."""
+    return re.search(r'(?<![A-Za-z0-9]){}(?![A-Za-z0-9])'.format(re.escape(name)),
+                     text, re.IGNORECASE) is not None
+
+
 def license_ok(text: str):
-    if any(_d.lower() in text.lower() for _d in DENIED):
+    """
+    Allowed names matched as whole words, not substrings: with substrings,
+    'Proprietary ... not permitted' passed on the 'mit' in 'permitted',
+    'see disclaimer' on 'isc', and npm's 'UNLICENSED' -- proprietary -- on
+    'Unlicense'.
+    """
+    if any(_names(text, _d) for _d in DENIED):
         return False
-    return any(_a.lower() in text.lower() for _a in ALLOWED)
+    return any(_names(text, _a) for _a in ALLOWED)
 
 
 def check_licenses():
@@ -217,15 +247,23 @@ def check_exceptions(today: datetime.date = None):
     return _problems
 
 
-def ignore_args(today: datetime.date = None):
+def active_exceptions(today: datetime.date = None):
+    """{id: exception} for every exception that has not expired. The one place the rule lives."""
     _today = today or datetime.date.today()
-    _args = []
+    _out = {}
     for _e in exceptions():
         try:
             if datetime.date.fromisoformat(_e['expires']) >= _today:
-                _args += ['--ignore-vuln', _e['id']]
+                _out[_e['id']] = _e
         except ValueError:
-            pass
+            pass        # reported by check_exceptions
+    return _out
+
+
+def ignore_args(today: datetime.date = None):
+    _args = []
+    for _id in active_exceptions(today):
+        _args += ['--ignore-vuln', _id]
     return _args
 
 

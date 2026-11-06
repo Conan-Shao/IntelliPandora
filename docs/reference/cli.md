@@ -5,13 +5,63 @@
 
 `ipandora <子命令> [参数]`。每个子命令也可以用 `-h` 查看同样的内容。
 
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `-v`, `--verbosity` |  | log verbosity |
+| `-V`, `--version` |  | print version |
+
 ## `ipandora eval`
 
 agent evaluation: run a spec, self-check references, label samples
 
+### `ipandora eval agreement`
+
+agreement and Cohen kappa between two raters
+
 | 参数 | 默认值 | 说明 |
 |---|---|---|
-| `eval_action` |  |  |
+| `labels` |  | the labelled JSONL |
+| `--a` `A` | `judge` | first rater column |
+| `--b` `B` | `human` | second rater column |
+
+### `ipandora eval run`
+
+run every task k times, grade, compare with the baseline
+
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `spec` |  | the spec file: defines DATASET, agent and grade |
+| `-k`, `--trials` `TRIALS` | `1` | trials per task |
+| `--split` `SPLIT` |  | run one split only. Tune on dev; conclude on test |
+| `-w`, `--workers` `WORKERS` | `1` | trials run at once (threads) |
+| `-o`, `--out` `OUT` |  | where report.html and report.json go. Default: the report archive |
+| `--title` `TITLE` |  | report title |
+| `--baseline` `PATH` |  | evaluation baseline. Default: conf/eval_baseline.json when it exists |
+| `--no-baseline` |  | compare with nothing |
+| `--update-baseline` |  | write this run as the baseline. Commit it; review its diff |
+| `--noise` `RATE` |  | infrastructure noise as a rate (0.021 for ±2.1 points): a difference smaller than this is never called better or worse |
+| `--partial` |  | compare partial scores instead of success |
+
+### `ipandora eval samples`
+
+export judge verdicts for people to label (JSONL)
+
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `run` |  | report.json of an evaluation run |
+| `-o`, `--out` `OUT` |  |  |
+| `-n`, `--limit` `LIMIT` |  | sample this many rows |
+| `--seed` `SEED` |  |  |
+| `--all-checks` |  | include deterministic checks, to see whether people agree on a task |
+
+### `ipandora eval selfcheck`
+
+grade every reference solution; exit 1 if any fails
+
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `spec` |  |  |
+| `--split` `SPLIT` |  |  |
 
 ## `ipandora init`
 

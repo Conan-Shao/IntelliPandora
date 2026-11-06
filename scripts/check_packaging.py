@@ -27,7 +27,6 @@ Usage: check_packaging.py                 # builds into a temp dir
                                           # here (CI: the hashed tools lock)
        check_packaging.py some.whl        # inspects a wheel already built
 """
-import glob
 import os
 import shutil
 import subprocess
@@ -53,20 +52,36 @@ REQUIRED = (
 FORBIDDEN_SUFFIXES = ('.pem', '.key', '.p12', '.pfx', '.jks')
 
 
+def _clean_copy(into: str) -> str:
+    """
+    The tracked files of the repository, copied to a fresh directory.
+
+    Built from a copy so nothing stale can leak into the wheel and nothing in
+    the working tree is touched. Stale state is the danger:
+    `include_package_data` resolves through *.egg-info/SOURCES.txt, which
+    setuptools reuses -- a wheel built over a SOURCES.txt from an earlier,
+    correct MANIFEST.in passed on a repo it should fail -- and setuptools
+    never empties build/lib, so deleted code (core/cassette) was packaged.
+    This used to delete src/*.egg-info and build/ in the developer's own
+    checkout, which broke an egg-link editable install until it was
+    reinstalled.
+    """
+    _files = subprocess.run(['git', '-c', 'core.quotepath=false', 'ls-files', '-z', '--cached',
+                             '--others', '--exclude-standard'],
+                            cwd=REPO, capture_output=True, check=True).stdout.decode('utf-8')
+    _root = os.path.join(into, 'src-tree')
+    for _rel in filter(None, _files.split('\0')):
+        _from = os.path.join(REPO, _rel)
+        if not os.path.isfile(_from):
+            continue            # deleted in the working tree, not yet in the index
+        _to = os.path.join(_root, _rel)
+        os.makedirs(os.path.dirname(_to), exist_ok=True)
+        shutil.copy2(_from, _to)
+    return _root
+
+
 def build_wheel(into: str, isolated: bool = True) -> str:
-    # `include_package_data` resolves through *.egg-info/SOURCES.txt, which
-    # setuptools reuses if it is already there. A wheel built over a SOURCES.txt
-    # from an earlier, correct MANIFEST.in contains the data files no matter
-    # what MANIFEST.in says now -- so this check would pass on a repo it should
-    # fail. Verified: with the stale egg-info left in place, reintroducing the
-    # original bug did not trip this script.
-    for _stale in glob.glob(os.path.join(REPO, 'src', '*.egg-info')):
-        shutil.rmtree(_stale, ignore_errors=True)
-    # build/ for the same reason, worse: setuptools copies sources into
-    # build/lib and never deletes what is already there. After core/cassette
-    # was removed from src/, a wheel built over the old build/lib still shipped
-    # all nine of its files -- deleted code, packaged and publishable.
-    shutil.rmtree(os.path.join(REPO, 'build'), ignore_errors=True)
+    _tree = _clean_copy(into)
 
     # An isolated build fetches setuptools from the index, unhashed, at
     # whatever version pyproject.toml allows. CI and release pass
@@ -74,7 +89,7 @@ def build_wheel(into: str, isolated: bool = True) -> str:
     _cmd = [sys.executable, '-m', 'build', '--wheel', '--outdir', into]
     if not isolated:
         _cmd.append('--no-isolation')
-    subprocess.run(_cmd, cwd=REPO, check=True, capture_output=True)
+    subprocess.run(_cmd, cwd=_tree, check=True, capture_output=True)
     _wheels = [f for f in os.listdir(into) if f.endswith('.whl')]
     if not _wheels:
         raise SystemExit('build produced no wheel')

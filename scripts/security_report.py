@@ -47,12 +47,24 @@ REPO = check_components.REPO
 REPORT = os.path.join(REPO, 'docs', 'security', 'report.md')
 ACTIONS = 'https://github.com/Conan-Shao/IntelliPandora/actions/workflows/security.yml'
 
+def _label(output: str) -> str:
+    """
+    What a lock holds, read from update_locks.py -- the file that decides it.
+    Written out by hand here, the report said ci.txt held "ai, mcp, system,
+    test" long after parallel, visual and web had joined it.
+    """
+    import update_locks
+    _extras = update_locks.LOCKS[output][1]
+    if not _extras:
+        return '构建与工具链（不安装到用户环境）'
+    _missing = [_e for _e in ('ai',) if _e not in _extras]
+    return '框架 + 可选组 {}{}'.format('、'.join(_extras),
+                                    '，不含 AI 组' if _missing else '')
+
+
 # lock file -> what it is, in the report's words
-LOCKS = (
-    ('requirements/ci.txt', '框架 + 全部可选组（ai、mcp、system、test）'),
-    ('requirements/ci-noai.txt', '框架 + mcp、test，不含 AI 组'),
-    ('requirements/tools.txt', '构建与工具链（不安装到用户环境）'),
-)
+LOCKS = tuple(('requirements/' + _name, _label(_name))
+              for _name in ('ci.txt', 'ci-noai.txt', 'tools.txt'))
 
 
 class ScanError(Exception):
@@ -151,13 +163,7 @@ def tool_versions():
 # -- assessment --------------------------------------------------------------
 
 def assess(runtime_python: str, today: datetime.date):
-    _excepted = {}
-    for _e in check_components.exceptions():
-        try:
-            if datetime.date.fromisoformat(_e['expires']) >= today:
-                _excepted[_e['id']] = _e
-        except ValueError:
-            pass
+    _excepted = check_components.active_exceptions(today)
 
     _s = {'locks': [], 'vulns': [], 'blocking': []}
     for _lock, _label in LOCKS:
@@ -203,7 +209,12 @@ def assess(runtime_python: str, today: datetime.date):
                 _s['blocking'].append('license not on the allowlist ({}): {} {} ({})'.format(
                     _env, _name, _d['version'], _d['license'] or 'none stated'))
         _keep = locked(_lock) | {'intellipandora'}
-        _s['licenses'][_env] = {_n: _d for _n, _d in _dists.items() if _n in _keep}
+        # Listed: the locked ones. Judged: all of them -- a disallowed license
+        # on something unlocked (a seeded pip, a stray setuptools) blocks the
+        # scan, and the verdict line used to say "passed" beside a failing job
+        # because it only looked at the listed ones.
+        _s['licenses'][_env] = {_n: _d for _n, _d in _dists.items()
+                                if _n in _keep or not _d['allowed']}
 
     _s['registry'] = check_components.check_registry()
     _s['components'] = len(check_components.declared())

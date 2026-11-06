@@ -24,6 +24,7 @@ is taken with --cutoff and recorded as an exception (docs/security/).
 import argparse
 import datetime
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -60,6 +61,19 @@ def cutoff(today: datetime.date = None) -> str:
             - datetime.timedelta(days=COOLDOWN_DAYS)).isoformat() + 'T00:00:00Z'
 
 
+def normalised_cutoff(value: str) -> str:
+    """
+    --cutoff as uv should read it. A bare date is midnight UTC at its start,
+    the same rule as cutoff(): passed on as given, uv read `2026-10-22` as
+    the whole of that day and a release from that afternoon got in.
+    """
+    _value = value.strip()
+    if re.fullmatch(r'\d{4}-\d{2}-\d{2}', _value):
+        datetime.date.fromisoformat(_value)        # reject 2026-13-45
+        return _value + 'T00:00:00Z'
+    return _value
+
+
 def command(uv: str, inputs, extras, output, until: str):
     _cmd = [uv, 'pip', 'compile', *inputs, '--universal', '--python-version', PYTHON_FLOOR,
             '--generate-hashes', '--exclude-newer', until, '--quiet',
@@ -73,11 +87,12 @@ def command(uv: str, inputs, extras, output, until: str):
 def main(argv) -> int:
     _args = argparse.ArgumentParser(description=__doc__.splitlines()[1])
     _args.add_argument('--cutoff', default=None,
-                       help='newest upload date to accept (default: today - {} days)'.format(
+                       help='accept nothing uploaded at or after this moment: a date (midnight '
+                            'UTC at its start) or a full timestamp (default: today - {} days)'.format(
                            COOLDOWN_DAYS))
     _args.add_argument('--uv', default=shutil.which('uv') or 'uv')
     _opts = _args.parse_args(argv)
-    _until = _opts.cutoff or cutoff()
+    _until = normalised_cutoff(_opts.cutoff) if _opts.cutoff else cutoff()
     for _output, (_inputs, _extras) in LOCKS.items():
         _cmd = command(_opts.uv, _inputs, _extras, _output, _until)
         print('$', ' '.join(_cmd))

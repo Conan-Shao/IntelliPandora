@@ -140,3 +140,28 @@ def test_the_generated_ci_installs_the_version_that_generated_it(tmp_path):
     assert 'intellipandora=={}'.format(get_latest_version()) in _ci
     assert '--fail-on-weakened' in _ci
     assert '{{' not in _ci
+
+
+def test_the_generated_gitignore_keeps_environment_overlays_out(tmp_path):
+    # CR1: AGENTS.md says credentials go in an uncommitted conf/<env>.yaml,
+    # and nothing ignored it -- `git add .` committed them
+    from ipandora.run.commands.init import generate
+    generate(str(tmp_path))
+    subprocess.run(['git', 'init', '-q'], cwd=str(tmp_path), check=True)
+    (tmp_path / 'conf' / 'staging.yaml').write_text('password: x\n', encoding='utf-8')  # pragma: allowlist secret
+    _ignored = subprocess.run(['git', 'check-ignore', 'conf/staging.yaml', 'conf/config.yaml'],
+                              cwd=str(tmp_path), capture_output=True, text=True).stdout.split()
+    assert _ignored == ['conf/staging.yaml']
+
+
+def test_the_demo_service_bypasses_a_lowercase_proxy_setting(tmp_path):
+    # CR1: requests reads no_proxy before NO_PROXY; only NO_PROXY was extended
+    _env = dict(os.environ, IPANDORA_RUNS_DIR=str(tmp_path / 'home' / 'runs'),
+                http_proxy='http://127.0.0.1:9', HTTP_PROXY='http://127.0.0.1:9',
+                no_proxy='.corp.example', NO_PROXY='.corp.example')
+    _env.pop('IPANDORA_CONFIG_DIR', None)
+    _cli = [sys.executable, '-m', 'ipandora.run']
+    subprocess.run(_cli + ['init', 'p'], cwd=str(tmp_path), env=_env, check=True, capture_output=True)
+    _run = subprocess.run(_cli + ['run', 'tests', '--no-report', '--no-baseline'],
+                          cwd=str(tmp_path / 'p'), env=_env, capture_output=True, text=True)
+    assert _run.returncode == 0, _run.stdout[-2000:] + _run.stderr[-2000:]
