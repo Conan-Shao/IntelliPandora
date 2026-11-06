@@ -109,7 +109,15 @@ ipandora eval run evals/coding.py -k 5 --split test --workers 8
 ipandora eval run evals/coding.py -k 5 --split test --update-baseline     # 写入 conf/eval_baseline.json
 ```
 
-退出码就是结论：和基线比"变差"或"不可比"时为 1，其他为 0；数据集、spec 或显式给出的 `--baseline` 读不了时为 2。
+退出码就是结论：门禁不通过时为 1，其他为 0；数据集、spec 或显式给出的 `--baseline` 读不了时为 2。门禁拦什么由 `--fail-on-regression` 决定，后一级包含前一级：
+
+| 取值 | 拦下 |
+|---|---|
+| `overall`（默认） | 整体比基线变差；和基线不可比 |
+| `tag` | 另外，任何一个标签值变差。比较的组数多了，总有一组会碰巧"变差"，所以每组的置信水平按组数做 Bonferroni 校正，整体误报率仍是 5% |
+| `task` | 另外，任何一道"以前每次都过、现在每次都挂"的题（两边各至少 2 次试验）。一道题拉不动整体成功率，却是最清楚的退化 |
+
+**饱和**：`eval run` 和 `eval inspect` 会读报告归档里同一数据集、同一划分的历史运行。最近 3 次成功率都在 95% 以上，说明这套题已经区分不出版本的好坏，报告提示"可以毕业到回归集，能力评测需要补更难的题"；整体没饱和时，也会列出最近 3 次每次都全过的题。数据集内容变了，计数重新开始。也可以在代码里用 `ipandora.core.eval.trend.history()` 和 `saturation()`。
 
 报告给出：
 

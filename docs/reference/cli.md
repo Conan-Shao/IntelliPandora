@@ -52,6 +52,7 @@ read Inspect logs as an evaluation run: report, baseline, gate (needs the inspec
 | `--no-baseline` |  | compare with nothing |
 | `--update-baseline` |  | write this run as the baseline. Commit it; review its diff |
 | `--noise` `RATE` |  | infrastructure noise as a rate (0.021 for ±2.1 points): a difference smaller than this is never called better or worse |
+| `--fail-on-regression` `FAIL_ON_REGRESSION` | `overall` | what fails the run: overall -- the overall verdict is worse; tag -- also any tag value worse (corrected for the number of groups); task -- also any task that always succeeded and now always fails. Not comparable always fails |
 | `--partial` |  | compare each task's partial score (the weighted share of its checks that held) instead of whether it succeeded |
 
 ### `ipandora eval run`
@@ -70,6 +71,7 @@ run every task k times, grade, compare with the baseline
 | `--no-baseline` |  | compare with nothing |
 | `--update-baseline` |  | write this run as the baseline. Commit it; review its diff |
 | `--noise` `RATE` |  | infrastructure noise as a rate (0.021 for ±2.1 points): a difference smaller than this is never called better or worse |
+| `--fail-on-regression` `FAIL_ON_REGRESSION` | `overall` | what fails the run: overall -- the overall verdict is worse; tag -- also any tag value worse (corrected for the number of groups); task -- also any task that always succeeded and now always fails. Not comparable always fails |
 | `--partial` |  | compare each task's partial score (the weighted share of its checks that held) instead of whether it succeeded |
 
 ### `ipandora eval samples`

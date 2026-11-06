@@ -15,7 +15,7 @@ says anything else.
 """
 import json
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from ipandora.core.eval import stats
 from ipandora.core.eval.run import EvalRun
@@ -73,17 +73,20 @@ def compare(run: EvalRun, baseline: Dict[str, Any], noise: float = 0.0,
     _out['not_comparable'] = run.manifest.comparable_with(Manifest.from_dict(baseline.get('manifest')))
     _out['baseline_run'] = baseline.get('run_id', '')
     _out['by_tag'] = []
-    for _tag, _values in sorted(run.tag_values().items()):
-        for _value in _values:
-            _ids = set(run.task_ids(**{_tag: _value}))
-            _sub = stats.compare({_k: _v for _k, _v in _base.items() if _k in _ids},
-                                 {_k: _v for _k, _v in _now.items() if _k in _ids}, noise=noise)
-            _b = [_x for _k, _v in _base.items() if _k in _ids for _x in _v]
-            _n = [_x for _k, _v in _now.items() if _k in _ids for _x in _v]
-            _sub.update({'tag': _tag, 'value': _value,
-                         'base_rate': (sum(_b) / len(_b)) if _b else None,
-                         'now_rate': (sum(_n) / len(_n)) if _n else None})
-            _out['by_tag'].append(_sub)
+    _groups = [(_tag, _value) for _tag, _values in sorted(run.tag_values().items()) for _value in _values]
+    # one comparison per tag value: at 95% each, twenty of them call some group
+    # worse by chance alone. Bonferroni keeps the chance of any false alarm at 5%.
+    _level = 1 - (1 - 0.95) / max(len(_groups), 1)
+    for _tag, _value in _groups:
+        _ids = set(run.task_ids(**{_tag: _value}))
+        _sub = stats.compare({_k: _v for _k, _v in _base.items() if _k in _ids},
+                             {_k: _v for _k, _v in _now.items() if _k in _ids}, noise=noise, level=_level)
+        _b = [_x for _k, _v in _base.items() if _k in _ids for _x in _v]
+        _n = [_x for _k, _v in _now.items() if _k in _ids for _x in _v]
+        _sub.update({'tag': _tag, 'value': _value,
+                     'base_rate': (sum(_b) / len(_b)) if _b else None,
+                     'now_rate': (sum(_n) / len(_n)) if _n else None})
+        _out['by_tag'].append(_sub)
     _changes = []
     for _id in sorted(set(_base) & set(_now)):
         if _base[_id] and _now[_id]:
@@ -96,4 +99,38 @@ def compare(run: EvalRun, baseline: Dict[str, Any], noise: float = 0.0,
                            key=lambda _c: (_c['difference'], _c['task_id']))
     _out['best'] = sorted((_c for _c in _changes if _c['difference'] > 0),
                           key=lambda _c: (-_c['difference'], _c['task_id']))
+    # a task that always succeeded and now always fails, over at least two
+    # trials each side: too few tasks to move the overall rate, and the
+    # clearest regression there is
+    _out['broken'] = [_c['task_id'] for _c in _out['worst']
+                      if _c['base'][1] >= BROKEN_MIN_TRIALS and _c['now'][1] >= BROKEN_MIN_TRIALS
+                      and _c['base'][0] == _c['base'][1] and _c['now'][0] == 0]
+    return _out
+
+
+BROKEN_MIN_TRIALS = 2
+
+GATES = ('overall', 'tag', 'task')
+"""What fails the gate, each including the ones before it: the overall verdict;
+any tag value worse (Bonferroni-corrected); any task broken."""
+
+
+def regressions(comparison: Dict[str, Any], gate: str = 'overall') -> List[str]:
+    """Why the gate fails -- empty when it passes. `not comparable` always fails it."""
+    if gate not in GATES:
+        raise ValueError('unknown gate {!r}; one of {}'.format(gate, ', '.join(GATES)))
+    if not comparison:
+        return []
+    _out = []
+    if comparison.get('not_comparable'):
+        _out.append('和基线不可比：{}'.format('；'.join(comparison['not_comparable'])))
+    if comparison.get('verdict') == stats.WORSE:
+        _out.append('整体变差（{:+.1f} 个百分点）'.format(100.0 * comparison.get('difference', 0.0)))
+    if gate in ('tag', 'task'):
+        for _t in comparison.get('by_tag') or []:
+            if _t.get('verdict') == stats.WORSE:
+                _out.append('{}={} 变差（{:+.1f} 个百分点）'.format(_t['tag'], _t['value'],
+                                                               100.0 * _t.get('difference', 0.0)))
+    if gate == 'task' and comparison.get('broken'):
+        _out.append('以前全过、现在全挂的任务：{}'.format('、'.join(comparison['broken'][:10])))
     return _out
