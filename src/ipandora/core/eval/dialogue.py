@@ -159,6 +159,11 @@ class ScriptedUser(User):
                    otherwise=_input.get('otherwise'), patience=int(_input.get('patience', 1)))
 
     def opening(self) -> str:
+        # a new conversation: one user object reused across trials -- defined
+        # once at module level -- answered nothing after the first, and the
+        # agent was blamed for the user who had nothing left to say
+        self._used = set()
+        self._fallbacks = 0
         return self._opening
 
     def reply(self, messages):
@@ -205,7 +210,7 @@ def converse(agent: Callable[[List[Dict[str, Any]]], Any], user: User, max_turns
         _r = _reply(agent([dict(_m) for _m in _messages]))
         for _call in _r.tool_calls:
             _trajectory.append({'t': _now(), 'kind': 'tool', 'role': 'tool', 'name': _call.name,
-                                'args': copy.deepcopy(_call.args), 'result': _call.result,
+                                'args': _copy(_call.args), 'result': _call.result,
                                 'text': '{}({})'.format(_call.name, _args_text(_call.args)),
                                 'error': _call.error})
         for _key, _value in (_r.cost or {}).items():
@@ -231,7 +236,7 @@ def converse(agent: Callable[[List[Dict[str, Any]]], Any], user: User, max_turns
     _trajectory.append({'t': _now(), 'kind': 'result', 'role': '', 'name': 'ended', 'text': _ended,
                         'error': ''})
     return AgentResult(output={'reply': _last, 'ended': _ended, 'turns': _turns,
-                               'state': copy.deepcopy(state()) if state is not None else None},
+                               'state': _copy(state()) if state is not None else None},
                        trajectory=_trajectory, cost=_cost)
 
 
@@ -251,13 +256,25 @@ def replay(calls: Sequence[Union[ToolCall, Sequence]], run: Callable[..., Any],
         _call = _c if isinstance(_c, ToolCall) else ToolCall(name=str(_c[0]), args=dict(_c[1] if len(_c) > 1 else {}))
         _call.result = run(_call.name, **_call.args)
         _trajectory.append({'t': float(_i), 'kind': 'tool', 'role': 'tool', 'name': _call.name,
-                            'args': copy.deepcopy(_call.args), 'result': _call.result,
+                            'args': _copy(_call.args), 'result': _call.result,
                             'text': '{}({})'.format(_call.name, _args_text(_call.args)), 'error': ''})
     _trajectory.append({'t': float(len(_trajectory)), 'kind': 'result', 'role': '', 'name': 'ended',
                         'text': REFERENCE, 'error': ''})
     return AgentResult(output={'reply': '', 'ended': REFERENCE, 'turns': 0,
-                               'state': copy.deepcopy(state()) if state is not None else None},
+                               'state': _copy(state()) if state is not None else None},
                        trajectory=_trajectory, cost={'tool_calls': len(calls or ())})
+
+
+def _copy(value):
+    """
+    A deep copy where one can be made. Arguments holding a lock, a client or a
+    file cannot be copied, and a failed copy raised out of converse() -- where
+    it read as the infrastructure failing, not as anything the agent did.
+    """
+    try:
+        return copy.deepcopy(value)
+    except Exception:  # noqa: BLE001 -- anything that cannot be copied is kept as it is
+        return value
 
 
 def _args_text(args: Dict[str, Any]) -> str:

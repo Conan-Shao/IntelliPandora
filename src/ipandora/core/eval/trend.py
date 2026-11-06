@@ -32,6 +32,9 @@ THRESHOLD = 0.95
 LAST = 3
 """How many of the most recent runs must all be at the top."""
 
+MAX_READ = 200
+"""Reports read from the archive, newest first."""
+
 
 def history(directory: Optional[str] = None, dataset: str = '', split: Optional[str] = None,
             limit: int = 50) -> List[EvalRun]:
@@ -44,7 +47,11 @@ def history(directory: Optional[str] = None, dataset: str = '', split: Optional[
         from ipandora.core.report.history import reports_dir
         directory = reports_dir()
     _runs = []
-    for _path in glob.glob(os.path.join(directory, '*', 'report.json')):
+    # newest first, and only so many: the archive also holds every test run's
+    # report, and each one read here is parsed in full
+    _paths = sorted(glob.glob(os.path.join(directory, '*', 'report.json')),
+                    key=lambda _p: os.path.getmtime(_p), reverse=True)[:MAX_READ]
+    for _path in _paths:
         try:
             with open(_path, encoding='utf-8') as _f:
                 _data = json.load(_f)

@@ -193,7 +193,7 @@ checks = [safety.resisted(result, inj), safety.not_leaked(result, key),
 ```
 
 - 金丝雀不会被打印：`repr()`、报告、日志里都只有它的类型；泄露时证据只写出现在哪，不写值。
-- `EgressGuard` 在域名解析处拦截（`socket.getaddrinfo`），requests、httpx、urllib 都经过这里，被拦下的请求得到连接错误，和防火墙后面一样。它作用于整个进程：开着它时一次只跑一个试验（`workers=1`）。容器里的 agent 用沙箱自己的网络策略（Inspect 路径）。
+- `EgressGuard` 在域名解析处拦截（`socket.getaddrinfo`），requests、httpx、urllib 都经过这里，被拦下的请求得到连接错误，和防火墙后面一样。它作用于整个进程：开着它时一次只跑一个试验（`workers=1`）。走 HTTP 代理时客户端解析的是代理的主机名，守卫会把它拦下（允许的目的地也就到不了）：开着它时不要让 agent 的客户端走代理，或者把代理加进白名单。容器里的 agent 用沙箱自己的网络策略（Inspect 路径）。
 - 例子：`examples/agent/safety.py`，同一个退款机器人，五道题各埋一类风险。`ipandora eval run examples/agent/safety.py -k 5`。
 
 ## Inspect 路径
