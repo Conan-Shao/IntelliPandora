@@ -56,6 +56,7 @@ from typing import Any, Callable, List, Optional, Sequence, Union
 
 from ipandora.core.assertion.check import Check
 from ipandora.core.evidence import recorder
+from ipandora.core.evidence.recorder import CaseEvidence
 from ipandora.core.schedule.runtime import Runtime
 from ipandora.core.schedule.session import SessionManager
 
@@ -128,7 +129,7 @@ class Results(list):
 
     @property
     def warning(self) -> str:
-        if self.overlapped:
+        if self.overlapped or not self:
             return ''
         return ('并发没有完全发生：最后一个操作在 +{:.1f}ms 才开始，而最早的一个在 +{:.1f}ms '
                 '已经结束。操作太快或起跑偏差太大时会这样，这次的结论不能说明并发下的行为'
@@ -184,11 +185,18 @@ def concurrently(operation: Union[Callable[[], Any], Sequence[Callable[[], Any]]
     _outcomes = [None] * len(_calls)  # type: List[Optional[Outcome]]
     _starts = [None] * len(_calls)  # type: List[Optional[float]]
     _not_ready = {}
+    # Each thread records into its own evidence, merged into the case's once
+    # the thread has finished. Binding them straight to the case's evidence let
+    # a timed-out thread -- which cannot be stopped -- keep adding requests to
+    # the case after concurrently() returned, or to a case that had ended. And
+    # merged in operation order, the report reads the same on every run.
+    _own = [CaseEvidence(nodeid=_evidence.nodeid, context=dict(_evidence.context))
+            if _evidence is not None else None for _ in _calls]
 
     def _worker(index: int, call: Callable[[], Any]):
         try:
             SessionManager.setSession(SessionManager.clone(_session))
-            recorder.bind(_evidence)
+            recorder.bind(_own[index])
             Runtime.Case.adopt(_case_state)
         except BaseException as exc:  # noqa: BLE001 -- reported as NotConcurrent below
             _not_ready[index] = exc
@@ -233,9 +241,16 @@ def concurrently(operation: Union[Callable[[], Any], Sequence[Callable[[], Any]]
     if _barrier.broken or _not_ready:
         raise NotConcurrent(_why_not_started(len(_calls), _not_ready, timeout))
 
+    # one snapshot for both the evidence and the results: a thread finishing
+    # between two reads would otherwise be a timeout with its requests merged
+    _done = list(_outcomes)
+    for _index, _outcome in enumerate(_done):
+        if _outcome is not None:    # still running: what it records from now on is dropped
+            recorder.merge(_evidence, _own[_index])
+
     _first = min(_s for _s in _starts if _s is not None)
     _results = Results()
-    for _index, _outcome in enumerate(_outcomes):
+    for _index, _outcome in enumerate(_done):
         if _outcome is None:
             _outcome = Outcome(index=_index, error=TimeoutError(
                 'still running {:g}s after the start; its thread was left to finish on its '

@@ -48,7 +48,13 @@ KEY = 'ipandora.evidence'
 """The user_properties entry a case's evidence travels in."""
 
 DESELECTED_KEY = 'ipandora.deselected'
-"""Worker output carrying what `-m` removed; xdist does not forward the hook."""
+"""Worker output carrying the cases --exclude-flaky removed; xdist does not forward the hook."""
+
+NARROWED_KEY = 'ipandora.narrowed'
+"""Worker output: `-k` or `-m` left cases out of this run."""
+
+EXCLUDE_FLAKY_OPTION = '--ipandora-exclude-flaky'
+"""What run(exclude_flaky=True) passes. See pytest_collection_modifyitems."""
 
 ENV_VAR = 'IPANDORA_RUN_ENV'
 """The run's environment name, for workers to overlay <env>.yaml themselves."""
@@ -71,7 +77,15 @@ OPAQUE_ITEMS = ('TestCaseFunction', 'DoctestItem', 'DoctestTextfile')
 _INDEX = pytest.StashKey[int]()
 _DECLARED = pytest.StashKey[dict]()
 _LOCKS = pytest.StashKey[list]()
+_EXCLUDED = pytest.StashKey[bool]()
 _PATCHED = {}
+_SESSIONS = {'depth': 0}
+"""How many pytest sessions in this process have this plugin configured.
+
+run() may be called from inside a test (this framework tests itself that way),
+so sessions nest. The patches below belong to the outermost one: an inner
+session that restored pytest.raises on its way out left the outer session's
+remaining cases recording nothing."""
 
 
 def is_worker(config) -> bool:
@@ -179,7 +193,14 @@ def pytest_load_initial_conftests(early_config, parser, args):
         sys.dont_write_bytecode = True
 
 
+def pytest_addoption(parser):
+    parser.addoption(
+        EXCLUDE_FLAKY_OPTION, action='store_true', default=False,
+        help='ipandora: deselect cases marked flaky and report them as excluded')
+
+
 def pytest_configure(config):
+    _SESSIONS['depth'] += 1
     # Patched for the duration of the run, restored in pytest_unconfigure.
     # A module that did `from pytest import raises` during this run keeps the
     # wrapper afterwards, which is harmless: outside a case it records nothing
@@ -234,11 +255,49 @@ def _apply_worker_env():
 
 
 def pytest_unconfigure(config):
+    _SESSIONS['depth'] = max(_SESSIONS['depth'] - 1, 0)
+    if _SESSIONS['depth']:
+        return      # an outer session is still running and still needs them
     from ipandora.core import web
     web.uninstall()
     for _name, _original in _PATCHED.items():
         setattr(pytest, _name, _original)
     _PATCHED.clear()
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_collection_modifyitems(config, items):
+    """
+    --exclude-flaky, done here rather than as `-m 'not flaky'`.
+
+    Two reasons. pytest keeps only the last `-m`, so appending one silently
+    replaced whatever marker expression the user passed. And pytest_deselected
+    cannot tell a flaky exclusion from a `-k` selector or the user's own `-m`:
+    every case outside `ipandora run login` was recorded as excluded, compared
+    with a full-suite baseline as "used to pass, now excluded", and failed
+    --fail-on-weakened for cases nobody touched. Only what is removed here is
+    an exclusion; what a selector leaves out is simply outside the run.
+
+    trylast: after `-k` and `-m` have narrowed the list, so only the flaky
+    cases that would otherwise have run are named.
+    """
+    if not config.getoption(EXCLUDE_FLAKY_OPTION.lstrip('-').replace('-', '_'), False):
+        return
+    _keep, _drop = [], []
+    for _item in items:
+        (_drop if _item.get_closest_marker('flaky') is not None else _keep).append(_item)
+    if not _drop:
+        return
+    for _item in _drop:
+        _item.stash[_EXCLUDED] = True
+    items[:] = _keep
+    config.hook.pytest_deselected(items=_drop)
+
+
+def excluded(item) -> bool:
+    """Whether --exclude-flaky removed this item (as opposed to a selector)."""
+    _stash = getattr(item, 'stash', None)
+    return bool(_stash is not None and _stash.get(_EXCLUDED, False))
 
 
 def pytest_collection_finish(session):
@@ -255,7 +314,9 @@ def pytest_deselected(items):
     _config = items[0].config if items else None
     if _config is not None and is_worker(_config):
         _config.workeroutput.setdefault(DESELECTED_KEY, []).extend(
-            getattr(_i, 'nodeid', str(_i)) for _i in items)
+            _i.nodeid for _i in items if excluded(_i))
+        if any(not excluded(_i) for _i in items):
+            _config.workeroutput[NARROWED_KEY] = True
 
 
 # -- per case ---------------------------------------------------------------
@@ -366,10 +427,14 @@ def _declarations(item) -> dict:
 
 def _pack(item):
     _evidence = recorder.end(item.nodeid)
+    # A case skipped by its marker never reaches our setup hook: pytest's
+    # skipping plugin raises first. Its declarations and its position still
+    # matter -- without the index it sorted by arrival, so the case order (and
+    # the judgement inventory) differed between a serial and a parallel run.
     _declared = item.stash.get(_DECLARED, None)
-    if _evidence is None and _declared is None:
-        return None
-    _payload = dict(_declared or {})
+    if _declared is None:
+        _declared = _declarations(item)
+    _payload = dict(_declared)
     if _evidence is not None:
         _payload['checks'] = list(_evidence.checks)
         _payload['exchanges'] = list(_evidence.exchanges)
@@ -392,11 +457,24 @@ def _pack(item):
 # -- exclusive resources ----------------------------------------------------
 
 def lock_dir() -> str:
+    """
+    One directory per user on this machine, whatever else is configured.
+
+    It used to sit next to the run store, so two runs with different
+    IPANDORA_RUNS_DIR -- two CI jobs, the MCP server and a terminal -- each
+    took "their own" lock on the same test account and ran at the same time.
+    """
     _dir = os.environ.get(LOCK_DIR_VAR)
     if not _dir:
-        from ipandora.core.runner import store
-        _dir = os.path.join(os.path.dirname(store.runs_dir()), 'locks')
-    os.makedirs(_dir, exist_ok=True)
+        import getpass
+        import tempfile
+        try:
+            _user = getpass.getuser()
+        except Exception:  # noqa: BLE001 -- no login name: fall back to one shared directory
+            _user = 'user'
+        _dir = os.path.join(tempfile.gettempdir(),
+                            'ipandora-locks-' + re.sub(r'[^A-Za-z0-9._-]+', '_', _user))
+    os.makedirs(_dir, mode=0o700, exist_ok=True)
     return _dir
 
 

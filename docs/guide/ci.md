@@ -11,7 +11,7 @@ ipandora run tests --fail-on-weakened --junit-xml report.xml
 - **退出码就是结论**：有用例失败，退出码就不是 0。
 - **`--fail-on-weakened`**：判定比基线 `conf/judgements.json` 弱，就算运行失败。弱包括：删除判定、放宽范围、改了期望值、新增跳过或排除、通过了却没有任何判定。收紧和新增判定不受影响。
 - **`--junit-xml`**：CI 能直接读的 JUnit XML。没有对应状态的结果，比如零判定、阻塞、缺口，写成 `<skipped>`，真实状态记在属性里，不会被算进通过数。
-- **`--exclude-flaky`**：排除标了 `@pytest.mark.flaky(reason=...)` 的用例，报告里仍会点名。
+- **`--exclude-flaky`**：排除标了 `@pytest.mark.flaky(reason=...)` 的用例，报告里仍会点名。可以和自己的 `-m` 一起用。用 `-k`、`-m` 缩小范围时，没跑到的用例不算"被排除"，也不会被当成删除。
 
 ## 基线的评审
 

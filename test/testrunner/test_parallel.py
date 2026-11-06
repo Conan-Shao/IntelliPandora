@@ -59,6 +59,7 @@ def comparable(result):
                   for _c in result.cases],
         'coverage': result.coverage,
         'deselected': result.deselected,
+        'narrowed': result.narrowed,
         'collect_error': result.collect_error,
     }
 
@@ -161,9 +162,17 @@ class TestSameAnswer:
         _body = _by['test_evidence_with_a_body_no_serialiser_knows'].exchanges[0]['response_body']
         assert '<opaque>' in json.dumps(_body)
 
+    def test_selector_narrowing_is_seen_in_parallel(self, tmp_path):
+        # deselection happens in the workers: without the worker output, a
+        # `-k` run in parallel looked like a full run and missing cases like
+        # deleted ones
+        _serial, _parallel = run_both(suite(tmp_path, MIXED), extra_args=['-k', 'not flaky'])
+        assert _serial.narrowed and _parallel.narrowed
+        assert _parallel.deselected == _serial.deselected == []
+
     def test_deselected_cases_are_still_named(self, tmp_path):
         # xdist runs -m in the workers and does not forward pytest_deselected
-        _serial, _parallel = run_both(suite(tmp_path, MIXED), extra_args=['-m', 'not flaky'])
+        _serial, _parallel = run_both(suite(tmp_path, MIXED), exclude_flaky=True)
         assert _parallel.deselected == _serial.deselected
         assert [_n.split('::')[-1] for _n in _parallel.deselected] == ['test_flaky']
 

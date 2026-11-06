@@ -22,6 +22,7 @@ the wrong case is worse than no evidence.
 import json
 import threading
 import time
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -124,6 +125,14 @@ class Recorder:
     # -- lifecycle ---------------------------------------------------------
 
     def begin(self, nodeid: str, **context) -> None:
+        # Cases nest when a test calls run() itself: the inner session's case
+        # opens while the outer one is still recording. The outer evidence is
+        # set aside and comes back at end(); replacing it lost everything the
+        # outer case judged after the inner run.
+        _stack = getattr(self._local, 'stack', None)
+        if _stack is None:
+            _stack = self._local.stack = []
+        _stack.append(getattr(self._local, 'current', None))
         self._local.current = CaseEvidence(
             nodeid=nodeid, context={_k: str(_v) for _k, _v in context.items() if _v})
 
@@ -140,7 +149,12 @@ class Recorder:
         checks, growing without bound. The caller owns what it is given.
         """
         _current = getattr(self._local, 'current', None)
-        self._local.current = None
+        if _current is None or _current.nodeid != nodeid:
+            # not this case's slot -- a case skipped by its marker never began
+            # one, and must not take the enclosing case's evidence with it
+            return None
+        _stack = getattr(self._local, 'stack', None) or []
+        self._local.current = _stack.pop() if _stack else None
         return _current
 
     def current(self) -> Optional[CaseEvidence]:
@@ -159,6 +173,20 @@ class Recorder:
 
     def reset(self) -> None:
         self._local.current = None
+        self._local.stack = []
+
+    def merge(self, target: Optional[CaseEvidence], source: Optional[CaseEvidence]) -> None:
+        """Append what `source` recorded to `target`. For concurrently(): see there."""
+        if target is None or source is None:
+            return
+        with self._write:
+            target.checks.extend(source.checks)
+            target.exchanges.extend(source.exchanges)
+            target.locators.update(source.locators)
+            target.locator_failures.extend(source.locator_failures)
+            for _artifact in source.artifacts:
+                if _artifact not in target.artifacts:
+                    target.artifacts.append(_artifact)
 
     @property
     def active(self) -> bool:
@@ -166,9 +194,29 @@ class Recorder:
 
     # -- capture -----------------------------------------------------------
 
+    @contextmanager
+    def checks_withheld(self):
+        """
+        Record no judgements on this thread for the duration; requests still are.
+
+        For eventually(): each read of its probe judges, and a probe that uses
+        assert_all records those judgements. The reads that did not hold yet
+        are observations of a system still converging, not failed judgements
+        -- yet they landed in the case's evidence, and a case whose wait
+        succeeded showed red checks in its report. eventually() returns its own
+        single Check instead. The requests each read made stay: they are what
+        someone debugging a slow convergence wants to see.
+        """
+        _before = getattr(self._local, 'withheld', False)
+        self._local.withheld = True
+        try:
+            yield
+        finally:
+            self._local.withheld = _before
+
     def add_checks(self, checks) -> None:
         _current = getattr(self._local, 'current', None)
-        if _current is None:
+        if _current is None or getattr(self._local, 'withheld', False):
             return
         for _check in checks or ():
             _entry = {

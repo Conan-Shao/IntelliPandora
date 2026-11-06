@@ -85,6 +85,9 @@ class ResultCollector:
         self.collect_errors = []  # type: List[str]
         self._coverage = {}  # type: Dict[str, tuple]
         self.deselected = []  # type: List[str]
+        self._called = set()
+        self.narrowed = False
+        """`-k` or `-m` left cases out: a case missing from this run is not deleted."""
         self.rootdir = ''
 
     def _slot(self, nodeid: str) -> CaseResult:
@@ -113,6 +116,7 @@ class ResultCollector:
         _case.duration += getattr(report, 'duration', 0.0) or 0.0
 
         if report.when == 'call':
+            self._called.add(report.nodeid)
             if report.outcome == FAILED:
                 _case.outcome = FAILED
             elif report.outcome == SKIPPED:
@@ -185,13 +189,19 @@ class ResultCollector:
 
     def pytest_deselected(self, items):
         """
-        Remember what a `-m` expression removed.
+        Remember what --exclude-flaky removed.
 
-        Without this, `--exclude-flaky` makes the excluded cases vanish from
-        the run entirely -- and a flaky marker nobody is reminded of is a
-        failure that has been parked. They are deselected, not forgotten.
+        Without this the excluded cases vanish from the run entirely -- and a
+        flaky marker nobody is reminded of is a failure that has been parked.
+        They are deselected, not forgotten.
+
+        Only those: what `-k` or the user's own `-m` leaves out is outside the
+        run, not excluded from it (plugin.pytest_collection_modifyitems).
         """
-        self.add_deselected(getattr(_i, 'nodeid', str(_i)) for _i in items or ())
+        _items = list(items or ())
+        self.add_deselected(_i.nodeid for _i in _items if plugin.excluded(_i))
+        if any(not plugin.excluded(_i) for _i in _items):
+            self.narrowed = True
 
     def add_deselected(self, nodeids):
         for _nodeid in nodeids:
@@ -224,6 +234,15 @@ class ResultCollector:
         """
         _arrival = {_n: _i for _i, _n in enumerate(self._order)}
         _late = len(_arrival) + max(self._index.values(), default=0) + 1
+        for _nodeid, _case in self.cases.items():
+            if _case.outcome == PASSED and _nodeid not in self._called:
+                # Setup passed and then nothing: the process died, or the run
+                # was interrupted, before the test body reported. The default
+                # outcome is PASSED so that a later teardown error can still
+                # mark a passed case; left alone here, a case that never ran
+                # would count as a pass.
+                _case.outcome = ERROR
+                _case.message = _case.message or '没有收到用例执行结果：进程在用例执行中退出，或运行被中断'
         return [self.cases[_n] for _n in sorted(
             self._order, key=lambda n: (self._index.get(n, _late + _arrival[n])))]
 
@@ -238,3 +257,5 @@ class _WorkerOutput:
     def pytest_testnodedown(self, node, error):
         _output = getattr(node, 'workeroutput', None) or {}
         self._collector.add_deselected(_output.get(plugin.DESELECTED_KEY) or ())
+        if _output.get(plugin.NARROWED_KEY):
+            self._collector.narrowed = True

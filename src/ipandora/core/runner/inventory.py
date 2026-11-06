@@ -130,6 +130,20 @@ def save(path: str, inventory: Dict[str, Any]) -> str:
     return os.path.abspath(path)
 
 
+def full_scope_of(baseline: Dict[str, Any], result: RunResult) -> bool:
+    """
+    Whether this run covered everything the baseline did, so a case missing
+    from it is really gone. Same selector, and nothing narrowed further by a
+    `-k` or `-m` passed through to pytest.
+    """
+    return (baseline.get('selector') or '') == (result.selector or '') \
+        and not getattr(result, 'narrowed', False)
+
+
+class NotAcceptable(ValueError):
+    """This run cannot become the baseline."""
+
+
 def updated(old: Optional[Dict[str, Any]], result: RunResult) -> Dict[str, Any]:
     """
     The baseline after accepting this run.
@@ -137,11 +151,20 @@ def updated(old: Optional[Dict[str, Any]], result: RunResult) -> Dict[str, Any]:
     Cases this run said nothing reliable about (failed, errored, or simply
     not selected) keep their old entry. A run over the same selector as the
     baseline drops cases that no longer exist; a narrower run cannot know.
+
+    A run that did not happen properly -- collection failed, nothing was
+    collected, pytest was interrupted -- is refused: with no cases in it,
+    every baseline entry looked deleted and the file was saved empty, which
+    silently turned weakening detection off for the whole suite.
     """
+    if result.collect_error:
+        raise NotAcceptable('这次运行没有正常完成（{}），不能作为基线'.format(
+            result.collect_error.strip().splitlines()[0][:200] if result.collect_error.strip()
+            else 'collection error'))
     _new = build(result)
     if not old:
         return _new
-    _same_scope = (old.get('selector') or '') == (result.selector or '')
+    _same_scope = full_scope_of(old, result)
     _present = {_c.nodeid for _c in result.cases} | set(result.deselected or ())
     _cases = {}
     for _nodeid, _entry in old.get('cases', {}).items():
@@ -245,19 +268,46 @@ def classify(old: str, new: str) -> str:
     return CHANGED
 
 
+def _family(op: str) -> str:
+    return 'upper' if op in _UPPER else 'lower' if op in _LOWER else op
+
+
+def _pairs_of(removed: List[str], added: List[str]):
+    """
+    Match each removed claim with the added claim that most likely replaced
+    it: same subject and operator first, then same subject and direction of
+    bound, then same subject. Matching one removed claim at a time paired
+    them in sorted order -- `x == 1 -> x >= -5` called a change, while the
+    real loosening `x >= 0 -> x >= -5` went unlabelled.
+    """
+    _free = list(added)
+    _pairs = {}
+    _tests = (lambda a, b: parse(a)[1] == parse(b)[1],
+              lambda a, b: _family(parse(a)[1]) == _family(parse(b)[1]),
+              lambda a, b: True)
+    for _same in _tests:
+        for _old in removed:
+            if _old in _pairs:
+                continue
+            _partner = next((_n for _n in _free
+                             if parse(_n)[0] == parse(_old)[0] and _same(_old, _n)), None)
+            if _partner is not None:
+                _pairs[_old] = _partner
+                _free.remove(_partner)
+    return _pairs, _free
+
+
 def _diff_claims(nodeid: str, before: List[str], after: List[str]) -> List[Finding]:
     _removed = sorted(set(before) - set(after))
     _added = sorted(set(after) - set(before))
+    _pairs, _unpaired_added = _pairs_of(_removed, _added)
     _findings = []
-    _unpaired_added = list(_added)
     for _old in _removed:
-        _subject = parse(_old)[0]
-        _partner = next((_n for _n in _unpaired_added if parse(_n)[0] == _subject), None)
+        _partner = _pairs.get(_old)
         if _partner is None:
             _findings.append(Finding(REMOVED, nodeid, before=_old))
-            continue
-        _unpaired_added.remove(_partner)
-        _findings.append(Finding(classify(_old, _partner), nodeid, before=_old, after=_partner))
+        else:
+            _findings.append(Finding(classify(_old, _partner), nodeid, before=_old, after=_partner))
     _findings.extend(Finding(ADDED, nodeid, after=_n) for _n in _unpaired_added)
     return _findings
 
@@ -297,11 +347,11 @@ def compare(baseline: Optional[Dict[str, Any]], result: RunResult) -> List[Findi
                                      note=(_messages.get(_nodeid) or '')[:120]))
         elif _state == S_EXCLUDED:
             _findings.append(Finding(NOW_EXCLUDED, _nodeid, before='原本通过',
-                                     note='被 -m / --exclude-flaky 排除'))
+                                     note='被 --exclude-flaky 排除'))
         elif _state == S_PASSED:
             _findings.extend(_diff_claims(_nodeid, _before.get('claims', []), _entry['claims']))
 
-    if (baseline.get('selector') or '') == (result.selector or ''):
+    if full_scope_of(baseline, result):
         _present = {_c.nodeid for _c in result.cases} | set(result.deselected or ())
         for _nodeid, _before in _base.items():
             if _nodeid not in _present and _before.get('state') == S_PASSED:

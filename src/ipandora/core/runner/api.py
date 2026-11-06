@@ -189,7 +189,7 @@ def _image_environment(run_id: str, update_goldens: bool) -> dict:
 def run(selector: str = '', env: str = '', extra_args: Sequence[str] = (),
         persist: bool = True, quiet: bool = False, baseline: Optional[str] = None,
         workers=None, timeout: Optional[float] = None,
-        update_goldens: bool = False) -> RunResult:
+        update_goldens: bool = False, exclude_flaky: bool = False) -> RunResult:
     """
     Execute tests and return a structured result.
 
@@ -222,6 +222,8 @@ def run(selector: str = '', env: str = '', extra_args: Sequence[str] = (),
     :param update_goldens: matches_golden() writes the current image as the
                      golden instead of comparing. `ipandora run --update-baseline`
                      sets it, so goldens and the judgement baseline move together.
+    :param exclude_flaky: leave out cases marked flaky and name them in
+                     `deselected`. Combines with any `-m` in extra_args.
 
     Note: pytest runs in-process. The project modules a run imports -- test
     files, conftest.py, the suite's own helpers -- are dropped from
@@ -238,30 +240,42 @@ def run(selector: str = '', env: str = '', extra_args: Sequence[str] = (),
     _run_id = new_run_id()
     # validated before anything is changed, so a bad option leaves no trace
     _args = _build_args(selector, extra_args) + _workers_args(workers) + _timeout_args(timeout)
-    _settings_before, _env_file = _apply_env(env)
-    # after the env overlay: web.base_url is usually per environment
-    from ipandora.core import web
-    _args += web.pytest_args(_args, web.artifacts_dir(_run_id))
+    if exclude_flaky:
+        _args.append(_plugin.EXCLUDE_FLAKY_OPTION)
     _collector = ResultCollector()
-
-    logger.info('run %s: pytest %s', _run_id, ' '.join(_args))
-    _start = time.perf_counter()
     _sink = io.StringIO()
     _prefix_before = sys.pycache_prefix
     _nowrite_before = sys.dont_write_bytecode
-    sys.pycache_prefix = _bytecode_cache()
-    # Nothing a run compiles is written back. A .pyc is trusted when the
-    # source's mtime (whole seconds) and size match, so a test edited within
-    # the same second without changing length -- `== 1` to `== 2` -- kept
-    # running its old bytecode. That is exactly what an agent fixing a test
-    # through the MCP server does. Test modules are small; recompiling them
-    # every run costs milliseconds, a stale verdict costs the whole loop.
-    sys.dont_write_bytecode = True
     _modules_before = set(sys.modules)
-    _environ = dict(_process_environment(env), **_image_environment(_run_id, update_goldens))
-    _environ_before = {_k: os.environ.get(_k) for _k in _environ}
-    os.environ.update(_environ)
+    _env_name_before = getattr(Runtime.Option, 'env', '')
+    _environ_before = {}
+    _settings_before, _env_file = Runtime.settings, ''
+    _start = time.perf_counter()
+    from ipandora.core import web
+    # Every change to this process from here on is inside the try, so an
+    # error halfway through (a bad <env>.yaml, web settings that do not
+    # parse) cannot leave the caller -- the MCP server, a test calling run()
+    # -- with another run's settings, bytecode cache or environment.
     try:
+        _settings_before, _env_file = _apply_env(env)
+        # The same in this process as in a worker (plugin._apply_worker_env):
+        # a case reading Runtime.Option.env saw '' serially and the env in
+        # parallel when run() was called as a library.
+        Runtime.Option.env = env or ''
+        # after the env overlay: web.base_url is usually per environment
+        _args += web.pytest_args(_args, web.artifacts_dir(_run_id))
+        logger.info('run %s: pytest %s', _run_id, ' '.join(_args))
+        sys.pycache_prefix = _bytecode_cache()
+        # Nothing a run compiles is written back. A .pyc is trusted when the
+        # source's mtime (whole seconds) and size match, so a test edited within
+        # the same second without changing length -- `== 1` to `== 2` -- kept
+        # running its old bytecode. That is exactly what an agent fixing a test
+        # through the MCP server does. Test modules are small; recompiling them
+        # every run costs milliseconds, a stale verdict costs the whole loop.
+        sys.dont_write_bytecode = True
+        _environ = dict(_process_environment(env), **_image_environment(_run_id, update_goldens))
+        _environ_before = {_k: os.environ.get(_k) for _k in _environ}
+        os.environ.update(_environ)
         with web.nested_session():
             if quiet:
                 with redirect_stdout(_sink), redirect_stderr(_sink):
@@ -278,6 +292,7 @@ def run(selector: str = '', env: str = '', extra_args: Sequence[str] = (),
         sys.dont_write_bytecode = _nowrite_before
         _forget_project_modules(_modules_before, _collector.rootdir)
         _duration = time.perf_counter() - _start
+        Runtime.Option.env = _env_name_before
         if _env_file:
             Runtime.settings = _settings_before
             Runtime.reset()
@@ -300,10 +315,16 @@ def run(selector: str = '', env: str = '', extra_args: Sequence[str] = (),
         cases=_collector.results(),
         coverage=list(_collector.coverage),
         deselected=list(_collector.deselected),
+        narrowed=_collector.narrowed,
         collect_error=_collect_error)
 
     _compare_with_baseline(_result, baseline)
-    web.remember(_result)
+    try:
+        web.remember(_result)
+    except OSError as exc:
+        # locator memory is a convenience for the next run's triage; a full
+        # disk or a read-only home must not turn a finished run into a crash
+        logger.warning('could not save locator memory: %s', exc)
 
     if persist:
         store.save(_result)
