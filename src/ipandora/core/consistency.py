@@ -48,6 +48,7 @@ in flight.
 """
 import hashlib
 import json
+import logging
 import os
 import re
 import shutil
@@ -62,6 +63,8 @@ from typing import Any, Callable, Dict, List, Optional, Sequence
 
 from ipandora.core import faults
 from ipandora.core.assertion.check import Check, brief, gap
+
+_log = logging.getLogger(__name__)
 
 CONSISTENCY = 'consistency'
 """Check.src of the judgements this module makes."""
@@ -305,7 +308,17 @@ class History:
         _evidence = recorder.current()
         if _evidence is None:
             return
+        try:
+            self._write_evidence(_evidence, model, options, result)
+        except OSError as exc:
+            # evidence, not the verdict: a full disk or an unwritable artifacts
+            # directory must not turn a judged history into an error
+            _log.warning('could not keep the history of %s as evidence: %s', _evidence.nodeid, exc)
+
+    def _write_evidence(self, evidence, model: str, options: List[str], result: Optional[Dict[str, Any]]) -> None:
+        from ipandora.core.evidence import recorder
         from ipandora.core.assertion.visual import ARTIFACTS_VAR
+        _evidence = evidence
         _dir = os.environ.get(ARTIFACTS_VAR) or os.path.join(tempfile.gettempdir(), 'ipandora-histories')
         os.makedirs(_dir, exist_ok=True)
         _stem = os.path.join(_dir, '{}-{}-{}'.format(
@@ -326,14 +339,19 @@ class History:
 
 
 def _scrub(value):
-    """`value` with every string redacted (core/report/redact.py); keywords and structure kept."""
-    from ipandora.core.report.redact import redact_text
+    """
+    `value` redacted as the report redacts (core/report/redact.py): by the
+    shape of a string, and by the name of the field holding it -- a write
+    of {'token': ...} is a credential whatever it looks like. Keywords and
+    structure are kept, so the file still reads as a history.
+    """
+    from ipandora.core.report.redact import MASK, _is_secret_key, redact_text
     if isinstance(value, K):
         return value
     if isinstance(value, str):
         return redact_text(value)
     if isinstance(value, dict):
-        return {_k: _scrub(_v) for _k, _v in value.items()}
+        return {_k: MASK if _is_secret_key(_k) else _scrub(_v) for _k, _v in value.items()}
     if isinstance(value, (list, tuple)):
         return [_scrub(_v) for _v in value]
     return value
