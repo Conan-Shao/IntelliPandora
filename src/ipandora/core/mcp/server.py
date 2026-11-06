@@ -4,8 +4,6 @@
 @File  : server.py
 @Time  : 2026-08-01
 """
-from typing import Optional
-
 from mcp.server.mcpserver import MCPServer
 
 from ipandora.core import report
@@ -123,8 +121,6 @@ def build_report(run_id: str, directory: str, title: str = '',
             'pass_rate': _report.pass_rate,
             'against_run': _report.against_run,
             'ok': _report.ok}
-
-
 
 
 # Deliberately NOT exposed -- see docs/design/decisions/04-实施计划.md:

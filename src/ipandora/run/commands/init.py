@@ -77,7 +77,11 @@ class Command(CommandBase):
             print('  保留  {}（已存在，未覆盖；用 --force 覆盖）'.format(_f))
         print('')
         print('  下一步：')
-        print('    cd {}'.format(os.path.relpath(_dir)))
+        try:
+            _shown = os.path.relpath(_dir)
+        except ValueError:      # Windows: the target is on another drive
+            _shown = _dir
+        print('    cd {}'.format(_shown))
         print('    ipandora run tests                    # 跑示例用例')
         print('    ipandora run tests --update-baseline  # 接受判定，写入 conf/judgements.json')
         print('    git add conf/judgements.json          # 把基线和用例一起提交')

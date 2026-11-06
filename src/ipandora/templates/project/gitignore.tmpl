@@ -2,3 +2,9 @@ __pycache__/
 .pytest_cache/
 test-results/
 *.pyc
+
+# 按环境叠加的配置可能带凭据（见 AGENTS.md），默认不提交。
+# conf/config.yaml 和判定基线 conf/judgements.json 要提交。
+# 某个环境文件确实不含凭据、想提交的，用 git add -f。
+conf/*.yaml
+!conf/config.yaml

@@ -34,13 +34,23 @@ class _DemoOrders(BaseHTTPRequestHandler):
 
 @pytest.fixture(scope='session')
 def demo_service():
-    # a local service must not be sent through a proxy configured for the
-    # outside world
-    os.environ['NO_PROXY'] = ','.join(filter(None, [os.environ.get('NO_PROXY'),
-                                                    '127.0.0.1', 'localhost']))
+    # A local service must not be sent through a proxy configured for the
+    # outside world. Both spellings: requests reads no_proxy first, so on a
+    # machine that sets the lowercase one, extending only NO_PROXY changed
+    # nothing. Put back afterwards, so the rest of the session is unaffected.
+    _before = {_k: os.environ.get(_k) for _k in ('no_proxy', 'NO_PROXY')}
+    for _k in _before:
+        os.environ[_k] = ','.join(filter(None, [_before[_k], '127.0.0.1', 'localhost']))
     _server = ThreadingHTTPServer(('127.0.0.1', 0), _DemoOrders)
     _server.daemon_threads = True
     threading.Thread(target=_server.serve_forever, daemon=True).start()
-    yield 'http://127.0.0.1:{}'.format(_server.server_address[1])
-    _server.shutdown()
-    _server.server_close()
+    try:
+        yield 'http://127.0.0.1:{}'.format(_server.server_address[1])
+    finally:
+        _server.shutdown()
+        _server.server_close()
+        for _k, _v in _before.items():
+            if _v is None:
+                os.environ.pop(_k, None)
+            else:
+                os.environ[_k] = _v

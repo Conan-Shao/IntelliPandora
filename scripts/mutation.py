@@ -39,6 +39,7 @@ The score is a prompt to go look, never a target to optimise.
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -67,10 +68,17 @@ def guess_tests(path: str) -> str:
     A guess, printed so it can be overridden: `src/ipandora/core/report/x.py`
     -> `test/testreport`. Wrong guesses make a run slow or empty, not wrong.
     """
-    _parts = path.replace('\\', '/').split('/')
+    _parts = [_p for _p in path.replace('\\', '/').split('/') if _p]
     if SRC.replace('\\', '/') in path:
         _parts = _parts[len(SRC.split(os.sep)):]
-    _name = _parts[-2] if len(_parts) > 1 else os.path.splitext(_parts[-1])[0]
+    # A module is named after its package (core/report/x.py -> report); a
+    # package after itself (core/assertion -> assertion). Taking the parent
+    # for both sent `core/assertion` to the whole suite.
+    _is_package = os.path.isdir(os.path.join(REPO, path))
+    if _is_package or len(_parts) == 1:
+        _name = os.path.splitext(_parts[-1])[0]
+    else:
+        _name = _parts[-2]
     for _candidate in ('test/test{}'.format(_name), 'test/test{}s'.format(_name)):
         if os.path.isdir(os.path.join(REPO, _candidate)):
             return _candidate
@@ -92,10 +100,15 @@ def write_scoped_config(module: str, tests: str) -> str:
     # makes mutmut copy only that file into its work directory, so the rest of
     # the package is missing and the module cannot even be imported -- every
     # mutant then "fails" for a reason that has nothing to do with the mutant.
-    _scoped = _text.replace(
-        '[mutmut]\n',
-        '[mutmut]\nonly_mutate = {}\npytest_add_cli_args = {}\n'.format(
-            module, tests))
+    # By pattern, not by an exact '[mutmut]\n': with CRLF line endings or a
+    # trailing space after the header, str.replace changed nothing and mutmut
+    # quietly mutated all of src/ against the guessed tests.
+    _scoped, _found = re.subn(
+        r'^\[mutmut\][ \t]*\r?$',
+        lambda m: m.group(0) + '\nonly_mutate = {}\npytest_add_cli_args = {}'.format(module, tests),
+        _text, count=1, flags=re.MULTILINE)
+    if not _found:
+        raise SystemExit('setup.cfg has no [mutmut] section; nothing to scope')
     with open(_path, 'w', encoding='utf-8') as fh:
         fh.write(_scoped)
     return _text

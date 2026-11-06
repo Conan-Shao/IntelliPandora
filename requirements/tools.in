@@ -7,5 +7,7 @@ bandit==1.9.4
 cyclonedx-bom==7.5.0
 build==1.6.1
 uv==0.13.4
+# scripts/mutation.py; 3.8.1 was under 14 days old at admission
+mutmut==3.8.0
 setuptools>=84.1,<85
 wheel>=0.45,<1
