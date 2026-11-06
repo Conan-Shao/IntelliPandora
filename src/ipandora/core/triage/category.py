@@ -30,6 +30,13 @@ class Category:
     HARNESS = 'harness'
     """The test itself is broken -- setup blew up, a fixture is missing."""
 
+    INJECTED = 'injected'
+    """
+    A fault the case injected on purpose (core/faults.py) and the system -- or
+    the case's own client -- did not withstand. Not the environment: nothing
+    was down that the test did not take down itself.
+    """
+
     UNKNOWN = 'unknown'
     """Not enough signal to say. Deliberately not guessed at."""
 
@@ -50,6 +57,7 @@ NEXT_STEP = {
     Category.ENVIRONMENT: '确认被测服务在线、网络可达，然后重跑',
     Category.DATA: '检查这条用例依赖的账号、夹具或数据状态',
     Category.HARNESS: '修测试代码本身——这次没有真正测到被测系统',
+    Category.INJECTED: '这是用例自己注入的故障：确认被测系统的重试、超时、降级是否该扛住它，或者用例本该预期这个失败',
     Category.UNKNOWN: '用 explain_failure 看完整的失败原文',
 }
 
@@ -59,6 +67,7 @@ LABEL = {
     Category.ENVIRONMENT: '环境',
     Category.DATA: '测试数据',
     Category.HARNESS: '测试代码',
+    Category.INJECTED: '注入的故障',
     Category.UNKNOWN: '待确认',
 }
 """What a reader sees. The codes above are what programs compare."""

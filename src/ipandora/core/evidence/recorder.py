@@ -107,6 +107,8 @@ class CaseEvidence:
     """Files the case produced for the report: golden / actual / diff images."""
     context: Dict[str, str] = field(default_factory=dict)
     """Where the case lives: its file, and the browser it ran in (core/runner/plugin.py)."""
+    faults: List[Dict[str, Any]] = field(default_factory=list)
+    """Faults the case injected (core/faults.py): what, where, from when to when. Read by triage."""
 
     def to_dict(self) -> Dict[str, Any]:
         return {'checks': list(self.checks), 'exchanges': list(self.exchanges)}
@@ -190,6 +192,7 @@ class Recorder:
             target.exchanges.extend(source.exchanges)
             target.locators.update(source.locators)
             target.locator_failures.extend(source.locator_failures)
+            target.faults.extend(_f for _f in source.faults if _f not in target.faults)
             for _artifact in source.artifacts:
                 if _artifact not in target.artifacts:
                     target.artifacts.append(_artifact)
@@ -244,6 +247,17 @@ class Recorder:
         with self._write:
             return list(_current.checks)
 
+    def add_fault(self, record: Dict[str, Any]) -> None:
+        """
+        A fault injected while this case ran. The record itself, not a copy:
+        core/faults.py fills in when the fault ended after the block exits.
+        """
+        _current = self.current()
+        if _current is None:
+            return
+        with self._write:
+            _current.faults.append(record)
+
     def add_exchange(self, exchange: Exchange) -> None:
         _current = getattr(self._local, 'current', None)
         if _current is None:
@@ -277,6 +291,10 @@ def add_checks(checks) -> None:
     # bandit B110: reporting must never fail a test
     except Exception:  # noqa: BLE001 - see docstring  # nosec B110
         pass
+
+
+def add_fault(record: Dict[str, Any]) -> None:
+    recorder.add_fault(record)
 
 
 def add_exchange(**kwargs) -> None:

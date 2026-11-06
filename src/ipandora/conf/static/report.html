@@ -374,6 +374,9 @@
         <div class="hint">这条用例通过了，但没有留下任何判定。</div>
         {%- endif %}
 
+        {%- if case.faults %}
+        <div class="hint">这条用例注入了故障：{% for f in case.faults %}{{ f.description }}{% if f.started and f.ended %}（{{ '%.1f'|format(f.ended - f.started) }} 秒）{% endif %}{% if not loop.last %}；{% endif %}{% endfor %}。</div>
+        {%- endif %}
         {%- set visual = case.artifacts|selectattr('kind', 'in', ['golden', 'actual', 'diff'])|list %}
         {%- for group in visual|map(attribute='group')|unique %}
         <div>

@@ -115,7 +115,8 @@ def build_from_run(result, title: str = None, include_triage: bool = True) -> Re
             checks=redact(list(getattr(_case, 'checks', []) or [])),
             exchanges=[_redact_exchange(_e)
                        for _e in (getattr(_case, 'exchanges', []) or [])],
-            artifacts=[_artifact(_a) for _a in (getattr(_case, 'artifacts', []) or [])]))
+            artifacts=[_artifact(_a) for _a in (getattr(_case, 'artifacts', []) or [])],
+            faults=redact(list(getattr(_case, 'faults', []) or []))))
 
     return ReportData(
         title=title or 'IntelliPandora Test Report',
