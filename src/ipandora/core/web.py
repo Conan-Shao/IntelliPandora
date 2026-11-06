@@ -539,9 +539,11 @@ def open_as(new_context, name: str, url: str = None, base_url: str = '',
     from ipandora.core import auth
     _provider = auth.provider()
     _checked = _provider is not None and auth.managed(name)
+    from ipandora.core import tracing
     for _attempt in (1, 2):
         _context = _context_for(new_context, _provider, name, base_url,
                                 login_context or new_context, context_args or {})
+        tracing.browser(_context, base_url)
         _page = _context.new_page()
         if not url:
             return _page
@@ -639,6 +641,13 @@ class ContextDefaults:
             _args['viewport'] = {'width': int(_viewport['width']),
                                  'height': int(_viewport['height'])}
         return _args
+
+    @pytest.fixture
+    def context(self, context, request):
+        """pytest-playwright's context, its requests to the application traced (core/tracing.py)."""
+        from ipandora.core import tracing
+        tracing.browser(context, _base_url(request))
+        return context
 
     @pytest.fixture
     def page_as(self, new_context, browser, browser_context_args, request):

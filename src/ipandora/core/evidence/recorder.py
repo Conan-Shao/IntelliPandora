@@ -113,6 +113,8 @@ class CaseEvidence:
     """Faults the case injected (core/faults.py): what, where, from when to when. Read by triage."""
     trace_id: str = ''
     """The W3C trace id of this case's requests (core/tracing.py); set on first use."""
+    trace_shown: bool = False
+    """The trace went out on a request the exchanges do not list (a browser's): report it on the case."""
 
     def to_dict(self) -> Dict[str, Any]:
         return {'checks': list(self.checks), 'exchanges': list(self.exchanges)}

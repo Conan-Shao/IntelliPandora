@@ -420,14 +420,14 @@
         </div>
         {%- endif %}
 
+        {%- set traces = case.traces %}
+        {%- if traces %}
+        <div class="hint">链路（服务端的调用记录）：{% for t in traces %}{% if t.url|web_url %}<a href="{{ t.url|web_url }}" target="_blank" rel="noopener noreferrer"><code>{{ t.id }}</code></a>{% else %}<code>{{ t.id }}</code>{% endif %}{% if not loop.last %}、{% endif %}{% endfor %}</div>
+        {%- endif %}
         {%- if case.exchanges %}
         {%- set total_ms = case.exchange_ms or 1 %}
         <div>
           <h3>HTTP · {{ case.exchanges|length }} 次请求 · {{ case.exchange_ms|ms }}</h3>
-          {%- set traces = case.traces %}
-          {%- if traces %}
-          <div class="hint">链路（服务端的调用记录）：{% for t in traces %}{% if t.url|web_url %}<a href="{{ t.url|web_url }}" target="_blank" rel="noopener noreferrer"><code>{{ t.id }}</code></a>{% else %}<code>{{ t.id }}</code>{% endif %}{% if not loop.last %}、{% endif %}{% endfor %}</div>
-          {%- endif %}
           <div style="margin-top:8px">
           {%- for ex in case.exchanges %}
           {%- set broke = ex.error or not (ex.status and 200 <= ex.status < 400) %}

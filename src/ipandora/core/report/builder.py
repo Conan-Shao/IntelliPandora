@@ -84,6 +84,17 @@ def _artifact(artifact: dict) -> dict:
     return _out
 
 
+def _trace(case) -> str:
+    from ipandora.core import tracing
+    return (tracing.parse('00-{}-{}-01'.format(getattr(case, 'trace_id', '') or '', '1' * 16)) or {}).get(
+        'trace_id', '')
+
+
+def _trace_link(case) -> str:
+    from ipandora.core import tracing
+    return tracing.link(_trace(case))
+
+
 def build_from_run(result, title: str = None, include_triage: bool = True) -> ReportData:
     """
     Build report data from a RunResult.
@@ -125,7 +136,9 @@ def build_from_run(result, title: str = None, include_triage: bool = True) -> Re
             exchanges=[_redact_exchange(_e)
                        for _e in (getattr(_case, 'exchanges', []) or [])],
             artifacts=[_artifact(_a) for _a in (getattr(_case, 'artifacts', []) or [])],
-            faults=redact(list(getattr(_case, 'faults', []) or []))))
+            faults=redact(list(getattr(_case, 'faults', []) or [])),
+            trace_id=_trace(_case),
+            trace_url=_trace_link(_case)))
 
     return ReportData(
         title=title or 'IntelliPandora Test Report',
