@@ -33,9 +33,10 @@ Safety:
   the dependency and must not see the fault declare the same resource:
   `@pytest.mark.resource('fault:orders-db')`.
 
-Triage reads the evidence: a transport failure while the case's own fault was
-active is "an injected fault the system did not withstand", not "the
-environment is down".
+Triage tells the two apart by the moment: a transport error raised while a
+fault is in effect says so in its message, and is "an injected fault the
+system did not withstand", not "the environment is down". A real outage
+after the block is still the environment.
 """
 import contextlib
 import itertools
@@ -223,25 +224,80 @@ def _undo(client: Toxiproxy, fault: Fault) -> None:
     client.remove_toxic(fault.proxy, fault.name)
 
 
-def _lock(proxy: str):
-    from ipandora.core.runner.plugin import DEFAULT_RESOURCE_TIMEOUT, RESOURCE_TIMEOUT_VAR, ResourceLock, lock_path
-    try:
-        _wait = float(os.environ.get(RESOURCE_TIMEOUT_VAR) or DEFAULT_RESOURCE_TIMEOUT)
-    except ValueError:
-        _wait = DEFAULT_RESOURCE_TIMEOUT
-    _lock = ResourceLock(lock_path('fault:{}'.format(proxy)))
-    if not _lock.acquire(_wait):
-        raise TimeoutError('ipandora: gave up waiting for resource fault:{} after {:g}s: another case is '
-                           'injecting faults into it'.format(proxy, _wait))
-    return _lock
+_HELD = {}             # proxy -> [ResourceLock, depth]: the locks this process holds
+_GUARD = threading.Lock()
 
 
-_ACTIVE = threading.local()
+class _Held:
+    """
+    The lock on one proxy, re-entrant within this process. Nested injected()
+    blocks on the same proxy -- latency, then a reset on top -- are one case
+    and one injector; with a plain file lock the inner block waited for the
+    outer one until the resource timeout, then failed.
+    """
+
+    def __init__(self, proxy: str):
+        self.proxy = proxy
+
+    def acquire(self) -> None:
+        with _GUARD:
+            if self.proxy in _HELD:
+                _HELD[self.proxy][1] += 1
+                return
+        from ipandora.core.runner.plugin import (DEFAULT_RESOURCE_TIMEOUT, RESOURCE_TIMEOUT_VAR, ResourceLock,
+                                                 lock_path)
+        try:
+            _wait = float(os.environ.get(RESOURCE_TIMEOUT_VAR) or DEFAULT_RESOURCE_TIMEOUT)
+        except ValueError:
+            _wait = DEFAULT_RESOURCE_TIMEOUT
+        _lock = ResourceLock(lock_path('fault:{}'.format(self.proxy)))
+        if not _lock.acquire(_wait):
+            raise TimeoutError('ipandora: gave up waiting for resource fault:{} after {:g}s: another case is '
+                               'injecting faults into it'.format(self.proxy, _wait))
+        with _GUARD:
+            _HELD[self.proxy] = [_lock, 1]
+
+    def release(self) -> None:
+        with _GUARD:
+            _entry = _HELD.get(self.proxy)
+            if _entry is None:
+                return
+            _entry[1] -= 1
+            if _entry[1] > 0:
+                return
+            del _HELD[self.proxy]
+        _entry[0].release()
+
+
+def _lock(proxy: str) -> _Held:
+    _held = _Held(proxy)
+    _held.acquire()
+    return _held
+
+
+_ACTIVE: List[Dict[str, Any]] = []
+"""
+Faults in effect in this process, innermost last. Process-wide, not
+per-thread: a fault on a proxy affects every connection through it,
+including those concurrently() makes from its own threads.
+"""
+
+INJECTED_MARKER = 'ipandora: during injected fault'
+"""Appended to a transport error raised while a fault is in effect (core/protocol/http/transport.py)."""
 
 
 def active() -> List[Dict[str, Any]]:
-    """The faults in effect in this thread right now, innermost last."""
-    return list(getattr(_ACTIVE, 'records', []))
+    """The faults in effect in this process right now, innermost last."""
+    with _GUARD:
+        return list(_ACTIVE)
+
+
+def during() -> str:
+    """The marker for a transport error raised now, or '' when no fault is in effect."""
+    _now = active()
+    if not _now:
+        return ''
+    return ' ({}: {})'.format(INJECTED_MARKER, ', '.join(_f['description'] for _f in _now))
 
 
 @contextlib.contextmanager
@@ -267,7 +323,8 @@ def injected(*faults: Fault, client: Optional[Toxiproxy] = None) -> Iterator[Lis
             _entry = _evidence(_fault, time.time(), None, _client.url)
             _records.append(_entry)
             recorder.add_fault(_entry)
-        _ACTIVE.records = getattr(_ACTIVE, 'records', []) + _records
+        with _GUARD:
+            _ACTIVE.extend(_records)
         yield _records
     finally:
         _errors = []
@@ -277,7 +334,8 @@ def injected(*faults: Fault, client: Optional[Toxiproxy] = None) -> Iterator[Lis
             except ToxiproxyError as exc:
                 _errors.append(str(exc))
             _record['ended'] = time.time()
-        _ACTIVE.records = [_r for _r in getattr(_ACTIVE, 'records', []) if _r not in _records]
+        with _GUARD:
+            _ACTIVE[:] = [_r for _r in _ACTIVE if not any(_r is _x for _x in _records)]
         for _lock_held in reversed(_locks):
             _lock_held.release()
         if _errors:
@@ -312,4 +370,5 @@ def proxy(name: str, listen: str, upstream: str, client: Optional[Toxiproxy] = N
 
 
 __all__ = ['Fault', 'latency', 'bandwidth', 'timeout', 'reset_peer', 'slow_close', 'down', 'injected',
-           'active', 'clean', 'proxy', 'allowed', 'Toxiproxy', 'ToxiproxyError', 'FaultsNotAllowed', 'PREFIX']
+           'active', 'during', 'clean', 'proxy', 'allowed', 'Toxiproxy', 'ToxiproxyError', 'FaultsNotAllowed',
+           'PREFIX', 'INJECTED_MARKER']

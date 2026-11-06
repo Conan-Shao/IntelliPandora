@@ -154,16 +154,19 @@ def translate_error(exc: Exception, url: str = '', method: str = '', elapsed=Non
     __cause__ so no diagnostic detail is lost.
     """
     _method = str(method).upper()
+    from ipandora.core import faults
+    # a fault the case injected is in effect: say so, for triage
+    _during = faults.during()
 
     # Order matters: a retry-wrapped timeout is *also* a ConnectionError, so
     # the timeout check has to come first or every timeout reads as a
     # connection failure.
     if _is_timeout(exc):
         return HttpTimeoutError(
-            '{} {} timed out'.format(_method, url),
+            '{} {} timed out{}'.format(_method, url, _during),
             details=str(exc), url=url, method=_method, elapsed=elapsed)
     if isinstance(exc, requests.exceptions.ConnectionError):
         return HttpConnectionError(
-            '{} {} could not connect'.format(_method, url),
+            '{} {} could not connect{}'.format(_method, url, _during),
             details=str(exc), url=url, method=_method, elapsed=elapsed)
     return None

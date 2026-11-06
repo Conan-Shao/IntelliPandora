@@ -293,9 +293,14 @@ def _clean_faults(config, when: str) -> None:
     left behind; at the end, anything this run did not undo. Only where
     injection is allowed, and only in the process that starts the workers.
     """
-    if is_worker(config):
+    # Only the outermost session: a run started inside a case -- run() called
+    # from a test -- would otherwise remove the faults that case is injecting
+    # at this moment. And never while a fault is in effect in this process.
+    if is_worker(config) or _SESSIONS['depth'] != 1:
         return
     from ipandora.core import faults
+    if faults.active():
+        return
     try:
         if not faults.allowed():
             return
