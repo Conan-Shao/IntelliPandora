@@ -223,6 +223,11 @@ class TestTriage:
 
             def test_real_outage():
                 assert_all(status_ok(Gone().read()))
+
+            def test_outage_after_the_fault():
+                with faults.injected(faults.latency('db', 10)):
+                    assert_all(status_ok(Db().read()))
+                assert_all(status_ok(Gone().read()))
         '''), encoding='utf-8')
         if workers:
             # the workers read their settings from conf/, not from this process
@@ -239,6 +244,7 @@ class TestTriage:
         assert _triage['test_no_retry_under_reset'].category == 'injected'
         assert 'reset_peer(db' in _triage['test_no_retry_under_reset'].reason
         assert _triage['test_real_outage'].category == 'environment'
+        assert _triage['test_outage_after_the_fault'].category == 'environment'
         assert toxi.proxies['db'].toxics == []              # nothing left behind
 
 
@@ -254,3 +260,51 @@ def test_against_a_real_toxiproxy(upstream, monkeypatch, tmp_path):
         assert get('http://{}/'.format(_p['listen'])).text == 'ok'
     finally:
         faults.Toxiproxy().delete_proxy('ipandora-selftest')
+
+
+class TestCr7:
+    """Found in code review CR7 (docs/design/reviews/07-CR7.md)."""
+
+    def test_a_real_outage_after_the_fault_is_the_environment(self):
+        from ipandora.core.triage.rules import classify
+        _faults = [{'kind': 'latency', 'description': 'latency(db, latency=10)', 'started': 1.0, 'ended': 2.0}]
+        _later = 'ipandora.utils.error.HttpConnectionError: GET http://127.0.0.1:9/ could not connect'
+        assert classify('t', 'failed', _later, faults=_faults).category == 'environment'
+        _during = _later + ' ({}: latency(db, latency=10))'.format(faults.INJECTED_MARKER)
+        _f = classify('t', 'failed', _during, faults=_faults)
+        assert _f.category == 'injected' and 'latency(db, latency=10)' in _f.reason
+
+    def test_a_transport_error_says_when_a_fault_is_in_effect_in_any_thread(self, db):
+        from ipandora.core.concurrency import concurrently
+        from ipandora.core.protocol.http.transport import translate_error
+        _exc = requests.exceptions.ConnectionError('reset')
+        assert faults.INJECTED_MARKER not in str(translate_error(_exc, 'http://x/', 'GET'))
+        with faults.injected(faults.reset_peer('db')):
+            _results = concurrently(lambda: str(translate_error(_exc, 'http://x/', 'GET')), n=2)
+        assert all(faults.INJECTED_MARKER in _r.value and 'reset_peer(db' in _r.value for _r in _results)
+        assert faults.during() == ''
+
+    def test_nested_blocks_on_one_proxy_do_not_wait_for_each_other(self, db, allowed, monkeypatch):
+        monkeypatch.setenv('IPANDORA_RESOURCE_TIMEOUT', '2')
+        _start = time.monotonic()
+        with faults.injected(faults.latency('db', 10)):
+            with faults.injected(faults.reset_peer('db')):
+                assert len(allowed.proxies['db'].toxics) == 2
+            assert len(allowed.proxies['db'].toxics) == 1
+        assert time.monotonic() - _start < 1.5 and allowed.proxies['db'].toxics == []
+        from ipandora.core.runner.plugin import ResourceLock, lock_path
+        _lock = ResourceLock(lock_path('fault:db'))
+        assert _lock.acquire(0)                             # released after the outer block
+        _lock.release()
+
+    def test_a_run_inside_a_case_leaves_the_case_faults_alone(self, db, allowed, tmp_path, monkeypatch):
+        from ipandora.core.runner import run
+        from ipandora.core.schedule import config
+        from ipandora.core.schedule.runtime import Runtime
+        monkeypatch.setattr(Runtime, 'settings', config.deep_merge(
+            Runtime.settings, {'faults': {'allowed': True, 'toxiproxy': allowed.url}}))
+        (tmp_path / 's').mkdir()
+        (tmp_path / 's' / 'test_x.py').write_text('def test_x():\n    assert 1\n', encoding='utf-8')
+        with faults.injected(faults.latency('db', 10)):
+            run(str(tmp_path / 's'), persist=False, quiet=True, baseline='')
+            assert len(allowed.proxies['db'].toxics) == 1

@@ -48,6 +48,7 @@ TRANSPORT_TYPE = re.compile(
 CASE_TIMEOUT_MARKER = 'Timeout (>'          # pytest-timeout: "Failed: Timeout (>5.0s) from pytest-timeout."
 RESOURCE_WAIT_MARKER = 'ipandora: gave up waiting for resource'   # core/runner/plugin.py
 LOGIN_MARKER = 'ipandora: login failed'                          # core/auth.py
+INJECTED_MARKER = 'ipandora: during injected fault'               # core/faults.py
 
 HARNESS_MARKERS = ('fixture', 'not found', 'ImportError', 'ModuleNotFoundError',
                    'AttributeError', 'TypeError', 'NameError')
@@ -142,12 +143,14 @@ def classify(nodeid: str, outcome: str, message: str, locator_failures=None, fau
         next((_m for _m in TRANSPORT_MARKERS if _m in _message), None)
     if _transport and (_raised or not _asserted or (_exprs and all(
             TRANSPORT_TYPE.search(_e) for _e in _exprs))):
-        if _injected:
-            # the case took the dependency down itself: what failed is the
-            # system's -- or the client's -- handling of that fault
+        _marked = re.search(re.escape(INJECTED_MARKER) + r': ([^\n]*)\)', _message)
+        if _marked:
+            # raised while the case's own fault was in effect: what failed is
+            # the system's -- or the client's -- handling of that fault. Only
+            # then: a real outage after the fault was undone is the environment.
             return _finding(Category.INJECTED, Confidence.HIGH,
                             '传输失败（{}），发生在用例自己注入的故障（{}）期间：不是环境问题'.format(
-                                _transport, _injected))
+                                _transport, _marked.group(1)))
         return _finding(Category.ENVIRONMENT, Confidence.HIGH,
                         '传输失败（{}）：没有收到响应，被测系统实际上什么都没测到'.format(_transport))
 
