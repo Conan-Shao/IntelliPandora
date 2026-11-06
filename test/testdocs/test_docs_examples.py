@@ -165,3 +165,59 @@ def test_the_demo_service_bypasses_a_lowercase_proxy_setting(tmp_path):
     _run = subprocess.run(_cli + ['run', 'tests', '--no-report', '--no-baseline'],
                           cwd=str(tmp_path / 'p'), env=_env, capture_output=True, text=True)
     assert _run.returncode == 0, _run.stdout[-2000:] + _run.stderr[-2000:]
+
+
+def _browser_available() -> bool:
+    try:
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as _p:
+            _p.chromium.launch().close()
+        return True
+    except Exception:  # noqa: BLE001 -- no extra, no browser: either way, no web cases here
+        return False
+
+
+def test_the_full_layout_runs_from_any_directory(tmp_path):
+    """ipandora init --layout full: apis/, flows/, pages/ importable however the run is started."""
+    _env = dict(os.environ, IPANDORA_RUNS_DIR=str(tmp_path / 'home' / 'runs'),
+                IPANDORA_REPORTS_DIR=str(tmp_path / 'home' / 'reports'))
+    _env.pop('IPANDORA_CONFIG_DIR', None)
+    _cli = [sys.executable, '-m', 'ipandora.run']
+    subprocess.run(_cli + ['init', '--layout', 'full', 'shop'], cwd=str(tmp_path), env=_env,
+                   check=True, capture_output=True)
+    _project = tmp_path / 'shop'
+    for _f in ('pytest.ini', 'apis/orders.py', 'flows/orders.py', 'pages/orders.py',
+               'data/factories.py', 'tests/api/test_orders.py', 'tests/web/test_order_page.py'):
+        assert (_project / _f).is_file(), _f
+    assert not (_project / 'tests' / 'test_example.py').exists()
+
+    # from somewhere else entirely, by path: the case that needs pythonpath = .
+    _elsewhere = tmp_path / 'elsewhere'
+    _elsewhere.mkdir()
+    _target = str(_project / 'tests') if _browser_available() else str(_project / 'tests' / 'api')
+    _run = subprocess.run(_cli + ['run', _target, '--no-report', '--no-baseline'],
+                          cwd=str(_elsewhere), env=_env, capture_output=True, text=True)
+    assert _run.returncode == 0, _run.stdout[-3000:] + _run.stderr[-2000:]
+    assert '没有任何判定' not in _run.stdout
+
+
+def test_a_missing_pythonpath_is_explained(tmp_path):
+    from ipandora.core.runner.api import local_import_hint
+    (tmp_path / 'apis').mkdir()
+    _hint = local_import_hint("ModuleNotFoundError: No module named 'apis.orders'", str(tmp_path))
+    assert 'pythonpath = .' in _hint and 'apis' in _hint
+    assert local_import_hint("No module named 'yaml'", str(tmp_path)) == "No module named 'yaml'"
+
+
+def test_without_pytest_ini_the_run_says_what_to_add(tmp_path):
+    _env = dict(os.environ, IPANDORA_RUNS_DIR=str(tmp_path / 'home' / 'runs'))
+    _env.pop('IPANDORA_CONFIG_DIR', None)
+    _cli = [sys.executable, '-m', 'ipandora.run']
+    subprocess.run(_cli + ['init', '--layout', 'full', 'shop'], cwd=str(tmp_path), env=_env,
+                   check=True, capture_output=True)
+    (tmp_path / 'shop' / 'pytest.ini').unlink()
+    _run = subprocess.run(_cli + ['run', str(tmp_path / 'shop' / 'tests' / 'api'), '--no-report',
+                                  '--no-baseline'], cwd=str(tmp_path), env=_env,
+                          capture_output=True, text=True)
+    assert _run.returncode != 0
+    assert 'pythonpath = .' in _run.stdout and 'apis' in _run.stdout

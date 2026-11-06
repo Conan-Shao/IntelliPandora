@@ -1,0 +1,6 @@
+[pytest]
+# The project root goes on sys.path, so cases can `from apis.orders import ...`.
+# ipandora run imports test modules with --import-mode=importlib, which does
+# not add it by itself: without this line it is "No module named 'apis'".
+pythonpath = .
+testpaths = tests

@@ -1,0 +1,24 @@
+from ipandora.core import api
+
+
+class OrderApi:
+    """Orders. Who the request is sent as is the case's choice: auth.identity(...)."""
+
+    def __init__(self, base_url: str):
+        self.base_url = base_url
+
+    @api.http.post('{base}/api/orders')
+    def create(self, sku: str, amount: str):
+        return dict(other_params={'base': self.base_url}, json={'sku': sku, 'amount': amount})
+
+    @api.http.get('{base}/api/orders/{order_id}')
+    def get(self, order_id):
+        return dict(other_params={'base': self.base_url, 'order_id': order_id})
+
+    @api.http.post('{base}/api/orders/{order_id}/pay')
+    def pay(self, order_id):
+        return dict(other_params={'base': self.base_url, 'order_id': order_id})
+
+    @api.http.post('{base}/api/orders/{order_id}/refund')
+    def refund(self, order_id):
+        return dict(other_params={'base': self.base_url, 'order_id': order_id})

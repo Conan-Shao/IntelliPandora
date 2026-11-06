@@ -1,0 +1,24 @@
+"""
+Web cases: pages/ finds things, the case judges with expect().
+
+Needs the web extra and a browser:
+    pip install "intellipandora[web]" && python -m playwright install chromium
+Without them these cases are skipped, and say why.
+"""
+import pytest
+
+pytest.importorskip('pytest_playwright', reason='web cases need: pip install "intellipandora[web]"')
+
+from playwright.sync_api import expect  # noqa: E402
+
+from flows.orders import paid_order  # noqa: E402
+from pages.orders import OrderPage  # noqa: E402
+
+
+@pytest.mark.dims(role='buyer', channel='web')
+def test_a_paid_order_shows_as_paid(page, shop_url):
+    """已支付的订单，页面上显示已支付和金额"""
+    order = paid_order(shop_url, identity='buyer', amount='88.00')
+    view = OrderPage(page, shop_url).open(order.id)
+    expect(view.status).to_have_text('PAID')
+    expect(view.amount).to_have_text('88.00')

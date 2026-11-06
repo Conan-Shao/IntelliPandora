@@ -46,6 +46,8 @@ REQUIRED = (
     'ipandora/templates/project/AGENTS.md',  # ipandora init
     'ipandora/templates/project/tests/test_example.py.tmpl',
     'ipandora/templates/project/_github/workflows/tests.yml.tmpl',
+    'ipandora/templates/full/pytest.ini.tmpl',          # ipandora init --layout full
+    'ipandora/templates/full/apis/orders.py.tmpl',
 )
 
 # Key material must never be packaged, whatever a stale checkout holds.

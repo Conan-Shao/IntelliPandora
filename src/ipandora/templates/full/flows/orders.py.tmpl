@@ -1,0 +1,25 @@
+from dataclasses import dataclass
+
+from apis.orders import OrderApi
+from data.factories import unique_sku
+from ipandora.core import auth
+from ipandora.core.assertion import json_body, json_has, require, status_ok
+
+
+@dataclass
+class Order:
+    id: int
+    amount: str
+    owner: str
+
+
+def paid_order(base_url: str, identity: str, amount: str = '100.50', pay: bool = True) -> Order:
+    """An order owned by `identity`, paid unless pay=False."""
+    _orders = OrderApi(base_url)
+    with auth.identity(identity):
+        r = _orders.create(unique_sku(), amount)
+        require(status_ok(r), json_has(r, 'data.id'))
+        _id = json_body(r)[0]['data']['id']
+        if pay:
+            require(status_ok(_orders.pay(_id)))
+    return Order(id=_id, amount=amount, owner=identity)

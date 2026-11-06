@@ -1,0 +1,9 @@
+import itertools
+import os
+
+_counter = itertools.count(1)
+
+
+def unique_sku() -> str:
+    """A SKU no other case -- in this process or a parallel worker -- will use."""
+    return 'SKU-{}-{}'.format(os.getpid(), next(_counter))

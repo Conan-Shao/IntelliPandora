@@ -1,0 +1,18 @@
+class OrderPage:
+    """The order page: what a case can find on it and do with it."""
+
+    def __init__(self, page, base_url: str):
+        self.page = page
+        self.base_url = base_url
+
+    def open(self, order_id) -> 'OrderPage':
+        self.page.goto('{}/web/orders/{}'.format(self.base_url, order_id))
+        return self
+
+    @property
+    def status(self):
+        return self.page.get_by_test_id('status')
+
+    @property
+    def amount(self):
+        return self.page.get_by_test_id('amount')

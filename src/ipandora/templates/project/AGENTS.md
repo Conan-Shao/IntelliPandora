@@ -28,6 +28,8 @@ ipandora run tests --workers 4         # 并行（需要 intellipandora[parallel
 | **不稳定的用例标 `@pytest.mark.flaky(reason='...')`**，写清原因；不要直接删除或 skip | 用 `--exclude-flaky` 排除时，报告仍会点名这些用例 |
 | **多条用例共用一个账号或一份固定数据时，声明出来**：`@pytest.mark.resource('account:vip')` | 并行运行时，同名资源的用例不会同时执行；等锁超时归因为环境问题 |
 | **凭据不写进仓库**：放在环境变量里，或者不提交的 `conf/<env>.yaml` 里 | 报告会对凭据脱敏，但脱敏不能替代不提交 |
+| **用例只写身份，不碰凭据**：`with auth.identity('buyer'):`；登录写在 `conftest.py` 的提供者里。测"过期 token 被拒绝"时才在请求上自己写 `Authorization` | 证据里每个请求标出身份；用例自己写的凭据框架不会刷新，这类用例不会被悄悄修好 |
+| **分层**（有 `apis/`、`flows/`、`pages/` 时）：接口声明在 `apis/`，多步造数在 `flows/`，页面定位和操作在 `pages/`，**判定只写在 `tests/`** | 评审判定改动只看 `tests/` 的 diff；`apis/` 里的判定会让读用例的人看不出它在验证什么 |
 
 ## 写判定
 

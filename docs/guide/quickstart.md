@@ -15,7 +15,7 @@ pip install "intellipandora[mcp]"          # 可选：给 agent 用的 MCP 入�
 ## 2. 生成项目
 
 ```shell
-ipandora init my-tests
+ipandora init my-tests                    # 或 --layout full：分层的用例库，见"组织用例库"
 cd my-tests
 ```
 

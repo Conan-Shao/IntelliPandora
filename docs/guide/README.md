@@ -8,6 +8,7 @@
 | 弄清它和 pytest、Playwright 是什么关系，为什么这样设计 | [定位与对比](why.md) |
 | 调用接口、读取响应、超时与重试 | [HTTP 接口](http.md) |
 | 登录态：用例只写身份，token 和 cookie 由提供者获取、刷新 | [登录态](auth.md) |
+| 组织用例库：接口、造数、页面、用例分层；`init --layout full` | [组织用例库](layout.md) |
 | 写判定；理解零判定、判定清单和基线 | [判定、零判定与基线](judgements.md) |
 | 并行执行；在一条用例里测并发 | [并行与并发](parallel.md) |
 | Web 自动化（Playwright） | [Web 自动化](web.md) |

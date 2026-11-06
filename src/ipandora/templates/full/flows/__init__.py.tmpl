@@ -1,0 +1,7 @@
+"""
+Business steps that take several calls -- create an order, then pay it -- and
+return what they made. Shared by API and web cases.
+
+No judgements: a step that cannot set up its data says so with require(), so
+the case is reported as "precondition not met", not as a product failure.
+"""

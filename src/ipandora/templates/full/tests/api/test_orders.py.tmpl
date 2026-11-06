@@ -1,0 +1,44 @@
+"""
+API cases: set up through flows/, act through apis/, judge here.
+
+Run:   ipandora run tests
+"""
+from decimal import Decimal
+
+import pytest
+
+from flows.orders import paid_order
+from ipandora.core import auth
+from ipandora.core.assertion import assert_all, field, status_is, status_ok
+
+COVERAGE = [{'role': ['buyer', 'seller'], 'channel': ['api', 'web']}]
+
+
+@pytest.mark.dims(role='buyer', channel='api')
+def test_refund_of_a_paid_order_returns_the_full_amount(shop_url, orders):
+    """已支付的订单全额退款，退款金额等于实付金额"""
+    order = paid_order(shop_url, identity='buyer', amount='100.50')
+    with auth.identity('buyer'):
+        r = orders.refund(order.id)
+    assert_all(
+        status_ok(r),
+        field(r, 'data.refund_amount').decimal() == Decimal(order.amount),
+        field(r, 'data.status') == 'REFUNDED',
+    )
+
+
+@pytest.mark.dims(role='seller', channel='api')
+def test_a_seller_cannot_read_a_buyers_order(shop_url, orders):
+    """别人的订单读不到：卖家查买家的订单返回 403"""
+    order = paid_order(shop_url, identity='buyer')
+    with auth.identity('seller'):
+        r = orders.get(order.id)
+    assert_all(status_is(r, 403))
+
+
+def test_without_logging_in_nothing_is_readable(shop_url, orders):
+    """未登录访问订单返回 401"""
+    order = paid_order(shop_url, identity='buyer')
+    with auth.identity('anonymous'):
+        r = orders.get(order.id)
+    assert_all(status_is(r, 401))
