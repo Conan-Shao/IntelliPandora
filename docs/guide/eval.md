@@ -2,7 +2,7 @@
 
 评测一个 agent：同一组任务每题跑 k 次，判分，算成功率和置信区间，和基线比较，判断"变好、变差，还是无法区分"。设计依据见 [决策记录 13](../design/decisions/13-agent验证.md)。
 
-这一页是两条执行路径共用的底座（E0）：业务 agent 直接用这里的 Python 接口跑；编码类 agent 在 Inspect 的沙箱里跑，日志读进同样的结构（E1，后续）。
+两条执行路径共用一套底座：业务 agent 直接用这里的 Python 接口跑；编码类 agent 在 [Inspect](https://inspect.aisi.org.uk/) 的沙箱里跑，日志读进同样的结构（见 [Inspect 路径](#inspect-路径)）。两条路径的统计、基线、报告和退出码完全一样。
 
 ## 三样东西
 
@@ -117,6 +117,62 @@ ipandora eval run evals/coding.py -k 5 --split test --update-baseline     # 写�
 - **和基线比较**：按任务配对。每题一次试验时用 McNemar 精确检验；多次试验或部分分时用分层 bootstrap，任务和每题的试验都重新抽样，一道题自身的波动也算进去。区间不跨过 0，**并且**差值超过 `--noise` 给的基础设施噪声，才判为变好或变差，否则是"无法区分"。
 - 按标签分别比较；变差的任务；没有成功的试验按归因分组，附判定、模型评委的意见和轨迹。
 - **版本清单**：数据集哈希、划分、外壳、模型、配置、资源、种子。和基线的哈希、划分或资源不同时，报告直接说"不可比"。
+
+## Inspect 路径
+
+编码类 agent 要在容器里跑，要在沙箱里运行 Claude Code、Codex CLI 这类命令行 agent：这些交给 Inspect 和 [inspect_swe](https://meridianlabs-ai.github.io/inspect_swe)，框架不重做。框架做两件事：把 Inspect 的日志读成评测结果，把评分器包成 Inspect 的 scorer。需要 `pip install "intellipandora[inspect]"`（Python 3.11 及以上）。
+
+**读日志**：
+
+```shell
+inspect eval coding.py --model anthropic/claude-sonnet-5 --epochs 5 --log-dir logs/run-1
+ipandora eval inspect logs/run-1 --update-baseline       # 第一次：写基线
+ipandora eval inspect logs/run-2                         # 之后：和基线比较，变差时退出码为 1
+```
+
+```python
+from ipandora.core.eval import inspect_log
+
+run = inspect_log.read('logs/run-1')        # 一个 .eval / .json 文件、一个目录，或文件列表
+run.summary()['success_rate']
+```
+
+怎么换算：
+
+- 每个样本的每个 epoch 是一次试验。几个任务的日志（一次 `eval_set`）读成一次运行，题号前面加任务名；同一个任务有两份日志、或者模型不同，直接报错，不混在一起算。
+- 每个评分器的分数是一条判定，达到阈值算通过：默认 1，也就是 `CORRECT`、`True`、`1.0`；`--threshold 0.5` 让 `PARTIAL` 也算过，`--threshold match=0.5` 只对一个评分器。字典或列表形式的分数，每一项一条判定。
+- `model_graded_qa`、`model_graded_fact` 是模型评委，`--judge 名字` 标出自己写的模型评委。它们的结论列在报告里，但和 pytest 路径一样，校准之前不计入成功率。
+- 样本出错（沙箱没起来、agent 崩溃），或者撞上时间上限，算基础设施问题，不算 agent 失败，单独计数。撞上 token、消息数、费用、轮数上限，算一条没通过的预算判定。
+- 样本的 `metadata` 里写 `tags`、`polarity`、`split`，报告就能按标签、按极性分开出分。
+- 版本清单记录 Inspect 的版本、solver、模型、生成参数、沙箱（类型和配置文件名，不含路径）、各项上限，以及样本内容的哈希：换了题、换了沙箱、改了上限，和基线比较时会直接说"不可比"。
+- 被取消、中途出错或还在运行的日志照样出报告，但退出码为 1，也不能用来写基线：没跑的样本不在比较里，结论不作数。
+- 预算用 Inspect 自己的上限（`time_limit`、`token_limit`、`message_limit`、`cost_limit`）；样本 metadata 里的 `budget` 不起作用。
+
+**评分器包成 scorer**：pytest 路径的评分器原样用在 Inspect 里，判定按名字进报告，而不是一个说不清的分数。
+
+```python
+from inspect_ai import Task, task
+from inspect_ai.dataset import Sample
+from inspect_ai.solver import generate
+
+from ipandora.core.assertion import that
+from ipandora.core.eval.inspect_scorer import scorer
+
+
+def grade(task, result):                        # 和 pytest 路径同一个评分器
+    return [that(result.output, 'answer').contains(task.expected)]
+
+
+@task
+def coding():
+    return Task(dataset=[Sample(input='...', target='...', metadata={'tags': {'kind': 'rename'}})],
+                solver=generate(), scorer=scorer(grade))
+```
+
+- 必需的确定性判定全部成立是 `CORRECT`，有一条不成立是 `INCORRECT`；一条判定也没有是 `NOANSWER`，不会被当成通过。
+- 评分器可以是 `async def`：要在沙箱里跑隐藏测试的，`await sandbox().exec([...])`（`from inspect_ai.util import sandbox`）。
+- 评分器抛异常，算评分器的问题，不算 agent 的。
+- 用 inspect_swe 在沙箱里跑 Claude Code、Codex CLI 时，把它的 agent 作为 `solver`，评分器照样用这一个。
 
 ## 人工标注
 

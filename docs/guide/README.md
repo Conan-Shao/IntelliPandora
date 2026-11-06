@@ -17,6 +17,6 @@
 | 看报告、失败归因、在 Python 里直接调用 | [报告、归因与以库方式调用](reports.md) |
 | 接进 CI：JUnit、门禁、基线评审 | [接入 CI](ci.md) |
 | 让 agent 写用例：MCP、AGENTS.md | [接入 agent](agents.md) |
-| 评测 agent：每题跑 k 次、成功率与区间、和基线比较、人工标注 | [评测 agent](eval.md) |
+| 评测 agent：每题跑 k 次、成功率与区间、和基线比较、人工标注；读 Inspect 日志 | [评测 agent](eval.md) |
 
 查参数和配置项：[命令行参考](../reference/cli.md)、[配置参考](../reference/config.md)。这两份是从代码生成的，不会和代码不一致。

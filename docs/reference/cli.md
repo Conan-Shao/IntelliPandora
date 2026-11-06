@@ -37,6 +37,23 @@ agreement and Cohen kappa between two raters
 | `--a` `A` | `judge` | first rater column |
 | `--b` `B` | `human` | second rater column |
 
+### `ipandora eval inspect`
+
+read Inspect logs as an evaluation run: report, baseline, gate (needs the inspect extra)
+
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `logs` |  | .eval / .json log files, or a directory of them |
+| `--threshold` `[SCORER=]VALUE` |  | the value a score must reach to pass, on Inspect's scale (CORRECT = 1, PARTIAL = 0.5). Default 1. Repeat per scorer |
+| `--judge` `SCORER` |  | a scorer that asks a model: shown, counted only once calibrated. model_graded_qa and model_graded_fact always are |
+| `-o`, `--out` `OUT` |  | where report.html and report.json go. Default: the report archive |
+| `--title` `TITLE` |  | report title |
+| `--baseline` `PATH` |  | evaluation baseline. Default: conf/eval_baseline.json when it exists |
+| `--no-baseline` |  | compare with nothing |
+| `--update-baseline` |  | write this run as the baseline. Commit it; review its diff |
+| `--noise` `RATE` |  | infrastructure noise as a rate (0.021 for ±2.1 points): a difference smaller than this is never called better or worse |
+| `--partial` |  | compare each task's partial score (the weighted share of its checks that held) instead of whether it succeeded |
+
 ### `ipandora eval run`
 
 run every task k times, grade, compare with the baseline

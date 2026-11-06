@@ -50,6 +50,10 @@ DENIED = ('GPL', 'AGPL', 'LGPL', 'SSPL', 'Commons Clause', 'BUSL', 'Proprietary'
 LICENSE_OVERRIDES = {
     # the project itself; Apache-2.0, see LICENSE
     'intellipandora': 'Apache-2.0',
+    # with the optional [inspect] group, via inspect_ai. Its metadata states no
+    # license; the LICENSE file in the 0.12.1 wheel is the Apache License 2.0.
+    # Reviewed 2026-11-06
+    'agent-client-protocol': 'Apache-2.0',
 }
 
 # Licenses outside the allowlist, accepted one by one after a review: the

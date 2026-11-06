@@ -41,8 +41,10 @@ LOCKS = {
     # `system` too: every extra a user can install is audited, used by tests or not.
     # `parallel` in both, so the parallel tests run in every CI job, with and
     # without ai/.
+    # `inspect` only in ci.txt: ci-noai checks that nothing needs ai/, and
+    # the Inspect path is tested where every extra is installed.
     'ci.txt': (['setup.py', 'requirements/build.in'],
-               ['ai', 'mcp', 'parallel', 'system', 'test', 'visual', 'web']),
+               ['ai', 'inspect', 'mcp', 'parallel', 'system', 'test', 'visual', 'web']),
     'ci-noai.txt': (['setup.py', 'requirements/build.in'],
                     ['mcp', 'parallel', 'test', 'visual', 'web']),
     'tools.txt': (['requirements/tools.in'], []),
