@@ -49,6 +49,7 @@ CASE_TIMEOUT_MARKER = 'Timeout (>'          # pytest-timeout: "Failed: Timeout (
 RESOURCE_WAIT_MARKER = 'ipandora: gave up waiting for resource'   # core/runner/plugin.py
 LOGIN_MARKER = 'ipandora: login failed'                          # core/auth.py
 INJECTED_MARKER = 'ipandora: during injected fault'               # core/faults.py
+STACK_MARKER = 'ipandora: environment did not start'           # core/stack.py
 
 HARNESS_MARKERS = ('fixture', 'not found', 'ImportError', 'ModuleNotFoundError',
                    'AttributeError', 'TypeError', 'NameError')
@@ -111,6 +112,13 @@ def classify(nodeid: str, outcome: str, message: str, locator_failures=None, fau
                             '登录没有完成：登录接口连不上，用例没有执行到被测系统')
         return _finding(Category.DATA, Confidence.HIGH,
                         '登录没有完成：账号、口令或登录流程不对（见失败信息），不是被测系统的缺陷')
+    if STACK_MARKER in _message:
+        # compose up --wait failed: a service is unhealthy, an image did not pull,
+        # a port is taken -- nothing of the system under test was exercised
+        _first = next((_l for _l in _message.splitlines() if STACK_MARKER in _l), '')
+        return _finding(Category.ENVIRONMENT, Confidence.HIGH,
+                        '依赖环境没有起来（{}）：用例没有执行到被测系统'.format(
+                            _first.split(STACK_MARKER, 1)[1].lstrip(': ')[:200] or 'docker compose'))
     if RESOURCE_WAIT_MARKER in _message:
         return _finding(Category.ENVIRONMENT, Confidence.HIGH,
                         '没有开始执行：它声明的共享资源在整个等待期间都被别的用例或运行占着')

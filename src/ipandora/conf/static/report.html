@@ -413,6 +413,7 @@
           {%- if a.kind == 'screenshot' and a.src %}<img class="shot" src="{{ a.src }}" alt="失败时的页面截图" loading="lazy">
           {%- elif a.kind == 'screenshot' %}<div class="trace">截图<code>{{ a.path }}</code></div>
           {%- elif a.kind == 'trace' %}<div class="trace">回放（逐步重现失败过程）<code>{{ a.command }}</code></div>
+          {%- elif a.kind == 'service-log' %}<details class="step" open><summary><span class="tag">服务 {{ a.group }}</span> 用例期间的日志 <code>{{ a.path }}</code></summary><pre class="hdr">{{ a.text }}</pre></details>
           {%- else %}<div class="trace">{{ a.kind }}<code>{{ a.path }}</code></div>{% endif %}
           {%- endfor %}
           </div>

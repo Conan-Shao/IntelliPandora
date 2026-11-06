@@ -47,6 +47,15 @@ Cross-service traces (core/tracing.py): each request carries a W3C traceparent, 
 | `tracing.enabled` | `false` | true: add a traceparent to every request that has none |
 | `tracing.link` | `null` | e.g. http://jaeger.test:16686/trace/{trace_id} -- the report links each trace |
 
+## `stack`
+
+Services from a compose file (core/stack.py, stack.compose()): Docker Compose v2.20+.
+
+| 键 | 默认值 | 说明 |
+|---|---|---|
+| `stack.docker` | `null` | the docker executable; default: docker on PATH |
+| `stack.host` | `127.0.0.1` | where published ports are reached; another host only with a remote DOCKER_HOST |
+
 ## `consistency`
 
 Consistency checks on an operation history (core/consistency.py): elle-cli, a Java 21 tool. Not installed with the package -- see docs/guide/consistency.md.

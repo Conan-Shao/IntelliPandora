@@ -14,7 +14,7 @@
 | 依赖漏洞 | `requirements/ci.txt`：框架 + 可选组 ai、inspect、mcp、parallel、system、test、visual、web | 通过：113 个包，0 个已知漏洞 |
 | 依赖漏洞 | `requirements/ci-noai.txt`：框架 + 可选组 mcp、parallel、test、visual、web，不含 AI 组 | 通过：54 个包，0 个已知漏洞 |
 | 依赖漏洞 | `requirements/tools.txt`：构建与工具链（不安装到用户环境） | 通过：69 个包，0 个已知漏洞 |
-| 自身代码 | `src/`，bandit 静态扫描 | 通过：0 个未处理问题，21 处经评估标注（理由见下） |
+| 自身代码 | `src/`，bandit 静态扫描 | 通过：0 个未处理问题，23 处经评估标注（理由见下） |
 | 许可证 | 运行环境 115 个分发包、工具链 72 个（含间接依赖） | 通过：其余在白名单内，text-unidecode 经人工审查（见下） |
 | 组件登记 | 32 个直接依赖与 CI 动作 | 通过：与代码声明一致 |
 | 漏洞例外 | 例外登记表 | 通过：0 条 |
@@ -44,11 +44,13 @@ bandit 报出、经评估不构成问题的地方，在源码里标注 `# nosec`
 | B311 | `src/ipandora/utils/variable.py` | test data, not a secret |
 | B404 | `src/ipandora/core/consistency.py` | the checker is a Java tool run as a child process, never through a shell |
 | B404 | `src/ipandora/core/eval/coding.py` | the graders run git and the agent's tests as child processes, never through a shell |
+| B404 | `src/ipandora/core/stack.py` | Docker Compose is run as a child process, never through a shell |
 | B405 | `src/ipandora/core/report/junit.py` | this module builds XML and never parses it |
 | B603 | `src/ipandora/core/consistency.py` | a java executable we located, asking its version; no shell |
 | B603 | `src/ipandora/core/consistency.py` | the verified checker jar, our own arguments and file; no shell |
 | B603 | `src/ipandora/core/eval/coding.py` | a fixed argument list with the git found on PATH; no shell |
 | B603 | `src/ipandora/core/eval/coding.py` | this interpreter, our own script, the grader's own arguments; no shell |
+| B603 | `src/ipandora/core/stack.py` | docker, located by full path; arguments are ours, no shell |
 | B704 | `src/ipandora/core/report/render.py` | all text went through html.escape; only our own span tags are raw |
 
 ## 许可证

@@ -75,10 +75,15 @@ jobs:
       - name: Import smoke test
         run: python scripts/smoke_import.py
 
+      # Docker and Compose v2 are on the runner; the stack tests (core/stack.py)
+      # pull two images pinned by digest and registered in
+      # docs/security/components.md. IPANDORA_REQUIRE_DOCKER makes them fail
+      # rather than skip when Docker is missing.
       - name: Tests
         env:
           IPANDORA_REQUIRE_BROWSER: '1'
           IPANDORA_REQUIRE_CHECKER: '1'
+          IPANDORA_REQUIRE_DOCKER: '1'
         run: pytest test/ -v
 
   # LLM support must stay optional. If deleting ai/ breaks the suite, then
