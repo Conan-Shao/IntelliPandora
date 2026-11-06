@@ -4,7 +4,6 @@
 @File  : merge.py
 @Time  : 2026-11-05
 """
-import os
 import sys
 from argparse import Namespace
 
@@ -37,11 +36,8 @@ class Command(CommandBase):
 
         _paths = write(_report, options.out)
         if options.junit_xml:
-            from ipandora.core.report.junit import to_junit
-            os.makedirs(os.path.dirname(os.path.abspath(options.junit_xml)), exist_ok=True)
-            with open(options.junit_xml, 'w', encoding='utf-8') as fh:
-                fh.write(to_junit(_report))
-            _paths['junit'] = os.path.abspath(options.junit_xml)
+            from ipandora.core.report.junit import write_to
+            _paths['junit'] = write_to(_report, options.junit_xml)
 
         _verdict = _report.verdict
         _basis = _report.pass_rate_basis

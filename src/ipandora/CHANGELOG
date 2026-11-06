@@ -1,5 +1,11 @@
 v1.11.0
 ==============
+* fix (CR1 F5): pruning the local report archive deleted the whole archive when an index entry had an empty run_id
+* fix (CR1 F5): the pass-rate caption always said "skips and unverified are not counted", so one pass beside nine errors read as a plain 100%. It names what the denominator leaves out, with counts (report.json gains pass_rate_note)
+* fix (CR1 F5): `ipandora run` exits by the report's verdict -- the same rule as `ipandora merge` and the report's "退出码" line; an empty run used to read "exit 1" in the report while the command exited 0. report.json gains gate_weakened
+* fix (CR1 F5): the history index recomputed the pass rate without leaving out unverified cases, so it disagreed with the report it linked to; "new failures" compared with the previous run of any selector and environment instead of the same ones
+* fix (CR1 F5): JUnit totals did not count a case of unknown status, though it was written as an <error>; `--junit-xml` is written by one function for run and merge
+* fix (CR1 F5): the evaluation view showed per-tag "变差 / 变好" when the run was not comparable with the baseline, and gave every trial of a task the same anchor id
 * fix (CR1 F4): the license gate matched allowed names as substrings: 'Proprietary ... not permitted' passed on the 'mit' in 'permitted', 'see disclaimer' on 'isc', npm's 'UNLICENSED' on 'Unlicense', and the public report listed them as passing. Names are matched as whole words; Proprietary and UNLICENSED are denied outright
 * fix (CR1 F4): the registry check kept one entry per action name, so when two workflows pinned the same action to different SHAs only the last was checked. Every occurrence is checked, including the workflow `ipandora init` writes into new projects, which Dependabot never updates
 * fix (CR1 F4): the CLI reference stopped at the first level of subcommands -- `ipandora eval` showed one row and none of `eval run / selfcheck / samples / agreement` -- and the docs gate passed, comparing the reference with the same incomplete output. Nested subcommands are documented now. The configuration reference no longer drops top-level scalars or shows a list as null

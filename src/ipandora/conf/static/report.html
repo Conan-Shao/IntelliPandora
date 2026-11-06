@@ -84,7 +84,7 @@
     </span>
     {%- endif %}
     <span class="d">{{ totals.passed }} 通过 · {{ fails }} 失败 · {{ totals.unverified }} 未判定 · {{ totals.skipped }} 跳过</span>
-    <span class="s">通过率 {{ pass_rate }}{% if pass_rate_basis.denominator %} = {{ pass_rate_basis.passed }} / {{ pass_rate_basis.denominator }}{% endif %}，跳过与未判定不进分母</span>
+    <span class="s">通过率 {{ pass_rate }}{% if pass_rate_basis.denominator %} = {{ pass_rate_basis.passed }} / {{ pass_rate_basis.denominator }}{% endif %}，{{ pass_rate_note }}</span>
   </a>
 
   <a class="tile" href="{{ '#changes' if judgement_changes else '#cases' }}">

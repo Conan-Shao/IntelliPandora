@@ -42,6 +42,7 @@ pass. Two guards for that:
   * GAP and BLOCKED are counted in `skipped`, never omitted and never folded
     into the pass count.
 """
+import os
 import re
 # Builds XML from report data and never parses input, so the XML-parsing
 # attacks bandit warns about (B405) have nothing to act on. Pretty-printing
@@ -210,18 +211,33 @@ def _collect_error_case(parent: ET.Element, report: ReportData) -> None:
         + (report.collect_error or ''))
 
 
+def _tag(case: ReportCase) -> str:
+    """The element a case is written as -- the same lookup _testcase uses."""
+    return _OUTCOME.get(case.status, ('error', 'unknown'))[0]
+
+
 def _counts(cases: List[ReportCase], collect_error: bool) -> Dict[str, str]:
-    _failures = sum(1 for _c in cases if _c.status == Status.FAIL)
-    _errors = sum(1 for _c in cases if _c.status == Status.ERROR)
-    _skipped = sum(1 for _c in cases
-                   if _c.status in (Status.SKIPPED, Status.BLOCKED, Status.GAP,
-                                    Status.UNVERIFIED))
+    # Counted from the element each case is written as. A status this module
+    # does not know is written as <error>, and was counted as nothing: the
+    # totals said 0 errors over a document that contained one.
+    _failures = sum(1 for _c in cases if _tag(_c) == 'failure')
+    _errors = sum(1 for _c in cases if _tag(_c) == 'error')
+    _skipped = sum(1 for _c in cases if _tag(_c) == 'skipped')
     return {
         'tests': str(len(cases) + (1 if collect_error else 0)),
         'failures': str(_failures),
         'errors': str(_errors + (1 if collect_error else 0)),
         'skipped': str(_skipped),
     }
+
+
+def write_to(report: ReportData, path: str) -> str:
+    """Write the JUnit XML to an explicit path, creating its directory. For `--junit-xml`."""
+    _path = os.path.abspath(path)
+    os.makedirs(os.path.dirname(_path), exist_ok=True)
+    with open(_path, 'w', encoding='utf-8') as fh:
+        fh.write(to_junit(report))
+    return _path
 
 
 def to_junit(report: ReportData, indent: bool = True) -> str:
