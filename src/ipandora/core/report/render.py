@@ -122,6 +122,16 @@ def display_path(path: str) -> str:
     return path if _rel.startswith('..') else _rel
 
 
+def web_url(url) -> str:
+    """
+    `url` if it is an http(s) address, else ''. For data rendered as a link:
+    a report rebuilt from JSON (`ipandora merge`, build_from_dict) carries
+    whatever the file says, and autoescaping does not stop `javascript:`.
+    """
+    _url = str(url or '').strip()
+    return _url if _url.lower().startswith(('http://', 'https://')) else ''
+
+
 def environment() -> Environment:
     # autoescape matters here: failure messages contain whatever the system
     # under test returned, and an unescaped payload would both break the page
@@ -130,7 +140,7 @@ def environment() -> Environment:
         loader=FileSystemLoader(PathUtils().pandora_path),
         autoescape=select_autoescape(['html']))
     _env.filters.update({'pretty': pretty, 'hljson': highlight_json,
-                         'curl': to_curl, 'ms': duration})
+                         'curl': to_curl, 'ms': duration, 'web_url': web_url})
     from ipandora.core.triage.category import CONFIDENCE_LABEL, LABEL
     _env.globals.update({'category_label': LABEL, 'confidence_label': CONFIDENCE_LABEL})
     return _env
