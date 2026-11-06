@@ -35,6 +35,7 @@ this one always is, by the runner itself. It has no asserts to rewrite.
 import ast
 import hashlib
 import json
+import logging
 import os
 import re
 import sys
@@ -43,6 +44,8 @@ import pytest
 
 from ipandora.core.assertion.check import Check, Source
 from ipandora.core.evidence import recorder
+
+logger = logging.getLogger('ipandora.runner')
 
 KEY = 'ipandora.evidence'
 """The user_properties entry a case's evidence travels in."""
@@ -203,6 +206,7 @@ def pytest_addoption(parser):
 def pytest_configure(config):
     _SESSIONS['depth'] += 1
     _make_auth_dir(config)
+    _clean_faults(config, 'start')
     # Patched for the duration of the run, restored in pytest_unconfigure.
     # A module that did `from pytest import raises` during this run keeps the
     # wrapper afterwards, which is harmless: outside a case it records nothing
@@ -283,7 +287,29 @@ def _remove_auth_dir(config):
         os.environ.pop(auth.AUTH_DIR_VAR, None)
 
 
+def _clean_faults(config, when: str) -> None:
+    """
+    Remove injected faults left on Toxiproxy: at the start, what a killed run
+    left behind; at the end, anything this run did not undo. Only where
+    injection is allowed, and only in the process that starts the workers.
+    """
+    if is_worker(config):
+        return
+    from ipandora.core import faults
+    try:
+        if not faults.allowed():
+            return
+        _removed = faults.clean(faults.Toxiproxy(timeout=2.0))
+    except (faults.ToxiproxyError, OSError, ValueError) as exc:
+        logger.info('ipandora: fault cleanup at {} skipped: {}'.format(when, exc))
+        return
+    if _removed:
+        logger.warning('ipandora: removed {} injected fault(s) left on Toxiproxy at {}: {}'.format(
+            len(_removed), when, ', '.join(_removed[:5])))
+
+
 def pytest_unconfigure(config):
+    _clean_faults(config, 'end')
     _remove_auth_dir(config)
     _SESSIONS['depth'] = max(_SESSIONS['depth'] - 1, 0)
     if _SESSIONS['depth']:
@@ -494,6 +520,8 @@ def _pack(item):
             _payload['locators'] = dict(_evidence.locators)
         if _evidence.locator_failures:
             _payload['locator_failures'] = list(_evidence.locator_failures)
+        if _evidence.faults:
+            _payload['faults'] = [dict(_f) for _f in _evidence.faults]
         if _evidence.artifacts:
             _payload['artifacts'] = list(_evidence.artifacts)
     if _INDEX in item.stash:

@@ -23,6 +23,7 @@ Documentation is Markdown in the repository and is the single source. The refere
 - [Reports and triage](docs/guide/reports.md): HTML/JSON/JUnit, failure categories, calling run() from Python
 - [CI](docs/guide/ci.md): exit codes, --fail-on-weakened, baseline review, sharding and `ipandora merge`, browsers and goldens in CI
 - [Agents](docs/guide/agents.md): MCP tools run_tests / explain_failure / list_runs / build_report
+- [Fault injection](docs/guide/faults.md): latency, resets, timeouts through Toxiproxy inside one case, always undone, recorded, and triaged apart from real outages
 - [Evaluating agents](docs/guide/eval.md): datasets with a content hash, k trials per task, Wilson interval, pass@k / pass^k, paired comparison with the baseline (a regression gate by overall / tag / task, and saturation monitoring), reference self-check, human labelling; multi-turn business agents with a scripted user and end-state / tool-call checks (`dialogue`); agent safety by planted canaries, injections, decoys and an egress allowlist (`safety`); graders for coding agents -- change scope, zero-judgement tests, weakened judgements, mutation score (`coding`, `ipandora eval code`); Inspect logs read into the same run (`ipandora eval inspect`) and graders as Inspect scorers
 
 ## Reference

@@ -52,6 +52,8 @@ class CaseResult:
     """Web: selector -> what it pointed at. Remembered from passing runs (core/web.py)."""
     locator_failures: List[Dict[str, Any]] = field(default_factory=list)
     """Web: selectors that found nothing -- stale, missing, or unknown. Read by triage."""
+    faults: List[Dict[str, Any]] = field(default_factory=list)
+    """Faults the case injected (core/faults.py). Read by triage."""
 
     @property
     def unverified(self) -> bool:

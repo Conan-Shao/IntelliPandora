@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from ipandora.core.triage.category import BLAMES_SYSTEM_UNDER_TEST, LABEL, NEXT_STEP
 
-GROUP_ORDER = ('defect', 'contract', 'unknown', 'environment', 'harness', 'data')
+GROUP_ORDER = ('defect', 'contract', 'injected', 'unknown', 'environment', 'harness', 'data')
 """Failure groups, the system under test first: that is what blocks a release."""
 
 
@@ -172,6 +172,8 @@ class ReportCase:
     A screenshot carries `src`, the image itself, so the report still shows it
     after the run's files are gone; a trace carries the command that opens it.
     """
+    faults: List[Dict[str, Any]] = field(default_factory=list)
+    """Faults the case injected on purpose (core/faults.py): what, on which proxy, from when to when."""
 
     @property
     def conclusive(self) -> bool:

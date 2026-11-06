@@ -29,6 +29,15 @@ Web (pip install intellipandora[web]). Defaults for pytest-playwright's own opti
 | `web.viewport` | `null` | e.g. {width: 1280, height: 720}; default Playwright's |
 | `web.trace` | `retain-on-failure` | on \| off. A trace holds request headers and bodies -- tokens and cookies -- unmasked |
 
+## `faults`
+
+Fault injection through Toxiproxy (core/faults.py). Off unless an environment turns it on in its conf/<env>.yaml -- local and CI only; never in prod.
+
+| 键 | 默认值 | 说明 |
+|---|---|---|
+| `faults.allowed` | `false` |  |
+| `faults.toxiproxy` | `null` | default http://127.0.0.1:8474, or $TOXIPROXY_URL |
+
 ## `ai`
 
 LLM access is OFF by default and stays that way unless explicitly enabled. It is never used at test-execution time -- only post-run (triage, report summaries). See docs/design/decisions/03-LLM接入边界.md. Requires the optional extra: pip install intellipandora[ai]

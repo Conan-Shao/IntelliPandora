@@ -89,10 +89,11 @@ def failed_check_sources(message: str) -> List[str]:
     return _seen
 
 
-def classify(nodeid: str, outcome: str, message: str, locator_failures=None) -> Finding:
+def classify(nodeid: str, outcome: str, message: str, locator_failures=None, faults=None) -> Finding:
     """
     Classify one case. Pure function of its outcome, its message and, for web
-    cases, what core/web.py found out about selectors that matched nothing.
+    cases, what core/web.py found out about selectors that matched nothing;
+    `faults` are the faults the case injected itself (core/faults.py).
     """
     _message = message or ''
 
@@ -112,7 +113,11 @@ def classify(nodeid: str, outcome: str, message: str, locator_failures=None) -> 
     if RESOURCE_WAIT_MARKER in _message:
         return _finding(Category.ENVIRONMENT, Confidence.HIGH,
                         '没有开始执行：它声明的共享资源在整个等待期间都被别的用例或运行占着')
+    _injected = '、'.join(sorted({str(_f.get('description') or _f.get('kind')) for _f in faults or ()}))
     if CASE_TIMEOUT_MARKER in _message and 'pytest-timeout' in _message:
+        if _injected:
+            return _finding(Category.INJECTED, Confidence.MEDIUM,
+                            '用例超时，而它自己注入了故障（{}）：被测系统在这个故障下没有按时返回'.format(_injected))
         return _finding(Category.ENVIRONMENT, Confidence.MEDIUM,
                         '用例超过了时间上限。通常是某个依赖不再响应；如果是被测系统自己卡住，那是缺陷')
 
@@ -137,6 +142,12 @@ def classify(nodeid: str, outcome: str, message: str, locator_failures=None) -> 
         next((_m for _m in TRANSPORT_MARKERS if _m in _message), None)
     if _transport and (_raised or not _asserted or (_exprs and all(
             TRANSPORT_TYPE.search(_e) for _e in _exprs))):
+        if _injected:
+            # the case took the dependency down itself: what failed is the
+            # system's -- or the client's -- handling of that fault
+            return _finding(Category.INJECTED, Confidence.HIGH,
+                            '传输失败（{}），发生在用例自己注入的故障（{}）期间：不是环境问题'.format(
+                                _transport, _injected))
         return _finding(Category.ENVIRONMENT, Confidence.HIGH,
                         '传输失败（{}）：没有收到响应，被测系统实际上什么都没测到'.format(_transport))
 
@@ -266,5 +277,6 @@ def triage(result, include_skipped: bool = False) -> TriageReport:
                    if _c.outcome == 'skipped']
     return TriageReport(findings=[
         classify(_c.nodeid, _c.outcome, _c.message,
-                 locator_failures=getattr(_c, 'locator_failures', None))
+                 locator_failures=getattr(_c, 'locator_failures', None),
+                 faults=getattr(_c, 'faults', None))
         for _c in _cases])
