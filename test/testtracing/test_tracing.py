@@ -8,6 +8,7 @@ carry a W3C traceparent, one trace per case; the evidence and the report
 show the trace each request went out under.
 """
 import json
+import re
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -232,3 +233,89 @@ class TestCr10:
         assert 'javascript:' not in _html
         assert '<code>{}</code>'.format(_trace) in _html                  # still shown, just not as a link
         assert '<a href="https://tempo.test/t/{}"'.format('d' * 32) in _html
+
+
+class TestR1:
+    """Gaps mutation testing found (R1): each test fails on a mutant that survived before."""
+
+    @staticmethod
+    def _request(**headers):
+        from types import SimpleNamespace
+        return SimpleNamespace(kwargs={'headers': dict(headers)} if headers else {})
+
+    def test_injecting_twice_keeps_one_header_and_a_renewal_keeps_the_rest(self, on):
+        _r = self._request(Authorization='Bearer x', Accept='text/csv')
+        tracing.inject(_r)
+        _first = _r.kwargs['headers']['traceparent']
+        tracing.inject(_r)                                   # not a renewal: the same span
+        assert _r.kwargs['headers']['traceparent'] == _first
+        tracing.inject(_r, renew=True)                       # a replay: a new span, every other header kept
+        assert _r.kwargs['headers']['traceparent'] != _first
+        assert _r.kwargs['headers']['Authorization'] == 'Bearer x' and _r.kwargs['headers']['Accept'] == 'text/csv'
+
+    def test_a_replay_never_replaces_the_cases_own(self, on):
+        _own = '00-' + '5' * 32 + '-' + '6' * 16 + '-01'
+        _r = self._request(traceparent=_own)
+        tracing.inject(_r, renew=True)
+        assert _r.kwargs['headers'] == {'traceparent': _own}
+
+    def test_a_request_without_headers_or_a_session_gets_one(self, on):
+        _r = self._request()                                 # no headers, no option, no session
+        tracing.inject(_r)
+        assert tracing.parse(_r.kwargs['headers']['traceparent'])
+
+    def test_ids_are_w3c_shaped_outside_a_case_and_never_all_zeros(self, monkeypatch):
+        assert re.fullmatch(r'[0-9a-f]{32}', tracing.trace_id())
+        _given = iter(['0' * 32, 'ab' * 16])
+        monkeypatch.setattr(tracing.secrets, 'token_hex', lambda n: next(_given))
+        assert tracing._hex(16) == 'ab' * 16                 # an all-zero id is invalid: drawn again
+
+    def test_the_settings_are_read_from_the_config(self, monkeypatch):
+        from ipandora.core.schedule import config
+        from ipandora.core.schedule.runtime import Runtime
+        monkeypatch.setattr(Runtime, 'settings', config.deep_merge(Runtime.settings, {
+            'tracing': {'enabled': True, 'link': 'https://tempo.test/{trace_id}'}}))
+        assert tracing.enabled() and tracing.link('ab') == 'https://tempo.test/ab'
+        monkeypatch.setattr(Runtime, 'settings', config.deep_merge(Runtime.settings, {'tracing': None}))
+        assert not tracing.enabled() and tracing.link('ab') == ''
+
+    def test_hosts_are_compared_by_name_and_port(self):
+        _n = tracing._netloc
+        assert _n('http://Shop.TEST:8080/orders?x=1') == 'shop.test:8080'
+        assert _n('api.shop.test') == _n('http://api.shop.test') == 'api.shop.test:80'
+        assert _n('https://shop.test/') == 'shop.test:443' != _n('http://shop.test/')
+        assert _n('shop.test:8443') == 'shop.test:8443'
+        assert _n('') == _n(None) == '' and _n('http://') == ''
+
+    @staticmethod
+    def _routed(monkeypatch, settings, base_url):
+        from types import SimpleNamespace
+        monkeypatch.setattr(tracing, '_settings', lambda: settings)
+        _installed = []
+        _context = SimpleNamespace(route=lambda pattern, handler: _installed.append((pattern, handler)))
+        _ok = tracing.browser(_context, base_url)
+
+        def _send(url, **headers):
+            _out = {}
+            _route = SimpleNamespace(request=SimpleNamespace(url=url, headers=dict(headers)),
+                                     fallback=lambda headers=None: _out.update(sent=headers))
+            _installed[0][1](_route)
+            return _out['sent']
+        return _ok, _installed, _send
+
+    def test_the_browser_route_sends_to_the_application_only(self, monkeypatch):
+        _ok, _installed, _send = self._routed(
+            monkeypatch, {'enabled': True, 'hosts': ['api.shop.test:8443']}, 'https://shop.test/app')
+        assert _ok and [_p for _p, _ in _installed] == ['**/*']
+        assert tracing.parse(_send('https://shop.test/orders', accept='*/*')['traceparent'])
+        assert _send('https://shop.test/orders', accept='*/*')['accept'] == '*/*'
+        assert tracing.parse(_send('https://api.shop.test:8443/v1')['traceparent'])      # listed in tracing.hosts
+        assert _send('https://cdn.example/lib.js') is None                              # not the application
+        assert _send('https://api.shop.test/v1') is None                                # another port is another host
+        _own = '00-' + '7' * 32 + '-' + '8' * 16 + '-01'
+        assert _send('https://shop.test/x', Traceparent=_own) is None                   # the page's own, any case
+
+    def test_the_browser_route_is_not_installed_off_or_without_an_application(self, monkeypatch):
+        assert self._routed(monkeypatch, {'enabled': False}, 'https://shop.test')[:2] == (False, [])
+        assert self._routed(monkeypatch, {'enabled': True}, '')[:2] == (False, [])
+        assert self._routed(monkeypatch, {'enabled': True, 'hosts': None}, '')[:2] == (False, [])
