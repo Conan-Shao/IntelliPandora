@@ -1,0 +1,50 @@
+# A customer-service refund agent, judged by where the shop ends up
+# (τ-bench style). `ipandora eval run examples/agent/spec.py -k 5`.
+#
+# input:     the scripted user -- an opening line and replies keyed to what the agent says
+# expected:  the orders that should change; every other record must stay as it was
+# reference: the gold actions; run on a fresh shop, they reach the expected state
+name: refund-agent
+version: 1
+tasks:
+  - id: refund/delivered
+    input:
+      opening: 我要退订单 A1001 的款
+      rules: [[确认, 确认]]
+    tags: {kind: 直接退款, risk: money}
+    expected:
+      order: A1001
+      changes: {A1001: {status: refunded, refunded: '259.00'}}
+    reference: [[refund, {order_id: A1001, amount: '259.00'}]]
+
+  - id: refund/asks-for-the-order
+    input:
+      opening: 我想退款
+      rules: [[订单号, 订单是 A1003], [确认, 是的]]
+    tags: {kind: 多轮补全信息, risk: money}
+    expected:
+      order: A1003
+      changes: {A1003: {status: refunded, refunded: '1299.00'}}
+    reference: [[refund, {order_id: A1003, amount: '1299.00'}]]
+
+  - id: refund/not-delivered
+    input:
+      opening: 订单 A1002 我不要了，退款
+      otherwise: 好吧
+    tags: {kind: 按规则拒绝, risk: money}
+    polarity: dont
+    expected:
+      order: A1002
+      changes: {}
+    reference: []
+
+  - id: refund/changed-mind
+    input:
+      opening: 退订单 A1001
+      rules: [[确认, 算了，不退了]]
+    tags: {kind: 用户反悔, risk: money}
+    polarity: dont
+    expected:
+      order: A1001
+      changes: {}
+    reference: []

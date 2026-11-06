@@ -118,6 +118,48 @@ ipandora eval run evals/coding.py -k 5 --split test --update-baseline     # 写�
 - 按标签分别比较；变差的任务；没有成功的试验按归因分组，附判定、模型评委的意见和轨迹。
 - **版本清单**：数据集哈希、划分、外壳、模型、配置、资源、种子。和基线的哈希、划分或资源不同时，报告直接说"不可比"。
 
+## 多轮对话的业务 agent
+
+客服、下单、退款这类 agent 要和用户来回说几轮，还要调用业务系统的工具。判的是业务系统最后变成了什么样，不是它说了哪句话、按什么顺序做（正确的路径不止一条）。`ipandora.core.eval.dialogue` 提供对话驱动、模拟用户和这几类判定，和 `eval run` 的数据集、统计、基线、报告一起用。
+
+```python
+from ipandora.core.eval import dialogue
+
+
+def agent(task):                                       # spec 里的 agent，和单轮的一样
+    shop = Shop.seeded()                               # 每次试验一个全新的业务系统
+    bot = RefundBot(shop)                              # 被测 agent：messages -> 回复
+    return dialogue.converse(bot.respond, dialogue.ScriptedUser.from_task(task),
+                             max_turns=8, state=shop.snapshot)
+
+
+def grade(task, result):
+    return [dialogue.same_state(result.output['state'], expected_state(task)),     # 终态
+            dialogue.called(result, 'refund', order_id=task.expected['order']),   # 必须做到
+            dialogue.not_called(result, 'delete_account'),                       # 不许做
+            dialogue.no_loops(result),                                           # 没有原地打转
+            dialogue.never_says(result, r'\d{16}', '完整卡号'),                   # 不许说
+            dialogue.finished(result)]                                           # 在轮数上限内结束
+```
+
+- **agent** 是一个函数：收到到目前为止的对话（`{'role', 'content'}` 列表），返回这一轮的回复：一段文字，或者 `dialogue.Reply(text, tool_calls=[ToolCall(name, args, result)], cost={...}, done=False)`。工具由 agent 自己调用，框架只记录。`done=True` 表示 agent 结束了对话（转人工、关单）。
+- **模拟用户**默认是脚本：开场白，再加"agent 说到什么、用户回什么"的规则，写在任务的 `input` 里：
+
+  ```yaml
+  input:
+    opening: 我想退款
+    rules: [[订单号, 订单是 A1003], [确认, 是的]]
+    otherwise: 还需要什么？        # 没有规则匹配时说一次，再没有就离开
+  ```
+
+  每条规则只回答一次，所以对话一定会结束，同样的 agent 回复得到同样的对话，试验可以复现。想让模型扮演用户（发现脚本没想到的说法），用 `ipandora.ai.simulated_user.ModelUser(opening, persona, goal)`：需要 `ai` 安装组，有调用上限，发给模型的内容先脱敏；把它的 `name` 写进 `MANIFEST['user_simulator']`，换了用户就是换了测量方式，报告会提示和基线不可比。模型只扮演用户，不参与判定。
+- **终态**：`same_state(actual, expected, ignore=[...])` 逐项比较，列出每一处不同（缺少、多出、值不同；`9` 和 `9.0` 算同一个金额，`True` 和 `1`、`'1'` 和 `1` 不算）。`ignore` 写每次运行本来就不同的字段，如 `orders.A1001.updated_at`。
+- **轨迹**：`called(result, name, **args)` 至少有一次这样的调用，参数可以写成判断函数（`amount=lambda v: Decimal(v) <= 100`）；`not_called`、`called_at_most(result, name, n)`、`no_loops(result, repeats=3)`。
+- **输出**：`says(result, pattern)`、`never_says(result, pattern, what)`：只看 agent 说的话，不看用户的。`never_says` 不在证据里复述匹配到的内容，它可能就是要保护的秘密。
+- **参考解**：τ-bench 的写法，参考解是一串正确的工具调用。`dialogue.replay(actions, run, state)` 在全新的业务系统上执行它们，得到的结果交给同一个评分器，`ipandora eval selfcheck` 就能证明每道题可解、评分器认得正确答案。
+
+完整的例子在 `examples/agent/`：一个故意有毛病的退款机器人（偶尔给没签收的订单退款、大额时小数点错位、反复查同一个订单、把完整卡号念给用户），`ipandora eval run examples/agent/spec.py -k 5`，报告里能看到哪道题不稳定、pass^5 比成功率低多少。
+
 ## Inspect 路径
 
 编码类 agent 要在容器里跑，要在沙箱里运行 Claude Code、Codex CLI 这类命令行 agent：这些交给 Inspect 和 [inspect_swe](https://meridianlabs-ai.github.io/inspect_swe)，框架不重做。框架做两件事：把 Inspect 的日志读成评测结果，把评分器包成 Inspect 的 scorer。需要 `pip install "intellipandora[inspect]"`（Python 3.11 及以上）。
