@@ -258,8 +258,11 @@ def pytest_unconfigure(config):
     _SESSIONS['depth'] = max(_SESSIONS['depth'] - 1, 0)
     if _SESSIONS['depth']:
         return      # an outer session is still running and still needs them
-    from ipandora.core import web
+    from ipandora.core import auth, web
     web.uninstall()
+    # credentials and identity sessions are this run's (core/auth.py); the
+    # MCP server lives across runs and must not carry a token over
+    auth.reset()
     for _name, _original in _PATCHED.items():
         setattr(pytest, _name, _original)
     _PATCHED.clear()

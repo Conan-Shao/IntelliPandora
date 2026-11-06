@@ -79,6 +79,12 @@ class Exchange:
     response_body: Any = None
     error: str = ''
     """Set when no response came back at all."""
+    identity: str = ''
+    """Who it was sent as (core/auth.py); '' for the default session. Never the credential."""
+    role: str = ''
+    """'login': made by the provider to log in, not by the case. 'replayed': the
+    first attempt was rejected as not logged in and was sent again after a
+    fresh login. '' otherwise."""
 
     @property
     def ok(self) -> bool:

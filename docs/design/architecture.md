@@ -50,6 +50,7 @@ run()
 | `core/evidence/` | 每条用例的证据槽，按线程区分；`concurrently()` 会把它绑定到自己启动的线程 |
 | `core/protocol/http/` | HTTP 层：传输策略（超时、重试、TLS）、响应解析 |
 | `core/web.py` | Playwright 原样使用；把 expect 记为判定；区分"选择器过时"和"元素真的没了"；把 `web.*` 配置映射为 pytest-playwright 的默认选项 |
+| `core/auth.py` | 身份与提供者：`identity()` 选择会话，提供者登录并缓存凭据，提前刷新，未登录时重新登录并重放一次；运行结束清空 |
 | `core/concurrency.py` | `concurrently()`：同时起跑，复制登录态，绑定证据，判断并发是否真的发生 |
 | `core/eval/` | 评测 agent（E0）：数据集与内容哈希、试验与判分（必需 / 权重 / 模型评委不计入）、统计（Wilson、pass@k、pass^k、McNemar、分层 bootstrap）、评测基线、人工标注、评测报告视图（`conf/static/eval.html`）。见 `docs/guide/eval.md` |
 | `core/triage/` | 失败归因，规则优先：defect / contract / environment / data / harness / unknown |
