@@ -162,6 +162,7 @@ class Runtime(object):
         _base_url = None
         _browser = None
         _viewport = None
+        _trace = None
 
         @classproperty
         def base_url(self):
@@ -194,6 +195,27 @@ class Runtime(object):
         @viewport.set
         def viewport(self, value):
             self._viewport = value
+
+        @classproperty
+        def trace(self):
+            """
+            Playwright tracing: retain-on-failure (default), on, or off. A trace
+            holds every request's headers and body -- tokens and cookies -- and
+            cannot be masked; `off` for environments whose credentials must not
+            land in a CI artifact. YAML reads a bare `off` as false.
+            """
+            if self._trace is None:
+                _v = DictUtils.safe_get(Runtime.settings, 'web', 'trace')
+                if _v is False:
+                    _v = 'off'
+                elif _v is True:
+                    _v = 'on'
+                self._trace = str(_v) if _v else 'retain-on-failure'
+            return self._trace
+
+        @trace.set
+        def trace(self, value):
+            self._trace = value
 
     class Ai(metaclass=ClassPropertyMeta):
         """

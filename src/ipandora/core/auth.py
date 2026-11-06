@@ -160,6 +160,50 @@ class Provider:
         """Which identities this provider logs in. Default: all but default and anonymous."""
         return name not in (DEFAULT, ANONYMOUS)
 
+    # -- the browser (page_as, core/web.py; §2.5) ----------------------------------
+
+    login_url = None
+    """A regular expression for the URL a browser is sent to when it is not
+    logged in, e.g. r'/login'. page_as(name, url) checks it after opening the
+    page: sent there, it logs in afresh and opens the page once more. Without
+    it -- or web_logged_in() -- page_as cannot tell "logged in, but the page
+    is not" from a page that works."""
+
+    web_headers = False
+    """Send the credential's headers (a Bearer token) with every request the
+    browser makes, for an application that reads them. Off by default: the
+    browser then sends them to every host a page loads from."""
+
+    web_indexed_db = False
+    """Keep IndexedDB in the saved browser state (Firebase keeps its token there)."""
+
+    def web_login(self, name: str, page) -> None:
+        """
+        Log in through the login page, for systems where only the browser can
+        (SSO, a token in localStorage). Implement it and page_as uses it: once
+        per identity and process, the browser state saved and reused. Leave it
+        out and page_as uses the API login instead -- faster, no login page --
+        by moving the identity's cookies into the browser.
+        """
+        raise NotImplementedError
+
+    def web_prepare(self, name: str, credential: Optional['Credential'], context) -> None:
+        """
+        Anything else the browser needs before the first page opens: a token
+        into sessionStorage, which a saved browser state does not keep --
+        `context.add_init_script(...)`. Default: nothing.
+        """
+
+    def web_logged_in(self, page) -> Optional[bool]:
+        """Whether an opened page is logged in. Default: by login_url; None when unknown."""
+        if not self.login_url:
+            return None
+        import re
+        return re.search(self.login_url, page.url or '') is None
+
+    def logs_in_with_page(self) -> bool:
+        return type(self).web_login is not Provider.web_login
+
 
 class _FunctionProvider(Provider):
     def __init__(self, login: Callable):
@@ -176,6 +220,8 @@ class LoginFailed(RuntimeError):
 # -- state -------------------------------------------------------------------------------
 
 _STATE = {'provider': None}
+BROWSER_STATES = {}
+"""identity -> Playwright storage state from a page login; this process only, never on disk."""
 _CACHE = {}         # name -> (version, Credential)
 _LOCKS = {}         # name -> Lock: one login at a time per identity
 _GUARD = threading.Lock()
@@ -212,6 +258,7 @@ def reset() -> None:
         _STATE['provider'] = None
         _CACHE.clear()
         _LOCKS.clear()
+        BROWSER_STATES.clear()
     from ipandora.core.schedule.session import SessionManager
     SessionManager.forget_identities()
 
@@ -319,6 +366,13 @@ def credential(name: Optional[str] = None, session=None):
         _entry = ((_entry[0] + 1) if _entry else 1, _new)
         _CACHE[_name] = _entry
         return _entry
+
+
+def forget(name: str) -> None:
+    """Drop one identity's credential and browser state: the next use logs in afresh."""
+    with _GUARD:
+        _CACHE.pop(name, None)
+        BROWSER_STATES.pop(name, None)
 
 
 def renew(name: str, seen_version: int, session):

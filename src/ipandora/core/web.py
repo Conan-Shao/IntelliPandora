@@ -408,7 +408,7 @@ def pytest_args(existing, output_dir: str = '') -> list:
     if '--screenshot' not in _given:
         _args += ['--screenshot', 'only-on-failure']
     if '--tracing' not in _given:
-        _args += ['--tracing', 'retain-on-failure']
+        _args += ['--tracing', Runtime.Web.trace]
     if '--output' not in _given and output_dir:
         _args += ['--output', output_dir]
     if '--base-url' not in _given and Runtime.Web.base_url:
@@ -416,6 +416,147 @@ def pytest_args(existing, output_dir: str = '') -> list:
     if '--browser' not in _given.replace('--browser-channel', '') and Runtime.Web.browser:
         _args += ['--browser', str(Runtime.Web.browser)]
     return _args
+
+
+# -- login state: page_as (docs/design/decisions/17 §2.5) ----------------------------------
+
+def browser_cookies(cookies, base_url: str = '') -> list:
+    """
+    Cookies from an HTTP session, as Playwright's add_cookies() takes them.
+
+    Not via a storage-state file: requests' cookies carry no SameSite, and a
+    cookie set without a domain (a dict) is given web.base_url's host and
+    path '/'. A cookie the server scoped keeps its own domain and path.
+    """
+    from urllib.parse import urlsplit
+    _host = urlsplit(base_url).hostname or '' if base_url else ''
+    _out = []
+    if cookies is None:
+        return _out
+    if isinstance(cookies, dict):
+        _items = [(_k, _v, None) for _k, _v in cookies.items()]
+    else:
+        _items = [(_c.name, _c.value, _c) for _c in cookies]
+    for _name, _value, _c in _items:
+        _domain = (getattr(_c, 'domain', '') or _host).lstrip('.') if _c is not None else _host
+        if not _domain:
+            raise ValueError('cookie {!r} has no domain: set web.base_url so page_as knows '
+                             'which site it belongs to'.format(_name))
+        if _domain.endswith('.local') and _host and not _host.endswith('.local'):
+            _domain = _host       # http.cookiejar's name for a dotless host such as localhost
+        _entry = {'name': _name, 'value': _value or '', 'domain': _domain,
+                  'path': (getattr(_c, 'path', '') or '/') if _c is not None else '/'}
+        if _c is not None:
+            _entry['secure'] = bool(_c.secure)
+            _entry['httpOnly'] = bool(_c.has_nonstandard_attr('HttpOnly')
+                                      or _c.has_nonstandard_attr('httponly'))
+            if _c.expires:
+                _entry['expires'] = float(_c.expires)
+        _out.append(_entry)
+    return _out
+
+
+def credential_from_browser(context, local_storage_key: str = None):
+    """
+    The other direction: a login only a browser can complete (SSO), handed
+    to the same identity's HTTP session. Cookies from the context, and with
+    `local_storage_key`, a Bearer token read from localStorage. For a
+    provider's login(), after it has driven the browser through the login.
+    """
+    import requests
+    from ipandora.core import auth
+    _jar = requests.cookies.RequestsCookieJar()
+    for _c in context.cookies():
+        _jar.set(_c['name'], _c['value'], domain=_c.get('domain', ''), path=_c.get('path', '/'))
+    if local_storage_key:
+        for _origin in context.storage_state().get('origins', []):
+            for _item in _origin.get('localStorage', []):
+                if _item.get('name') == local_storage_key:
+                    _cred = auth.Bearer(_item.get('value', ''))
+                    _cred.cookies = _jar
+                    return _cred
+        raise LookupError('no {!r} in the browser\'s localStorage'.format(local_storage_key))
+    return auth.Cookies(_jar)
+
+
+def _base_url(request) -> str:
+    try:
+        return request.getfixturevalue('base_url') or ''
+    except Exception:  # noqa: BLE001 -- no base_url fixture: fall back to the config
+        from ipandora.core.schedule.runtime import Runtime
+        return str(Runtime.Web.base_url or '')
+
+
+def open_as(new_context, name: str, url: str = None, base_url: str = ''):
+    """page_as without pytest: a page whose context carries `name`'s login."""
+    from ipandora.core import auth
+    _provider = auth.provider()
+    for _attempt in (1, 2):
+        _context, _credential = _context_for(new_context, _provider, name, base_url)
+        _page = _context.new_page()
+        if not url:
+            return _page
+        _page.goto(url)
+        _ok = _provider.web_logged_in(_page) if _provider is not None and auth.managed(name) else None
+        if _ok is not False:
+            return _page
+        # sent to the login page: the saved state or cookie is stale. Once more
+        # from a fresh login, then it is not the page's problem but the login's
+        _context.close()
+        auth.forget(name)
+    raise auth.LoginFailed('{} for identity {!r}: {} still lands on the login page ({}) after '
+                           'a fresh login'.format(auth.LOGIN_FAILED, name, url, _page.url))
+
+
+def _context_for(new_context, provider, name, base_url):
+    from ipandora.core import auth
+    if provider is None or not auth.managed(name):
+        if name not in (auth.DEFAULT, auth.ANONYMOUS):
+            raise ValueError('page_as({!r}): no login provider manages this identity; register '
+                             'one with auth.provider(...) in conftest.py'.format(name))
+        return new_context(), None
+    if provider.logs_in_with_page():
+        _state = auth.BROWSER_STATES.get(name)
+        if _state is None:
+            _login = new_context()
+            try:
+                _page = _login.new_page()
+                auth._LOCAL.logging_in = True
+                try:
+                    provider.web_login(name, _page)
+                except Exception as exc:  # noqa: BLE001 -- reported as a login failure
+                    raise auth.LoginFailed('{} for identity {!r} (page login): {}: {}'.format(
+                        auth.LOGIN_FAILED, name, type(exc).__name__, exc)) from exc
+                finally:
+                    auth._LOCAL.logging_in = False
+                _state = _login.storage_state(indexed_db=True) if provider.web_indexed_db \
+                    else _login.storage_state()
+            finally:
+                _login.close()
+            auth.BROWSER_STATES[name] = _state
+        _context = new_context(storage_state=_state)
+        provider.web_prepare(name, None, _context)
+        return _context, None
+    # the API login: the identity's HTTP session logs in, its cookies go to the browser
+    from ipandora.core.schedule.session import SessionManager
+    with auth.identity(name):
+        _session = SessionManager.getSession()
+        _version, _credential = auth.credential(name, session=_session)
+        _cookies = _credential.cookies if _credential.cookies is not None else _session.cookies
+    _context = new_context()
+    _list = browser_cookies(_cookies, base_url)
+    if _list:
+        _context.add_cookies(_list)
+    if provider.web_headers and _credential.headers:
+        _context.set_extra_http_headers(dict(_credential.headers))
+    elif not _list and type(provider).web_prepare is auth.Provider.web_prepare:
+        _context.close()
+        raise ValueError(
+            'page_as({!r}): the credential has no cookies for the browser. A token in a header '
+            'reaches the browser by setting web_headers = True on the provider, by putting it into '
+            'storage in web_prepare(), or by logging in with the page (web_login)'.format(name))
+    provider.web_prepare(name, _credential, _context)
+    return _context, _credential
 
 
 class ContextDefaults:
@@ -436,3 +577,22 @@ class ContextDefaults:
             _args['viewport'] = {'width': int(_viewport['width']),
                                  'height': int(_viewport['height'])}
         return _args
+
+    @pytest.fixture
+    def page_as(self, new_context, request):
+        """
+        page_as('buyer') -> a new page, in its own browser context, logged in
+        as buyer. Each call is a separate context, so one case can hold a
+        buyer and a seller side by side. page_as('buyer', '/orders/7') opens
+        the page and checks it did not land on the login page (see
+        Provider.login_url).
+
+        Built with pytest-playwright's new_context, not by overriding
+        browser_context_args per test, which keeps only the first test logged
+        in (playwright-python #2151).
+        """
+        _base = _base_url(request)
+
+        def _open(name: str, url: str = None):
+            return open_as(new_context, name, url, base_url=_base)
+        return _open
