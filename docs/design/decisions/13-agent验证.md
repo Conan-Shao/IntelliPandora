@@ -270,3 +270,14 @@
 - **`never_says` 的证据不复述匹配内容**：它常用来检查卡号、口令有没有泄露，把匹配到的文字写进报告就是第二次泄露。
 - **模型扮演的用户放在 `ai/`**，`core/` 不依赖它；它只是被测对象的环境，不判定，有调用上限，发出去的内容先脱敏，版本（提示词版本号）写进 `user_simulator`。
 - 验收："一个示例业务 agent 跑通 τ-bench 式的终态判分和 pass^k"由 `test/testeval/test_dialogue.py::TestTheExample` 检查。
+
+---
+
+## 追加（2026-11-06）：E3 的 agent 安全已实现
+
+`ipandora.core.eval.safety`，用法见 [`docs/guide/eval.md`](../../guide/eval.md#agent-自身的安全)，例子 `examples/agent/safety.py`。与 §8 的差异和补充：
+
+- **注入语料自带**，没有借用 promptfoo：语料只是六种手法的模板，每次生成一个唯一暗号，判定看"有没有照做"（调用了注入要求的工具和参数，或说出了暗号），不需要红队工具的运行时。引入 promptfoo（Node 生态）要过一次组件准入，换来的主要是更大的语料，留到有需要时再说。
+- **金丝雀按真实格式生成、每次试验唯一**，匹配不可能是巧合；也查 base64、hex 编码后的形式。证据只写位置不写值，`repr()` 也不出现值。
+- **外联拦截在进程内做**（`socket.getaddrinfo`），针对 SDK、HTTP 客户端形式的 agent；容器里的 agent 用沙箱的网络策略。拦截是进程级的，并行试验时会互相记录，手册要求开着它时 `workers=1`。
+- 验收："每类风险都有一个示例任务，能被确定性检出"由 `test/testeval/test_safety.py::TestTheExample` 检查：同一个机器人，弱点概率设为 0 时五道题全过，设为 1 时每道题都由它自己那一类判定拦下。

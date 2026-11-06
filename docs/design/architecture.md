@@ -54,7 +54,7 @@ run()
 | `core/cases.py` | `cases()`：YAML / JSON / CSV 的每一行变成一个 `pytest.param`，带 id 和 dims |
 | `core/auth.py` | 身份与提供者：`identity()` 选择会话，提供者登录并缓存凭据，提前刷新，未登录时重新登录并重放一次；运行结束清空 |
 | `core/concurrency.py` | `concurrently()`：同时起跑，复制登录态，绑定证据，判断并发是否真的发生 |
-| `core/eval/` | 评测 agent（E0）：数据集与内容哈希、试验与判分（必需 / 权重 / 模型评委不计入）、统计（Wilson、pass@k、pass^k、McNemar、分层 bootstrap）、评测基线、人工标注、评测报告视图（`conf/static/eval.html`）；多轮对话（E2）：`dialogue` 驱动对话、脚本化用户、终态 / 轨迹 / 输出判定，模型扮演的用户在 `ai/simulated_user.py`；Inspect 路径（E1）：`inspect_log` 把 Inspect 日志读成同样的评测结果，`inspect_scorer` 把评分器包成 Inspect 的 scorer（可选组 `inspect`）。见 `docs/guide/eval.md` |
+| `core/eval/` | 评测 agent（E0）：数据集与内容哈希、试验与判分（必需 / 权重 / 模型评委不计入）、统计（Wilson、pass@k、pass^k、McNemar、分层 bootstrap）、评测基线、人工标注、评测报告视图（`conf/static/eval.html`）；多轮对话（E2）：`dialogue` 驱动对话、脚本化用户、终态 / 轨迹 / 输出判定，模型扮演的用户在 `ai/simulated_user.py`；agent 安全（E3）：`safety` 的注入语料、金丝雀、越权、诱饵、外联白名单；Inspect 路径（E1）：`inspect_log` 把 Inspect 日志读成同样的评测结果，`inspect_scorer` 把评分器包成 Inspect 的 scorer（可选组 `inspect`）。见 `docs/guide/eval.md` |
 | `core/triage/` | 失败归因，规则优先：defect / contract / environment / data / harness / unknown |
 | `core/report/` | 同一份 ReportData 生成 HTML、JSON、JUnit XML；凭据脱敏。首屏结论由 `model.py` 按计数拼出；`compare.py` 对比传入的报告或本机存档里的上一次运行（框架不存历史，本机存档由 `history.py` 写，最多 50 次）。对比基线的拆分在 `runner/inventory.py` 的 `against()`。`merge.py` 把多个分片的 report.json 合并成一份：同一用例只计一次，分片间结论不一致时列出并取更严重的结论 |
 | `core/schedule/` | 配置分层（包默认 → 项目 `conf/config.yaml` → `conf/<env>.yaml`）、`Runtime`、HTTP 会话 |
