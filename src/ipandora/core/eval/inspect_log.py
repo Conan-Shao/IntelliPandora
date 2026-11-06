@@ -253,6 +253,37 @@ def _task_entry(task_id: str, sample, task_name: str, several: bool) -> Dict[str
     return {'id': task_id, 'tags': _tags, 'polarity': _polarity, 'split': _split}
 
 
+def _fingerprint(digests: List[str]) -> str:
+    """sha256 over the tasks and samples, in no particular order: the order samples finish in is not the dataset."""
+    _hash = hashlib.sha256()
+    for _d in sorted(digests):
+        _hash.update(hashlib.sha256(_d.encode('utf-8')).digest())
+    return _hash.hexdigest()
+
+
+def _sandbox(spec) -> str:
+    """
+    The sandbox as it bears on a score: its type and the name of its config.
+    Not str(spec): Inspect stores the compose file's absolute path, so the same
+    sandbox on a laptop and on CI read as different resources, and every
+    comparison with a baseline written elsewhere said "not comparable".
+    """
+    if not spec:
+        return ''
+    _type = getattr(spec, 'type', '') or str(spec)
+    _config = getattr(spec, 'config', None)
+    if isinstance(_config, str):
+        return '{}:{}'.format(_type, os.path.basename(_config.rstrip('/\\')))
+    if _config is not None:
+        return '{}:{}'.format(_type, type(_config).__name__)
+    return _type
+
+
+def incomplete(run: EvalRun) -> Dict[str, str]:
+    """task -> Inspect status, for every log whose run did not finish."""
+    return {_k: _v for _k, _v in (run.manifest.config.get('status') or {}).items() if _v != 'success'}
+
+
 def _when(text) -> Optional[datetime]:
     try:
         return datetime.fromisoformat(str(text))
@@ -269,7 +300,7 @@ def _manifest(headers, epochs: int, dataset_hash: str) -> Manifest:
     _config = getattr(_spec, 'config', None)
     _limits = {_k: getattr(_config, _k, None) for _k in ('time_limit', 'working_limit', 'token_limit',
                                                          'message_limit', 'cost_limit')}
-    _sandbox = getattr(_spec, 'sandbox', None)
+    _sandbox_spec = getattr(_spec, 'sandbox', None)
     _packages = getattr(_spec, 'packages', None) or {}
     _solver = getattr(_spec, 'solver', None) or '+'.join(
         getattr(_s, 'solver', '') for _s in (getattr(getattr(headers[0], 'plan', None), 'steps', None) or []))
@@ -284,7 +315,7 @@ def _manifest(headers, epochs: int, dataset_hash: str) -> Manifest:
         config={'generate': _generate, 'task_args': dict(getattr(_spec, 'task_args', None) or {}),
                 'epochs': epochs, 'logs': [os.path.basename(str(_h.location or '')) for _h in headers],
                 'status': {_h.eval.task: _h.status for _h in headers}},
-        resources={'sandbox': str(_sandbox) if _sandbox else '',
+        resources={'sandbox': _sandbox(_sandbox_spec),
                    **{_k: _v for _k, _v in _limits.items() if _v is not None}},
         seed=_generate.get('seed'),
         trials=epochs,
@@ -326,7 +357,7 @@ def read(source: Union[str, Sequence[str]], threshold: Union[float, Dict[str, fl
         raise ValueError('more than one log of task {}: a directory may hold several runs -- name the '
                          'log files of one run'.format(', '.join(_twice)))
 
-    _trials, _tasks, _hash = [], {}, hashlib.sha256()
+    _trials, _tasks, _digests = [], {}, []
     _epochs = 1
     for _file, _h in sorted(_headers, key=lambda _x: _x[1].eval.task):
         if _h.status == 'error' and not (_h.results and _h.results.completed_samples):
@@ -334,7 +365,7 @@ def read(source: Union[str, Sequence[str]], threshold: Union[float, Dict[str, fl
             raise ValueError('{}: the Inspect run failed before any sample finished: {}'.format(
                 _file, _short(_message, 500)))
         _epochs = max(_epochs, int(getattr(_h.eval.config, 'epochs', None) or 1))
-        _hash.update('{}@{}'.format(_h.eval.task, _h.eval.task_version).encode('utf-8'))
+        _digests.append('task {}@{}'.format(_h.eval.task, _h.eval.task_version))
         _seen_samples = set()
         for _sample in _log.read_eval_log_samples(_file, all_samples_required=False):
             _id = '{}/{}'.format(_h.eval.task, _sample.id) if _several else str(_sample.id)
@@ -342,8 +373,8 @@ def read(source: Union[str, Sequence[str]], threshold: Union[float, Dict[str, fl
                 _tasks[_id] = _task_entry(_id, _sample, _h.eval.task, _several)
             if _sample.id not in _seen_samples:
                 _seen_samples.add(_sample.id)
-                _hash.update(json.dumps([str(_sample.id), _sample.input, _sample.target],
-                                        ensure_ascii=False, sort_keys=True, default=str).encode('utf-8'))
+                _digests.append(json.dumps([_h.eval.task, str(_sample.id), _sample.input, _sample.target],
+                                           ensure_ascii=False, sort_keys=True, default=str))
             _trials.append(_trial(_id, _sample, _convert, threshold, _judges))
 
     _trials.sort(key=lambda _t: (_t.task_id, _t.index))
@@ -356,9 +387,9 @@ def read(source: Union[str, Sequence[str]], threshold: Union[float, Dict[str, fl
     _run_id = run_id or (getattr(_headers[0][1].eval, 'run_id', '') and
                          'inspect-{}'.format(_headers[0][1].eval.run_id)) or new_run_id()
     return EvalRun(run_id=_run_id,
-                   manifest=_manifest([_h for _, _h in _headers], _epochs, _hash.hexdigest()),
+                   manifest=_manifest([_h for _, _h in _headers], _epochs, _fingerprint(_digests)),
                    tasks=sorted(_tasks.values(), key=lambda _t: _t['id']),
                    trials=_trials, duration=_duration)
 
 
-__all__ = ['read', 'JUDGE_SCORERS', 'SOURCE', 'META_KEY', 'INSTALL_HINT']
+__all__ = ['read', 'incomplete', 'JUDGE_SCORERS', 'SOURCE', 'META_KEY', 'INSTALL_HINT']

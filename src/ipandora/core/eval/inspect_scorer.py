@@ -43,7 +43,13 @@ from ipandora.core.eval.trial import AgentResult, Trial
 
 
 def task_of(state, target) -> Task:
-    """The framework's Task for an Inspect sample: id, input, expected, tags, polarity, split, budget."""
+    """
+    The framework's Task for an Inspect sample: id, input, expected, tags,
+    polarity, split. Not budget: in Inspect, limits are Inspect's own
+    (time_limit, token_limit, ...), and inspect_log.read() judges a sample
+    that hit one -- a budget in the metadata would be read and judged by
+    nobody.
+    """
     _meta = dict(getattr(state, 'metadata', None) or {})
     _targets = list(getattr(target, 'target', None) or [])
     _expected = _targets[0] if len(_targets) == 1 else (_targets or None)
@@ -54,7 +60,6 @@ def task_of(state, target) -> Task:
     return Task(id=str(getattr(state, 'sample_id', '')), input=getattr(state, 'input_text', None),
                 expected=_expected,
                 tags=dict(_meta.get('tags') or {}) if isinstance(_meta.get('tags'), dict) else {},
-                budget=dict(_meta.get('budget') or {}) if isinstance(_meta.get('budget'), dict) else {},
                 meta=_meta, **_fields)
 
 

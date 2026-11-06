@@ -61,7 +61,19 @@ class Command(CommandBase):
             except ValueError:
                 raise ValueError('--threshold {!r}: a number, or SCORER=NUMBER'.format(_item)) from None
         _run = inspect_log.read(options.logs, threshold=_threshold or 1.0, judges=options.judge or ())
-        return Command._conclude(_run, options)
+        _unfinished = inspect_log.incomplete(_run)
+        if _unfinished and options.update_baseline:
+            # a run that stopped part way would become the bar every later run is held to
+            raise ValueError('not writing a baseline from an unfinished run: {}'.format(
+                ', '.join('{} ({})'.format(_k, _v) for _k, _v in sorted(_unfinished.items()))))
+        _code = Command._conclude(_run, options)
+        if _unfinished:
+            # the samples that never ran are missing from the comparison, not
+            # failed in it: a cancelled run could read as "indistinguishable"
+            print('  未完成的 Inspect 运行：{}；没跑的样本不在比较里，结论不作数'.format(
+                '、'.join('{}（{}）'.format(_k, _v) for _k, _v in sorted(_unfinished.items()))))
+            return 1
+        return _code
 
     @staticmethod
     def _conclude(_run, options) -> int:

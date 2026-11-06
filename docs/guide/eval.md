@@ -144,7 +144,9 @@ run.summary()['success_rate']
 - `model_graded_qa`、`model_graded_fact` 是模型评委，`--judge 名字` 标出自己写的模型评委。它们的结论列在报告里，但和 pytest 路径一样，校准之前不计入成功率。
 - 样本出错（沙箱没起来、agent 崩溃），或者撞上时间上限，算基础设施问题，不算 agent 失败，单独计数。撞上 token、消息数、费用、轮数上限，算一条没通过的预算判定。
 - 样本的 `metadata` 里写 `tags`、`polarity`、`split`，报告就能按标签、按极性分开出分。
-- 版本清单记录 Inspect 的版本、solver、模型、生成参数、沙箱、各项上限，以及样本内容的哈希：换了题、换了沙箱，和基线比较时会直接说"不可比"。
+- 版本清单记录 Inspect 的版本、solver、模型、生成参数、沙箱（类型和配置文件名，不含路径）、各项上限，以及样本内容的哈希：换了题、换了沙箱、改了上限，和基线比较时会直接说"不可比"。
+- 被取消、中途出错或还在运行的日志照样出报告，但退出码为 1，也不能用来写基线：没跑的样本不在比较里，结论不作数。
+- 预算用 Inspect 自己的上限（`time_limit`、`token_limit`、`message_limit`、`cost_limit`）；样本 metadata 里的 `budget` 不起作用。
 
 **评分器包成 scorer**：pytest 路径的评分器原样用在 Inspect 里，判定按名字进报告，而不是一个说不清的分数。
 

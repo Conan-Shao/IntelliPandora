@@ -246,6 +246,57 @@ class TestCommand:
         assert _done.returncode == 2 and 'SCORER=NUMBER' in _done.stderr
 
 
+class TestCr4:
+    """Found in code review CR4 (docs/design/reviews/04-CR4.md)."""
+
+    def test_the_sandbox_is_compared_by_type_and_config_name_not_by_path(self):
+        from inspect_ai.util import SandboxEnvironmentSpec
+        _laptop = inspect_log._sandbox(SandboxEnvironmentSpec('docker', '/home/me/evals/compose.yaml'))
+        _ci = inspect_log._sandbox(SandboxEnvironmentSpec('docker', '/runner/work/evals/compose.yaml'))
+        assert _laptop == _ci == 'docker:compose.yaml'
+        assert inspect_log._sandbox(SandboxEnvironmentSpec('local')) == 'local'
+        assert inspect_log._sandbox(None) == ''
+
+    def test_the_dataset_hash_does_not_depend_on_the_order_samples_finish_in(self):
+        _a = inspect_log._fingerprint(['task t@0', '["t", "a", "x", "y"]', '["t", "b", "z", "y"]'])
+        _b = inspect_log._fingerprint(['["t", "b", "z", "y"]', 'task t@0', '["t", "a", "x", "y"]'])
+        assert _a == _b
+
+    def test_an_unfinished_run_fails_the_gate_and_is_never_a_baseline(self, tmp_path):
+        from inspect_ai.log import read_eval_log, write_eval_log
+        _log = run(tmp_path, Task(name='qa', dataset=samples(), scorer=includes()))[0]
+        _base = str(tmp_path / 'baseline.json')
+        _cmd = [sys.executable, '-m', 'ipandora.run', 'eval', 'inspect', _log, '-o', str(tmp_path / 'out'),
+                '--baseline', _base]
+        _env = dict(os.environ, IPANDORA_REPORTS_DIR=str(tmp_path / 'reports'))
+        assert subprocess.run(_cmd + ['--update-baseline'], capture_output=True, text=True, timeout=300,
+                              env=_env).returncode == 0
+        _cancelled = read_eval_log(_log)
+        _cancelled.status = 'cancelled'
+        _cancelled.samples = _cancelled.samples[:1]          # the rest never ran
+        _path = str(tmp_path / 'cancelled.eval')
+        write_eval_log(_cancelled, _path)
+        assert inspect_log.incomplete(inspect_log.read(_path)) == {'qa': 'cancelled'}
+        _done = subprocess.run(_cmd[:5] + [_path] + _cmd[6:], capture_output=True, text=True, timeout=300,
+                               env=_env)
+        assert _done.returncode == 1 and '未完成的 Inspect 运行' in _done.stdout, _done.stdout + _done.stderr
+        _refused = subprocess.run(_cmd[:5] + [_path] + _cmd[6:] + ['--update-baseline'], capture_output=True,
+                                  text=True, timeout=300, env=_env)
+        assert _refused.returncode == 2 and 'unfinished run' in _refused.stderr
+
+    def test_a_budget_in_the_metadata_is_not_taken_as_judged(self):
+        class State:
+            metadata = {'budget': {'seconds': 1}, 'tags': {'k': 'v'}, 'split': 'dev'}
+            sample_id = 's'
+            input_text = 'x'
+
+        class Target:
+            target = ['y']
+        _task = inspect_scorer.task_of(State(), Target())
+        assert _task.budget == {} and _task.tags == {'k': 'v'} and _task.split == 'dev'
+        assert _task.expected == 'y'
+
+
 def test_without_inspect_the_error_says_how_to_install(monkeypatch):
     monkeypatch.setitem(sys.modules, 'inspect_ai', None)
     for _name in ('inspect_ai.log', 'inspect_ai.scorer'):
