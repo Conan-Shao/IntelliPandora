@@ -1,0 +1,8 @@
+# Inputs for tests/api/test_refunds.py, one row per run: `id` names the run,
+# `dims` places it in the coverage matrix, the rest is handed to the case.
+- id: whole-yuan
+  amount: '100.00'
+  dims: {role: buyer, channel: api}
+- id: with-fen
+  amount: '0.01'
+  dims: {role: buyer, channel: api}
