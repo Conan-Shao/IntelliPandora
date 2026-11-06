@@ -34,6 +34,9 @@ def _as_text(body):
 
 
 class PandoraRequest(metaclass=ABCMeta):
+    AUTHENTICATED = False
+    """Whether identities apply (HTTP). A socket has no headers to carry a credential."""
+
     def __init__(self, request_object: RequestObject = None):
         self._request_object = request_object
         self._response = None  # type:Optional[Response, bytes]
@@ -67,6 +70,12 @@ class PandoraRequest(metaclass=ABCMeta):
     @abstractmethod
     def set_step(self): pass
 
+    @staticmethod
+    def _who():
+        """(identity, role) for the evidence; see core/auth.py."""
+        from ipandora.core import auth
+        return auth.label(), ('login' if auth.logging_in() else '')
+
     def _record_failed_exchange(self, exc, elapsed):
         """
         Record a call that never produced a response.
@@ -77,22 +86,70 @@ class PandoraRequest(metaclass=ABCMeta):
         """
         try:
             from ipandora.core.evidence import add_exchange
+            _identity, _role = self._who()
             add_exchange(
                 method=str(self.request_object.method).upper(),
                 url=self.request_object.url,
                 ms=round(elapsed * 1000.0, 1),
-                error='{}: {}'.format(type(exc).__name__, exc))
+                error='{}: {}'.format(type(exc).__name__, exc),
+                identity=_identity, role=_role)
         # bandit B110: evidence capture must never fail a request
         except Exception:  # noqa: BLE001  # nosec B110
             pass
 
-    def handle_response(self):
+    def _send(self):
         _request_handle = getattr(self.request_object.option.obj,
                                   self.request_object.method)
+        return _request_handle(*self.request_object.args, **self.request_object.kwargs)
+
+    def _authenticate(self):
+        """
+        Put the current identity's credential on the request (core/auth.py).
+        Returns the credential entry used, or None when this request is not
+        the framework's to authenticate: the default or anonymous identity, a
+        login in progress, or a credential the case wrote itself.
+        """
+        from ipandora.core import auth
+        if not self.AUTHENTICATED or auth.logging_in() or not auth.managed() \
+                or auth.written_by_case(self.request_object):
+            return None
+        _session = self.request_object.option.obj
+        _session = _session if hasattr(_session, 'cookies') else None
+        _entry = auth.credential(session=_session)
+        if _entry is None or not auth.apply(self.request_object, _session, _entry):
+            return None
+        return _entry
+
+    def _replay_if_rejected(self, entry):
+        """
+        Rejected as not logged in: log in afresh and send this request once
+        more (§2.3). Both attempts are in the evidence.
+        """
+        from ipandora.core import auth
+        _provider = auth.provider()
+        if entry is None or _provider is None or not _provider.refresh_on_401 \
+                or not _provider.unauthenticated(self.response) \
+                or not auth.replayable(self.request_object):
+            return
+        self.total_time = time.perf_counter() - self._started
+        self.record_exchange()
+        _session = self.request_object.option.obj
+        _session = _session if hasattr(_session, 'cookies') else None
+        _entry = auth.renew(auth.current(), entry[0], _session)
+        auth.apply(self.request_object, _session, _entry)
+        self._started = time.perf_counter()
+        self.response = self._send()
+        self._role = 'replayed'
+
+    def handle_response(self):
+        self._role = ''
+        _entry = self._authenticate()
         _start_time = time.perf_counter()
+        self._started = _start_time
         try:
-            self.response = _request_handle(*self.request_object.args,
-                                            **self.request_object.kwargs)
+            self.response = self._send()
+            self._replay_if_rejected(_entry)
+            _start_time = self._started
         except Exception as exc:
             # A transport failure produced no response, so there is nothing to
             # assert on. Re-raise it as a framework error carrying the url,
@@ -114,6 +171,7 @@ class PandoraRequest(metaclass=ABCMeta):
 
 
 class NiceRequest(PandoraRequest):
+    AUTHENTICATED = True
 
     def log(self):
         _m = 'red' if self.response.status_code < 200 or \
@@ -158,7 +216,9 @@ class NiceRequest(PandoraRequest):
         try:
             from ipandora.core.evidence import add_exchange
             _req = getattr(self.response, 'request', None)
+            _identity, _role = self._who()
             add_exchange(
+                identity=_identity, role=getattr(self, '_role', '') or _role,
                 method=str(self.request_object.method).upper(),
                 url=getattr(_req, 'url', '') or self.request_object.url,
                 status=self.response.status_code,

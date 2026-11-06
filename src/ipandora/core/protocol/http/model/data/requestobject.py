@@ -48,6 +48,10 @@ class RequestObject(BaseObject):
     def handleHeaders(self):
         _h_n = CaseInsensitiveDict()
         _r_h = self.kwargs.get('headers', {})
+        # what the case itself put on this request, before anything is merged
+        # in: a credential written here is the case's own and is never
+        # replaced or refreshed (core/auth.apply)
+        self.explicit_headers = dict(_r_h) if isinstance(_r_h, dict) else {}
 
         _h_n.update(self.option.header)
         if isinstance(_r_h, dict):

@@ -14,6 +14,7 @@ Documentation is Markdown in the repository and is the single source. The refere
 
 - [Judgements, unverified cases and the baseline](docs/guide/judgements.md): assert_all, field(), that(), require(), eventually(), conf/judgements.json, --fail-on-weakened
 - [HTTP](docs/guide/http.md): API classes, responses, timeouts, retries, TLS
+- [Login state](docs/guide/auth.md): auth.identity('buyer'), auth.provider(...), Bearer / ApiKey / Cookies, early refresh, one replay after a 401, anonymous
 - [Parallel and concurrent](docs/guide/parallel.md): --workers, @pytest.mark.resource, --timeout, concurrently()
 - [Web](docs/guide/web.md): Playwright as is; expect() as judgements; stale selector vs missing element
 - [Images](docs/guide/visual.md): matches_golden(), what pixel comparison can and cannot see

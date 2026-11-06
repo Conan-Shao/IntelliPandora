@@ -70,13 +70,13 @@ class SessionManager(object):
     @classmethod
     def setSession(cls, session: requests.Session):
         if isinstance(session, requests.Session):
-            cls._session_map[cls.name()] = Session(session)
+            cls._session_map[cls.key()] = Session(session)
 
     @classmethod
     def _get_session_obj(cls) -> Session:
         # Check-then-act under the lock: two threads racing here would each
         # build a session and one would be discarded along with its cookies.
-        _name = cls.name()
+        _name = cls.key()
         with cls._lock:
             if _name not in cls._session_map:
                 cls._session_map[_name] = cls._build_session()
@@ -96,7 +96,7 @@ class SessionManager(object):
         # so any exception in between left the RLock held forever.
         with cls._lock:
             _new_session = cls._build_session()
-            cls._session_map[cls.name()] = _new_session
+            cls._session_map[cls.key()] = _new_session
         return _new_session.session
 
     @classmethod
@@ -135,8 +135,35 @@ class SessionManager(object):
         the next thread that happens to get the same name and ident -- cookies
         and all. core/concurrency.py calls this as each of its threads ends.
         """
+        _prefix = cls.name() + cls.SEP
         with cls._lock:
-            cls._session_map.pop(cls.name(), None)
+            for _key in [_k for _k in cls._session_map if _k == cls.name() or _k.startswith(_prefix)]:
+                cls._session_map.pop(_key, None)
+
+    @classmethod
+    def forget_identities(cls):
+        """
+        Drop every thread's sessions for named identities; the default ones stay.
+        Called when a run ends (core/auth.reset): their cookies are last run's login.
+        """
+        with cls._lock:
+            for _key in [_k for _k in cls._session_map if cls.SEP in _k]:
+                cls._session_map.pop(_key, None)
+
+    SEP = '|identity='
+
+    @classmethod
+    def key(cls):
+        """
+        This thread's session for its current identity (core/auth.py). The
+        default identity keeps the old key, so existing cases see the same
+        session they always did; every other identity has its own -- its own
+        cookies and headers -- so a buyer's login never leaks into a seller's
+        requests.
+        """
+        from ipandora.core import auth
+        _identity = auth.current()
+        return cls.name() if _identity == auth.DEFAULT else cls.name() + cls.SEP + _identity
 
     @classmethod
     def name(cls):

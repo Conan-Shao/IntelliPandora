@@ -177,6 +177,8 @@ def concurrently(operation: Union[Callable[[], Any], Sequence[Callable[[], Any]]
     _session = SessionManager.getSession()
     _evidence = recorder.current()
     _case_state = Runtime.Case.share()
+    from ipandora.core import auth
+    _identity = auth.current()
     _barrier = threading.Barrier(len(_calls))
     # One deadline for the whole start. A per-wait timeout restarts with each
     # thread that arrives, so threads that were all equally slow still started
@@ -195,6 +197,9 @@ def concurrently(operation: Union[Callable[[], Any], Sequence[Callable[[], Any]]
 
     def _worker(index: int, call: Callable[[], Any]):
         try:
+            # the caller's identity first: the session below is filed under it,
+            # and its requests are authenticated and recorded as it
+            auth.adopt(_identity)
             SessionManager.setSession(SessionManager.clone(_session))
             recorder.bind(_own[index])
             Runtime.Case.adopt(_case_state)

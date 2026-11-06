@@ -414,6 +414,8 @@
             <summary>
               <span class="verb">{{ ex.method or 'GET' }}</span>
               <span class="url">{{ ex.url }}</span>
+              {%- if ex.identity %}<span class="tag">{{ ex.identity }}</span>{% endif %}
+              {%- if ex.role == 'login' %}<span class="tag">登录</span>{% elif ex.role == 'replayed' %}<span class="tag">未登录被拒，重新登录后重放</span>{% endif %}
               <span class="code-n {{ 'bad' if broke else 'ok' }}">{{ ex.status or '—' }}</span>
               <span class="ms">{{ ex.ms|ms }}</span>
             </summary>

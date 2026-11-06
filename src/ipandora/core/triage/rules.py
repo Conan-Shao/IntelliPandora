@@ -47,6 +47,7 @@ TRANSPORT_TYPE = re.compile(
 # fails in setup, and would otherwise read as a broken harness.
 CASE_TIMEOUT_MARKER = 'Timeout (>'          # pytest-timeout: "Failed: Timeout (>5.0s) from pytest-timeout."
 RESOURCE_WAIT_MARKER = 'ipandora: gave up waiting for resource'   # core/runner/plugin.py
+LOGIN_MARKER = 'ipandora: login failed'                          # core/auth.py
 
 HARNESS_MARKERS = ('fixture', 'not found', 'ImportError', 'ModuleNotFoundError',
                    'AttributeError', 'TypeError', 'NameError')
@@ -100,6 +101,14 @@ def classify(nodeid: str, outcome: str, message: str, locator_failures=None) -> 
                        reason=reason, next_step=NEXT_STEP.get(category, ''),
                        check_sources=sources or [])
 
+    if LOGIN_MARKER in _message:
+        # the provider could not log in: the login endpoint is down, or the
+        # account is wrong -- either way the system under test was not tested
+        if TRANSPORT_TYPE.search(_message) or any(_t in _message for _t in TRANSPORT_MARKERS):
+            return _finding(Category.ENVIRONMENT, Confidence.HIGH,
+                            '登录没有完成：登录接口连不上，用例没有执行到被测系统')
+        return _finding(Category.DATA, Confidence.HIGH,
+                        '登录没有完成：账号、口令或登录流程不对（见失败信息），不是被测系统的缺陷')
     if RESOURCE_WAIT_MARKER in _message:
         return _finding(Category.ENVIRONMENT, Confidence.HIGH,
                         '没有开始执行：它声明的共享资源在整个等待期间都被别的用例或运行占着')
