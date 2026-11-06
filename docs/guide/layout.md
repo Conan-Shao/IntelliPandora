@@ -37,6 +37,8 @@ my-tests/
 | `data/` | 工厂函数为每条用例生成唯一数据，方便并行 | 不放口令 |
 | `tests/` | 一条用例一个行为；文档字符串第一行是标题；`assert_all` / `expect` 判定，`require` 前置，`@pytest.mark.dims` 进覆盖矩阵 | 不直接调 `requests`，不拼 URL，不 `sleep`（用 `eventually`） |
 
+**检查**：`ipandora check layout` 按上表静态检查（不导入、不运行任何代码），每处问题给出文件和行号，有问题时退出码为 1，`ipandora init` 生成的 CI 已经带上这一步。正在把老项目迁过来时，可以先用 `--warn-only`，只打印不失败。检查的内容：`apis/`、`pages/`、`flows/` 里的判定（`assert`、`assert_all`、`expect`、`pytest.raises`、`matches_golden`；`require` 不算判定，`flows/` 可以用），`pages/`、`flows/`、`tests/` 里的 `sleep`，`tests/` 里直接 import `requests`，`apis/` 里写死的 `http(s)://` 地址。
+
 **为什么判定只放在 `tests/`**：判定写在页面类里也会被记录，不会漏；但写在用例里，读用例就知道它在验证什么，评审判定的改动也只看 `tests/` 的 diff。`.github/CODEOWNERS` 可以给 `tests/` 和 `conf/judgements.json` 指定负责人。
 
 ## 用例长什么样
