@@ -398,6 +398,9 @@ def test_the_config_reference_keeps_lists_and_top_level_keys(tmp_path, monkeypat
 
 
 def test_the_packaging_check_leaves_the_checkout_alone(tmp_path):
+    # needs the build front end from requirements/tools.txt; the test jobs
+    # install the runtime lock only, and the packaging job runs the real check
+    pytest.importorskip('build')
     import check_packaging
     _marker = os.path.join(REPO, 'build', 'cr1-marker')
     os.makedirs(os.path.dirname(_marker), exist_ok=True)
