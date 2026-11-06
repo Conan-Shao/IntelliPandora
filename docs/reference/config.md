@@ -38,6 +38,16 @@ Fault injection through Toxiproxy (core/faults.py). Off unless an environment tu
 | `faults.allowed` | `false` |  |
 | `faults.toxiproxy` | `null` | default http://127.0.0.1:8474, or $TOXIPROXY_URL |
 
+## `consistency`
+
+Consistency checks on an operation history (core/consistency.py): elle-cli, a Java 21 tool. Not installed with the package -- see docs/guide/consistency.md.
+
+| 键 | 默认值 | 说明 |
+|---|---|---|
+| `consistency.elle_cli` | `null` | path to elle-cli-0.1.11-standalone.jar, or $ELLE_CLI_JAR |
+| `consistency.java` | `null` | a Java 21+ executable; default: $IPANDORA_JAVA, $JAVA_HOME_21_X64, $JAVA_HOME, PATH |
+| `consistency.elle_cli_sha256` | `null` | only for a build you admitted yourself; default: the admitted 0.1.11 |
+
 ## `ai`
 
 LLM access is OFF by default and stays that way unless explicitly enabled. It is never used at test-execution time -- only post-run (triage, report summaries). See docs/design/decisions/03-LLM接入边界.md. Requires the optional extra: pip install intellipandora[ai]
