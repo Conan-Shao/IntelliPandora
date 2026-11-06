@@ -91,3 +91,21 @@ def test_the_command_exits_one_on_findings(tmp_path):
     _empty = tmp_path / 'empty'
     _empty.mkdir()
     assert subprocess.run(_cli[:-1] + [str(_empty)], capture_output=True).returncode == 2
+
+
+def test_cr3_rule_edges(tmp_path):
+    """Found in code review CR3 (docs/design/reviews/03-CR3.md)."""
+    write(tmp_path, 'pages/cart.py', '''
+        import time as t
+        class Cart:
+            def add(self):
+                self.page.wait_for_timeout(2000)
+                t.sleep(1)
+                self.page.locator('#ok').wait_for()          # waiting for a condition: fine
+    ''')
+    write(tmp_path, 'tests/conftest.py', 'import requests\n')          # a login provider may
+    write(tmp_path, 'flows/shell.py', '''
+        def run(child):
+            child.expect('ready')                             # pexpect, not a judgement
+    ''')
+    assert rules(tmp_path) == [('pages/cart.py', 5, 'sleep'), ('pages/cart.py', 6, 'sleep')]

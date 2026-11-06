@@ -110,3 +110,56 @@ def test_dims_in_the_data_file_fill_the_coverage_matrix(tmp_path, monkeypatch):
     assert [_c.name for _c in _result.cases] == ['test_refund[buyer-api]', 'test_refund[seller-web]']
     _grid = build(_result).coverage_matrix[0]
     assert (_grid['filled'], _grid['total']) == (2, 4)
+
+
+class TestCr3:
+    """Found in code review CR3 (docs/design/reviews/03-CR3.md)."""
+
+    def test_a_field_named_like_a_dict_method_is_the_field(self):
+        _c = Case(items=['a', 'b'], get='x')
+        assert _c.items == ['a', 'b'] and _c.get == 'x'
+
+    def test_a_csv_row_with_too_many_fields_is_named(self, tmp_path):
+        with pytest.raises(ValueError, match='more fields than the header'):
+            cases(write(tmp_path / 'a.csv', 'id,amount\none,1,000\n'))
+
+    def test_null_dims_are_left_out(self, tmp_path):
+        _p = cases(write(tmp_path / 'a.yaml', '- {id: a, dims: {role: buyer, channel: null}}\n'))
+        assert _p[0].marks[0].kwargs == {'role': 'buyer'}
+
+    def test_the_search_stops_at_the_project_root(self, tmp_path):
+        write(tmp_path / 'data' / 'outside.yaml', '- {id: a}\n')
+        _project = tmp_path / 'proj'
+        write(_project / 'pytest.ini', '[pytest]\n')
+        _caller = _project / 'tests' / 'test_x.py'
+        write(_caller, '''
+            from ipandora.core.cases import cases
+            def load():
+                return cases('data/outside.yaml')
+        ''')
+        _ns = {}
+        exec(compile(_caller.read_text(), str(_caller), 'exec'), _ns)
+        with pytest.raises(ValueError, match='project root'):
+            _ns['load']()
+
+
+def test_a_rows_dims_are_merged_with_the_functions(tmp_path, monkeypatch):
+    monkeypatch.setenv('IPANDORA_CONFIG_DIR', str(tmp_path / 'no-conf'))
+    monkeypatch.setenv(plugin.LOCK_DIR_VAR, str(tmp_path / 'locks'))
+    write(tmp_path / 'proj' / 'data' / 'r.yaml', '''
+        - {id: b, dims: {role: buyer}}
+        - {id: s, dims: {role: seller, channel: web}}
+    ''')
+    _suite = write(tmp_path / 'proj' / 'tests' / 'test_r.py', '''
+        import pytest
+        from ipandora.core.cases import cases
+        from ipandora.core.assertion import assert_all, that
+
+        @pytest.mark.dims(channel='api')
+        @pytest.mark.parametrize('case', cases('data/r.yaml'))
+        def test_r(case):
+            assert_all(that(case.id, 'id') != '')
+    ''')
+    _result = run(_suite, persist=False, quiet=True, baseline='')
+    assert [_c.dims for _c in _result.cases] == [{'channel': 'api', 'role': 'buyer'},
+                                                {'channel': 'web', 'role': 'seller'}]

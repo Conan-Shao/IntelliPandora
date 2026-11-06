@@ -249,7 +249,6 @@ def run(selector: str = '', env: str = '', extra_args: Sequence[str] = (),
     _modules_before = set(sys.modules)
     _env_name_before = getattr(Runtime.Option, 'env', '')
     _environ_before = {}
-    _auth_dir = ''
     _settings_before, _env_file = Runtime.settings, ''
     _start = time.perf_counter()
     from ipandora.core import web
@@ -275,12 +274,6 @@ def run(selector: str = '', env: str = '', extra_args: Sequence[str] = (),
         # every run costs milliseconds, a stale verdict costs the whole loop.
         sys.dont_write_bytecode = True
         _environ = dict(_process_environment(env), **_image_environment(_run_id, update_goldens))
-        # a private directory for logins shared by every worker (core/auth.py);
-        # 0700 from mkdtemp, and removed below with whatever it holds
-        import tempfile
-        from ipandora.core import auth as _auth
-        _auth_dir = tempfile.mkdtemp(prefix='ipandora-auth-')
-        _environ[_auth.AUTH_DIR_VAR] = _auth_dir
         _environ_before = {_k: os.environ.get(_k) for _k in _environ}
         os.environ.update(_environ)
         with web.nested_session():
@@ -297,9 +290,6 @@ def run(selector: str = '', env: str = '', extra_args: Sequence[str] = (),
                 os.environ[_k] = _v
         sys.pycache_prefix = _prefix_before
         sys.dont_write_bytecode = _nowrite_before
-        if _auth_dir:
-            import shutil
-            shutil.rmtree(_auth_dir, ignore_errors=True)
         _forget_project_modules(_modules_before, _collector.rootdir)
         _duration = time.perf_counter() - _start
         Runtime.Option.env = _env_name_before

@@ -131,6 +131,6 @@ class ShopLogin(auth.Provider):
         ...
 ```
 
-- **单会话账号**（在别处登录会把前一个踢下线）：`single_session`。所有 worker 共用一次登录：第一个用到的 worker 登录，把凭据写进这次运行的私有临时目录（目录 0700、文件 0600，运行结束删除），其他 worker 读它。读写有文件锁保护；凭据被拒、需要刷新时，也只有一个 worker 去登录。
-- **账号池**：`accounts`。每个 worker 在整次运行里租用池里的一个账号，worker 之间不共用账号的数据。`login()` 里用 `auth.account(name)` 拿到租到的账号。账号比 worker 少时，没租到的 worker 等别人归还，等待上限和 `@pytest.mark.resource` 一样（默认 300 秒）。
+- **单会话账号**（在别处登录会把前一个踢下线）：`single_session`（`True`、一组身份名，或一个身份名）。所有 worker 共用一次登录：第一个用到的 worker 登录，把凭据写进这次运行的私有临时目录（目录 0700、文件 0600，运行结束删除），其他 worker 读它。读写有文件锁保护；凭据被拒、需要刷新时，也只有一个 worker 去登录。`auth.forget(name)` 让下一次请求重新登录，`auth.store(name, ...)`（包括 `web.share_with_api`）写进的凭据所有 worker 都用。`ipandora run --workers N` 和直接 `pytest -n N -p ipandora.core.runner.plugin` 都会共享；串行运行只有一个进程，凭据留在内存里，不写文件。
+- **账号池**：`accounts`。每个 worker 在整次运行里租用池里的一个账号，worker 之间不共用账号的数据。`login()` 里用 `auth.account(name)` 拿到租到的账号。账号要不少于 worker 数：每个 worker 一直占着自己的账号到运行结束，等不到别人归还，所以账号比 worker 少时直接报错，说明要加账号或减少 worker。同一个身份既在池里又声明了 `single_session` 时按账号池处理，不共享。租约不占用 `@pytest.mark.resource('account:...')` 的同名资源。
 - 同一个单会话账号既用接口登录又用页面登录，同样会互相踢下线。这种账号的 Web 登录态用接口登录转换（`page_as` 的默认方式），或者给 Web 单独配账号。

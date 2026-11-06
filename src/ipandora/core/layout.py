@@ -32,8 +32,11 @@ LAYERS = ('apis', 'pages', 'flows', 'tests')
 NO_JUDGEMENTS = ('apis', 'pages', 'flows')
 NO_SLEEP = ('pages', 'flows', 'tests')
 
-JUDGING_CALLS = {'assert_all', 'expect'}
-"""Calls that judge. require() is not one: it states a precondition."""
+JUDGING_CALLS = {'assert_all'}
+"""Calls that judge, by their last name. require() is not one: it states a precondition."""
+
+SLEEPS = {'sleep', 'wait_for_timeout'}
+"""Fixed waits, by their last name: time.sleep, t.sleep, asyncio.sleep, self.page.wait_for_timeout."""
 
 _URL = re.compile(r'^https?://[^\s{}]+', re.IGNORECASE)
 
@@ -85,19 +88,25 @@ def check_file(path: str, rel: str) -> List[Finding]:
             elif isinstance(_node, ast.Call):
                 _fn = _name(_node.func)
                 _last = _fn.rsplit('.', 1)[-1]
-                if _last in JUDGING_CALLS or _fn in ('pytest.raises', 'pytest.warns') \
+                # expect() only as Playwright's bare function: pexpect's
+                # child.expect(...) is not a judgement
+                _bare_expect = isinstance(_node.func, ast.Name) and _node.func.id == 'expect'
+                if _last in JUDGING_CALLS or _bare_expect or _fn in ('pytest.raises', 'pytest.warns') \
                         or _last == 'matches_golden':
                     _add(_node, 'judgement', '{}() in {}/: judgements belong in tests/'.format(
                         _fn, _layer_name))
-        if isinstance(_node, ast.Call) and _layer_name in NO_SLEEP and _name(_node.func) in (
-                'time.sleep', 'sleep', 'page.wait_for_timeout'):
+        if isinstance(_node, ast.Call) and _layer_name in NO_SLEEP \
+                and _name(_node.func).rsplit('.', 1)[-1] in SLEEPS:
             _add(_node, 'sleep', 'a fixed wait in {}/: wait for the condition instead -- '
-                                 'eventually(), or Playwright\'s own waiting'.format(_layer_name))
-        if _layer_name == 'tests':
+                                 'eventually() in a case, locator.wait_for() or '
+                                 'page.wait_for_url() in a page'.format(_layer_name))
+        # conftest.py is where a login provider lives, and it may use requests
+        if _layer_name == 'tests' and os.path.basename(rel) != 'conftest.py':
             if isinstance(_node, ast.Import) and any(_a.name.split('.')[0] == 'requests' for _a in _node.names):
                 _add(_node, 'requests', 'tests/ imports requests: call the API classes in apis/, '
                                         'so the request is recorded and authenticated')
-            elif isinstance(_node, ast.ImportFrom) and (_node.module or '').split('.')[0] == 'requests':
+            elif isinstance(_node, ast.ImportFrom) and not _node.level \
+                    and (_node.module or '').split('.')[0] == 'requests':
                 _add(_node, 'requests', 'tests/ imports from requests: call the API classes in apis/')
         if _layer_name == 'apis' and isinstance(_node, ast.Constant) and isinstance(_node.value, str) \
                 and _URL.match(_node.value.strip()):

@@ -78,6 +78,7 @@ _INDEX = pytest.StashKey[int]()
 _DECLARED = pytest.StashKey[dict]()
 _LOCKS = pytest.StashKey[list]()
 _EXCLUDED = pytest.StashKey[bool]()
+_AUTH_DIR = pytest.StashKey[str]()
 _PATCHED = {}
 _SESSIONS = {'depth': 0}
 """How many pytest sessions in this process have this plugin configured.
@@ -201,6 +202,7 @@ def pytest_addoption(parser):
 
 def pytest_configure(config):
     _SESSIONS['depth'] += 1
+    _make_auth_dir(config)
     # Patched for the duration of the run, restored in pytest_unconfigure.
     # A module that did `from pytest import raises` during this run keeps the
     # wrapper afterwards, which is harmless: outside a case it records nothing
@@ -254,7 +256,35 @@ def _apply_worker_env():
     Runtime.Option.env = _env
 
 
+def _make_auth_dir(config):
+    """
+    The private directory where xdist workers share a single-session login
+    (core/auth.py): made by the process that starts the workers, which
+    inherit it through the environment. Here rather than in run(), so plain
+    `pytest -n 4` gets it too. 0700 from mkdtemp; removed when the run ends.
+    """
+    from ipandora.core import auth
+    if is_worker(config) or os.environ.get(auth.AUTH_DIR_VAR):
+        return
+    import tempfile
+    _dir = tempfile.mkdtemp(prefix='ipandora-auth-')
+    os.environ[auth.AUTH_DIR_VAR] = _dir
+    config.stash[_AUTH_DIR] = _dir
+
+
+def _remove_auth_dir(config):
+    _dir = config.stash.get(_AUTH_DIR, None)
+    if not _dir:
+        return
+    import shutil
+    from ipandora.core import auth
+    shutil.rmtree(_dir, ignore_errors=True)
+    if os.environ.get(auth.AUTH_DIR_VAR) == _dir:
+        os.environ.pop(auth.AUTH_DIR_VAR, None)
+
+
 def pytest_unconfigure(config):
+    _remove_auth_dir(config)
     _SESSIONS['depth'] = max(_SESSIONS['depth'] - 1, 0)
     if _SESSIONS['depth']:
         return      # an outer session is still running and still needs them
@@ -392,6 +422,25 @@ def pytest_runtest_teardown(item):
             item.user_properties.append((KEY, _payload))
 
 
+def _merged_dims(item) -> dict:
+    """
+    Every dims marker of the item, merged: module and class first, then the
+    function, then the parameter row -- the most specific wins a conflict.
+
+    Not the closest marker alone: pytest lists a function's marks before a
+    parameter's, so with `@pytest.mark.dims(channel='api')` on the function
+    every row of cases(...) lost its own dims, and the coverage matrix never
+    saw them.
+    """
+    _merged = {}
+    for _m in reversed(list(item.iter_markers('dims'))):
+        _merged.update(_m.kwargs or {})
+    for _m in getattr(getattr(item, 'callspec', None), 'marks', None) or ():
+        if getattr(_m, 'name', '') == 'dims':
+            _merged.update(_m.kwargs or {})
+    return {str(_k): str(_v) for _k, _v in _merged.items()}
+
+
 def _declarations(item) -> dict:
     """
     What a test declares about itself: where it sits in the coverage matrix,
@@ -399,9 +448,9 @@ def _declarations(item) -> dict:
     """
     _out = {'judgeable': type(item).__name__ not in OPAQUE_ITEMS}
 
-    _marker = item.get_closest_marker('dims')
-    if _marker is not None:
-        _out['dims'] = {str(_k): str(_v) for _k, _v in (_marker.kwargs or {}).items()}
+    _dims = _merged_dims(item)
+    if _dims:
+        _out['dims'] = _dims
 
     _flaky = item.get_closest_marker('flaky')
     if _flaky is not None:

@@ -33,42 +33,57 @@ the case converts it -- `.decimal()` for amounts. Columns named `dims.role`
 become dims.
 """
 import csv
-import inspect
 import json
 import os
+import sys
 from typing import Any, Dict, List, Optional
 
 ID, DIMS = 'id', 'dims'
 
 
 class Case(dict):
-    """One row: `case['amount']` or `case.amount`."""
+    """
+    One row: `case['amount']` or `case.amount`.
+
+    A field wins over a dict method of the same name: a CSV column called
+    `items`, `values` or `get` reads as its data, not as the method.
+    """
+
+    def __getattribute__(self, name: str) -> Any:
+        if not name.startswith('_') and dict.__contains__(self, name):
+            return dict.__getitem__(self, name)
+        return super().__getattribute__(name)
 
     def __getattr__(self, name: str) -> Any:
         try:
             return self[name]
         except KeyError:
             raise AttributeError('this case has no field {!r}; it has: {}'.format(
-                name, ', '.join(sorted(self)) or 'none')) from None
+                name, ', '.join(sorted(map(str, dict.keys(self)))) or 'none')) from None
+
+
+PROJECT_MARKERS = ('pytest.ini', 'pyproject.toml', 'setup.cfg', 'tox.ini', '.git')
+"""A directory holding one of these is the project root: the search stops there."""
 
 
 def _find(path: str, caller_dir: str) -> str:
-    """The file: as given, next to the calling test file, or in a directory above it."""
+    """
+    The file: next to the calling test file, or in a directory above it up to
+    the project root -- never past it, where an unrelated ~/data/users.yaml
+    would quietly become the test's input.
+    """
     if os.path.isabs(path):
         return path
     _dir = caller_dir
-    for _ in range(8):
+    for _ in range(12):
         _candidate = os.path.join(_dir, path)
         if os.path.isfile(_candidate):
             return _candidate
         _parent = os.path.dirname(_dir)
-        if _parent == _dir:
+        if _parent == _dir or any(os.path.exists(os.path.join(_dir, _m)) for _m in PROJECT_MARKERS):
             break
         _dir = _parent
-    if os.path.isfile(path):
-        return os.path.abspath(path)
-    raise ValueError('cases(): no file {!r} next to {} or in any directory above it'.format(
-        path, caller_dir))
+    raise ValueError('cases(): no file {!r} from {} up to the project root'.format(path, caller_dir))
 
 
 def _rows(file: str) -> List[Any]:
@@ -100,7 +115,7 @@ def _dims(row: Dict[str, Any], where: str) -> Dict[str, str]:
     if _given is not None:
         if not isinstance(_given, dict):
             raise ValueError('{}: dims must be a mapping such as {{role: buyer}}'.format(where))
-        _out.update({str(_k): str(_v) for _k, _v in _given.items()})
+        _out.update({str(_k): str(_v) for _k, _v in _given.items() if _v not in (None, '')})
     for _key in [_k for _k in row if isinstance(_k, str) and _k.startswith(DIMS + '.')]:
         _value = row.pop(_key)
         if _value not in (None, ''):
@@ -120,13 +135,19 @@ def cases(path: str, ids: Optional[str] = ID) -> list:
                  it are numbered.
     """
     import pytest
-    _caller = os.path.dirname(os.path.abspath(inspect.stack()[1].filename))
+    # the calling frame's file; inspect.stack() would read the source of
+    # every frame on the stack, at collection time, for each call
+    _caller = os.path.dirname(os.path.abspath(sys._getframe(1).f_code.co_filename))
     _file = _find(path, _caller)
     _out, _seen = [], set()
     for _n, _raw in enumerate(_rows(_file), 1):
         _where = '{} case #{}'.format(_file, _n)
         if not isinstance(_raw, dict):
             raise ValueError('{}: a case must be a mapping, got {}'.format(_where, type(_raw).__name__))
+        if None in _raw:
+            # csv.DictReader puts the fields beyond the header under None:
+            # an unquoted comma in a value, usually
+            raise ValueError('{}: more fields than the header has (an unquoted comma?)'.format(_where))
         _row = dict(_raw)
         _dims_of = _dims(_row, _where)
         _id = _row.get(ids) if ids else None
