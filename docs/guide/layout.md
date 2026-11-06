@@ -66,6 +66,37 @@ def test_refund_of_a_paid_order_returns_the_full_amount(shop_url, orders):
 
 用例写成函数。只有要共用 fixture 或标记时才用类分组。
 
+## 数据驱动：用例是 Python，输入放在数据文件里
+
+同一个行为要用很多组输入时，用参数化，数据放在 `data/`：
+
+```yaml
+# data/refunds.yaml
+- id: whole-yuan
+  amount: '100.00'
+  dims: {role: buyer, channel: api}
+- id: with-fen
+  amount: '0.01'
+  dims: {role: buyer, channel: api}
+```
+
+```python
+import pytest
+
+from ipandora.core.cases import cases
+
+
+@pytest.mark.parametrize('case', cases('data/refunds.yaml'))
+def test_a_refund_returns_exactly_what_was_paid(case, shop_url, orders):
+    amount = case.amount          # case.amount 和 case["amount"] 都可以
+```
+
+- 每一行是一次运行：`id` 是测试 id，`dims` 等同于 `@pytest.mark.dims(...)`，会进入覆盖矩阵，其余字段交给用例，`case.amount` 和 `case['amount']` 都能读。
+- 支持 YAML、JSON、CSV。CSV 的值都是文本，金额这类数字要在用例里转换（`.decimal()`）；列名写成 `dims.role` 的进入 dims。
+- 路径相对于调用它的用例文件查找，找不到就往上一级目录找，所以 `tests/api/` 里写 `data/refunds.yaml` 能找到项目的 `data/`。
+- id 重复、文件为空、行不是映射，都直接报错。文件为空时参数化的用例一次都不会运行，却会显示为通过。
+- 不做 YAML 写步骤的用例。步骤和判定留在 Python 里，判定清单、零判定检测和 IDE 才看得到。
+
 ## `No module named 'apis'`
 
 `ipandora run` 用 `--import-mode=importlib` 导入用例，这种方式不会把项目根目录放进导入路径。所以 `tests/` 里 `from apis.orders import ...` 需要项目根目录的 `pytest.ini`：

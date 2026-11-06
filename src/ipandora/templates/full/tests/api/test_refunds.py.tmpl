@@ -1,0 +1,23 @@
+"""
+A data-driven case: the case is Python, the inputs are data/refunds.yaml.
+"""
+from decimal import Decimal
+
+import pytest
+
+from flows.orders import paid_order
+from ipandora.core import auth
+from ipandora.core.assertion import assert_all, field, status_ok
+from ipandora.core.cases import cases
+
+
+@pytest.mark.parametrize('case', cases('data/refunds.yaml'))
+def test_a_refund_returns_exactly_what_was_paid(case, shop_url, orders):
+    """退款金额与实付金额完全一致，分也不差"""
+    order = paid_order(shop_url, identity='buyer', amount=case.amount)
+    with auth.identity('buyer'):
+        r = orders.refund(order.id)
+    assert_all(
+        status_ok(r),
+        field(r, 'data.refund_amount').decimal() == Decimal(case.amount),
+    )
