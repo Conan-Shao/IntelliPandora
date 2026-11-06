@@ -199,6 +199,10 @@ class Manifest:
             _out.append('数据集划分不同（{} ≠ {}）'.format(self.split or '全部', other.split or '全部'))
         if self.resources != other.resources:
             _out.append('沙箱资源不同')
+        # the user is part of what is measured: an agent that does well with a
+        # scripted user and badly with a model playing one has not regressed
+        if self.user_simulator and other.user_simulator and self.user_simulator != other.user_simulator:
+            _out.append('模拟用户不同（{} ≠ {}）'.format(self.user_simulator, other.user_simulator))
         return _out
 
     def to_dict(self) -> Dict[str, Any]:

@@ -60,7 +60,8 @@ def _bar(row: Dict[str, Any], span: float) -> Dict[str, float]:
 
 
 def context(run: EvalRun, comparison: Optional[Dict[str, Any]] = None,
-            title: str = None) -> Dict[str, Any]:
+            title: str = None, gate: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """`gate`: {'gate', 'reasons', 'saturation'} from the command that wrote the report."""
     _s = run.summary()
     _rows = []
     if comparison:
@@ -90,6 +91,8 @@ def context(run: EvalRun, comparison: Optional[Dict[str, Any]] = None,
         'failed_total': len(_failed), 'selfcheck': run.selfcheck, 'anchors': _anchors,
         'generated': datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'pct': _pct,
         'category_label': CATEGORY_LABEL,
+        'gate': (gate or {}).get('gate', ''), 'gate_reasons': (gate or {}).get('reasons') or [],
+        'saturation_sentence': (gate or {}).get('saturation_sentence', ''),
     }
 
 
@@ -132,26 +135,28 @@ def redacted(run: EvalRun) -> EvalRun:
     return replace(run, trials=_trials, selfcheck=_selfcheck)
 
 
-def to_html(run: EvalRun, comparison: Optional[Dict[str, Any]] = None, title: str = None) -> str:
+def to_html(run: EvalRun, comparison: Optional[Dict[str, Any]] = None, title: str = None,
+            gate: Optional[Dict[str, Any]] = None) -> str:
     from ipandora.core.report.render import environment
-    return environment().get_template(TEMPLATE).render(**context(redacted(run), comparison, title))
+    return environment().get_template(TEMPLATE).render(**context(redacted(run), comparison, title, gate))
 
 
-def to_dict(run: EvalRun, comparison: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """report.json for an evaluation: the run, plus the verdict and the comparison."""
+def to_dict(run: EvalRun, comparison: Optional[Dict[str, Any]] = None,
+            gate: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """report.json for an evaluation: the run, plus the verdict, the comparison and the gate."""
     _out = redacted(run).to_dict()
     _out.update({'view': 'eval', 'verdict': verdict(run, comparison),
-                 'comparison': comparison or {}})
+                 'comparison': comparison or {}, 'gate': gate or {}})
     return _out
 
 
 def write(run: EvalRun, directory: str, comparison: Optional[Dict[str, Any]] = None,
-          title: str = None) -> Dict[str, str]:
+          title: str = None, gate: Optional[Dict[str, Any]] = None) -> Dict[str, str]:
     os.makedirs(directory, exist_ok=True)
     _html = os.path.join(directory, 'report.html')
     with open(_html, 'w', encoding='utf-8') as fh:
-        fh.write(to_html(run, comparison, title))
+        fh.write(to_html(run, comparison, title, gate))
     _json = os.path.join(directory, 'report.json')
     with open(_json, 'w', encoding='utf-8') as fh:
-        json.dump(to_dict(run, comparison), fh, ensure_ascii=False, indent=2, default=str)
+        json.dump(to_dict(run, comparison, gate), fh, ensure_ascii=False, indent=2, default=str)
     return {'html': _html, 'json': _json}

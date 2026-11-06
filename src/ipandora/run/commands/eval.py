@@ -77,7 +77,7 @@ class Command(CommandBase):
 
     @staticmethod
     def _conclude(_run, options) -> int:
-        from ipandora.core.eval import baseline, report
+        from ipandora.core.eval import baseline, report, trend
         if options.baseline and not options.no_baseline and not os.path.isfile(options.baseline) \
                 and not options.update_baseline:
             # asked for by name: a typo must not turn into "no baseline, all fine"
@@ -87,9 +87,16 @@ class Command(CommandBase):
         _comparison = baseline.compare(_run, _base, noise=options.noise,
                                        partial=options.partial) if _base else None
 
+        _gate_name = getattr(options, 'fail_on_regression', None) or 'overall'
+        _reasons = baseline.regressions(_comparison, _gate_name) if _comparison else []
         from ipandora.core.report.history import reports_dir
+        _earlier = [_r for _r in trend.history(dataset=_run.manifest.dataset, split=_run.manifest.split)
+                    if _r.run_id != _run.run_id]
+        _saturation = trend.saturation(_earlier + [_run])
+        _gate = {'gate': _gate_name, 'reasons': _reasons, 'saturation': _saturation,
+                 'saturation_sentence': trend.sentence(_saturation)}
         _out = options.out or os.path.join(reports_dir(), _run.run_id)
-        _paths = report.write(_run, _out, _comparison, title=options.title)
+        _paths = report.write(_run, _out, _comparison, title=options.title, gate=_gate)
 
         _s = _run.summary()
         _verdict = report.verdict(_run, _comparison)
@@ -104,6 +111,13 @@ class Command(CommandBase):
             _ids = [_p['task_id'] for _p in _run.selfcheck if _p.get('kind') == _kind]
             if _ids:
                 print('  {} 道题{}：{}'.format(len(_ids), _text, '、'.join(_ids[:5])))
+        for _reason in _reasons:
+            print('  门禁不通过  {}'.format(_reason))
+        if _comparison and _comparison.get('broken') and _gate_name != 'task':
+            print('  {} 道题以前全过、现在全挂：{}（--fail-on-regression task 时拦下）'.format(
+                len(_comparison['broken']), '、'.join(_comparison['broken'][:5])))
+        if _gate['saturation_sentence']:
+            print('  {}'.format(_gate['saturation_sentence']))
         print('  报告  {}'.format(_paths['html']))
         if options.update_baseline:
             print('  评测基线已更新  {}'.format(baseline.save(_path or baseline.default_path(), _run)))
@@ -114,7 +128,7 @@ class Command(CommandBase):
         # an evaluation never fired.
         if options.update_baseline:
             return 0
-        return 1 if _verdict['status'] in ('worse', 'not_comparable') else 0
+        return 1 if _reasons else 0
 
     @staticmethod
     def _selfcheck(options) -> int:
@@ -220,6 +234,10 @@ def _common(parser):
     parser.add_argument('--noise', type=float, default=0.0, metavar='RATE',
                         help='infrastructure noise as a rate (0.021 for ±2.1 points): a '
                              'difference smaller than this is never called better or worse')
+    parser.add_argument('--fail-on-regression', choices=['overall', 'tag', 'task'], default='overall',
+                        help='what fails the run: overall -- the overall verdict is worse; tag -- also '
+                             'any tag value worse (corrected for the number of groups); task -- also any '
+                             'task that always succeeded and now always fails. Not comparable always fails')
     parser.add_argument('--partial', action='store_true',
                         help='compare each task\'s partial score (the weighted share of its '
                              'checks that held) instead of whether it succeeded')

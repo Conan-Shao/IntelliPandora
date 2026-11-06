@@ -50,7 +50,11 @@
       <li>按任务配对：{{ cmp.worse }} 题变差、{{ cmp.better }} 题变好、{{ cmp.same }} 题不变。</li>
       {%- if cmp.noise %}<li>判定变好或变差还要求差值超过基础设施噪声 ±{{ '%.1f'|format(100 * cmp.noise) }} 个百分点。</li>{% endif %}
       {%- if cmp.only_in_base or cmp.only_in_now %}<li>只在一边出现的任务不参与比较：基线独有 {{ cmp.only_in_base|length }} 题，本次独有 {{ cmp.only_in_now|length }} 题。</li>{% endif %}
+      {%- if cmp.broken %}<li><b>{{ cmp.broken|length }} 道题以前全过、现在全挂</b>：{{ cmp.broken[:5]|join('、') }}。</li>{% endif %}
+      {%- if cmp.by_tag|length > 1 %}<li>按标签比较时置信水平按比较的组数校正（{{ cmp.by_tag|length }} 组），避免"总有一组碰巧变差"。</li>{% endif %}
       {%- endif %}
+      {%- if gate_reasons %}<li><b>门禁（{{ gate }}）不通过</b>：{{ gate_reasons|join('；') }}。</li>{% endif %}
+      {%- if saturation_sentence %}<li>{{ saturation_sentence }}。</li>{% endif %}
       {%- if s.judge_checks %}<li>模型评委的 {{ s.judge_checks }} 条判定只展示，不参与成功率和结论{% if s.judge_uncertain %}；其中 {{ s.judge_uncertain }} 条"不确定"{% endif %}。</li>{% endif %}
       {%- if s.infra %}<li>{{ s.infra }} 次试验因基础设施问题没有结果，不计入成功率。</li>{% endif %}
       {%- set sc_fails = selfcheck|selectattr('kind', 'equalto', 'fails')|list %}

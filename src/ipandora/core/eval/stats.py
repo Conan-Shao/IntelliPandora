@@ -143,7 +143,7 @@ def hierarchical_bootstrap(base: Dict[str, List[float]], now: Dict[str, List[flo
 
 
 def compare(base: Dict[str, List[float]], now: Dict[str, List[float]], noise: float = 0.0,
-            resamples: int = 2000, seed: int = 0) -> Dict[str, object]:
+            resamples: int = 2000, seed: int = 0, level: float = 0.95) -> Dict[str, object]:
     """
     Compare two runs task by task.
 
@@ -151,6 +151,9 @@ def compare(base: Dict[str, List[float]], now: Dict[str, List[float]], noise: fl
                       partial score). Only tasks present in both are compared.
     :param noise:     the infrastructure noise, as a rate (0.021 for ±2.1
                       points), measured by running one version repeatedly.
+    :param level:     the confidence level. Comparisons made many at a time --
+                      one per tag value -- pass a stricter one (Bonferroni),
+                      or one of them is called worse by chance alone.
 
     Returns the verdict, the mean difference in success rate and its interval,
     how many tasks got better, worse or stayed, and the test used.
@@ -162,7 +165,7 @@ def compare(base: Dict[str, List[float]], now: Dict[str, List[float]], noise: fl
     _worse = sum(1 for _d in _diffs if _d < 0)
     _better = sum(1 for _d in _diffs if _d > 0)
     _out = {'tasks': len(_rate), 'worse': _worse, 'better': _better,
-            'same': len(_rate) - _worse - _better, 'noise': noise,
+            'same': len(_rate) - _worse - _better, 'noise': noise, 'level': level,
             'only_in_base': sorted(set(base) - set(now)),
             'only_in_now': sorted(set(now) - set(base))}
     if not _rate:
@@ -173,13 +176,14 @@ def compare(base: Dict[str, List[float]], now: Dict[str, List[float]], noise: fl
     _binary = all(len(base[_t]) == 1 and len(now[_t]) == 1
                   and base[_t][0] in (0.0, 1.0) and now[_t][0] in (0.0, 1.0) for _t in _rate)
     if _binary:
-        _mean, _lo, _hi = paired_bootstrap(_diffs, resamples=resamples, seed=seed)
+        _mean, _lo, _hi = paired_bootstrap(_diffs, resamples=resamples, seed=seed, level=level)
         _p = mcnemar_exact(_worse, _better)
-        _significant = _p < 0.05
+        _significant = _p < 1 - level
         _out.update({'test': 'mcnemar', 'p': _p})
     else:
         _mean = sum(_diffs) / len(_diffs)
-        _lo, _hi = hierarchical_bootstrap(base, now, sorted(_rate), resamples=resamples, seed=seed)
+        _lo, _hi = hierarchical_bootstrap(base, now, sorted(_rate), resamples=resamples, seed=seed,
+                                          level=level)
         _significant = _lo > 0 or _hi < 0
         _out.update({'test': 'paired_bootstrap', 'p': None})
     _out.update({'difference': _mean, 'low': _lo, 'high': _hi})

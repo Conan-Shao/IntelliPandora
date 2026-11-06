@@ -190,7 +190,7 @@ class TestStats:
         assert (_out['tasks'], _out['worse'], _out['better'], _out['same']) == (3, 1, 1, 1)
         assert (_out['difference'], _out['noise']) == (0.0, 0.0)
         assert stats.compare({}, {}) == {
-            'tasks': 0, 'worse': 0, 'better': 0, 'same': 0, 'noise': 0.0, 'only_in_base': [],
+            'tasks': 0, 'worse': 0, 'better': 0, 'same': 0, 'noise': 0.0, 'level': 0.95, 'only_in_base': [],
             'only_in_now': [], 'verdict': 'indistinguishable', 'difference': 0.0, 'low': 0.0,
             'high': 0.0, 'test': 'none', 'p': 1.0}
 
