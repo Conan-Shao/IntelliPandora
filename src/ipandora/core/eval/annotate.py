@@ -77,6 +77,28 @@ def read(path: str) -> List[Dict[str, Any]]:
     return _rows
 
 
+_YES = {'true', 'yes', 'y', '1', 't', '是', '成立', 'pass'}
+_NO = {'false', 'no', 'n', '0', 'f', '否', '不成立', 'fail'}
+
+
+def verdict_of(value) -> Optional[bool]:
+    """
+    A label as people write it. bool('false') is True: a labeller who typed
+    "false" as text was counted as agreeing with every "yes". Anything not
+    recognisable is undecided, not guessed.
+    """
+    if value is None or isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)) and value in (0, 1):
+        return bool(value)
+    _text = str(value).strip().lower()
+    if _text in _YES:
+        return True
+    if _text in _NO:
+        return False
+    return None
+
+
 def agreement(rows: List[Dict[str, Any]], a: str = 'judge', b: str = 'human') -> Dict[str, Any]:
     """
     How often `a` and `b` agree, over the rows where both decided.
@@ -86,8 +108,11 @@ def agreement(rows: List[Dict[str, Any]], a: str = 'judge', b: str = 'human') ->
     chance. A judge that says yes to everything on a set that is 90% yes has
     90% raw agreement and a kappa of 0; the kappa is the number to gate on.
     """
-    _pairs = [(bool(_r[a]), bool(_r[b])) for _r in rows
-              if _r.get(a) is not None and _r.get(b) is not None]
+    _pairs = []
+    for _r in rows:
+        _x, _y = verdict_of(_r.get(a)), verdict_of(_r.get(b))
+        if _x is not None and _y is not None:
+            _pairs.append((_x, _y))
     _n = len(_pairs)
     _undecided = len(rows) - _n
     if not _n:

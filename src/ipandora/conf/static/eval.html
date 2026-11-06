@@ -53,7 +53,12 @@
       {%- endif %}
       {%- if s.judge_checks %}<li>模型评委的 {{ s.judge_checks }} 条判定只展示，不参与成功率和结论{% if s.judge_uncertain %}；其中 {{ s.judge_uncertain }} 条"不确定"{% endif %}。</li>{% endif %}
       {%- if s.infra %}<li>{{ s.infra }} 次试验因基础设施问题没有结果，不计入成功率。</li>{% endif %}
-      {%- if selfcheck %}<li><b>{{ selfcheck|length }} 道题的参考解判不过</b>，这些题上的失败归为"任务有问题"。</li>{% endif %}
+      {%- set sc_fails = selfcheck|selectattr('kind', 'equalto', 'fails')|list %}
+      {%- set sc_grader = selfcheck|selectattr('kind', 'equalto', 'grader')|list %}
+      {%- set sc_missing = selfcheck|selectattr('kind', 'equalto', 'missing')|list %}
+      {%- if sc_fails %}<li><b>{{ sc_fails|length }} 道题的参考解判不过</b>，这些题上的失败归为"任务有问题"。</li>{% endif %}
+      {%- if sc_grader %}<li><b>{{ sc_grader|length }} 道题的评分器在参考解上报错或没有给出判定</b>，先修评分器。</li>{% endif %}
+      {%- if sc_missing %}<li>{{ sc_missing|length }} 道题没有参考解，无法自检；这些题上的失败仍算 agent 的。</li>{% endif %}
     </ul>
   </div>
   <dl>
@@ -150,8 +155,8 @@
 
 {%- if selfcheck %}
 <section class="card" aria-labelledby="self">
-  <h2 id="self">参考解自检没有通过</h2>
-  <p class="sub">参考解判不过，说明任务或评分器有问题，不是 agent 的问题。</p>
+  <h2 id="self">参考解自检</h2>
+  <p class="sub">参考解判不过，说明任务或评分器有问题，不是 agent 的问题；没有参考解的题无法自检，只列出来。</p>
   <ul class="list">{% for p in selfcheck %}<li><code>{{ p.task_id }}</code><span>{{ p.problem }}</span>{% for c in p.checks %}<span class="sub">{{ c.name }}：{{ c.expr }}</span>{% endfor %}</li>{% endfor %}</ul>
 </section>
 {%- endif %}

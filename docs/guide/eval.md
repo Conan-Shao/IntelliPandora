@@ -50,11 +50,14 @@ tasks:
     tags: {kind: 多文件修改, difficulty: medium}
     polarity: do          # do：应该做；dont：应该拒绝。报告按极性分开看
     split: test           # dev：调提示用；test：下结论用
-    budget: {seconds: 600, usd: 1.0}
+    budget: {seconds: 600, usd: 1.0}   # 超出就算失败；usd 等成本由 agent 在 AgentResult.cost 里报告
     reference: refs/rename-config-key.patch     # 参考解：相对数据集文件的路径，或直接写值
 ```
 
 - 拼错的字段会报错，不会被悄悄忽略（`refrence` 不会让参考解丢掉）。
+- 参考解写成文件名（`refs/x.patch`、`answer.json`）时，文件必须存在于数据集所在目录内，否则读取数据集就报错。`3.14` 这类内联答案照常当作值。
+- **预算**：`budget` 的每一项都变成一条必需判定。`seconds` 是 agent 实际用时，其他键（`usd`、`tokens_in`……）读 agent 报告的成本；超出就算失败。agent 没报告的项不判。
+- **极性**：数据集里有 `dont` 的任务时，报告和基线比较会按 `polarity` 分开列出，和标签一样。一个什么都拒绝的 agent 在 `dont` 题上满分，合在一起的成功率会掩盖这一点。
 - **内容哈希**：任务和参考解文件的内容一起算出哈希，写进每次运行的版本清单。哈希不同的两次运行，分数不可比，报告会直接说明。
 
 ## 判分
@@ -84,7 +87,7 @@ def grade(task, result):
 每道题的参考解用全部评分器判一遍，必须全部通过。判不过，说明任务或评分器有问题；这道题上 agent 的失败归为"任务有问题"，不算 agent 的问题。
 
 ```shell
-ipandora eval selfcheck evals/coding.py      # 有题判不过时退出码为 1，可以放进 CI
+ipandora eval selfcheck evals/coding.py      # 参考解判不过、评分器出错时退出码为 1，可以放进 CI；没有参考解的题只列出来
 ```
 
 ## 运行与比较
@@ -105,6 +108,8 @@ def grade(task, result): ...
 ipandora eval run evals/coding.py -k 5 --split test --workers 8
 ipandora eval run evals/coding.py -k 5 --split test --update-baseline     # 写入 conf/eval_baseline.json
 ```
+
+退出码就是结论：和基线比"变差"或"不可比"时为 1，其他为 0；数据集、spec 或显式给出的 `--baseline` 读不了时为 2。
 
 报告给出：
 

@@ -1,5 +1,12 @@
 v1.11.0
 ==============
+* fix (CR1 F6): `ipandora eval run` always exited 0, so a CI gate on an evaluation never fired. It exits 1 when the verdict is "worse" or "not comparable"; an explicit --baseline that does not exist, a missing dataset or bad YAML are errors (exit 2) with a message instead of a silent "no baseline" or a traceback
+* fix (CR1 F6): `ipandora eval selfcheck` failed on tasks that simply have no reference, and the CLI and the report called every self-check problem "参考解判不过". Problems are named by kind; only a failing reference or a grader that cannot judge it exits 1
+* fix (CR1 F6): a task's budget was written into datasets and documented, and nothing read it. Each budget item is now a required judgement -- `seconds` against the time taken, any other key against the cost the agent reported
+* fix (CR1 F6): the guide said reports separate `do` from `dont` tasks; nothing did. Polarity is grouped like a tag in the report and the baseline comparison when a run has `dont` tasks
+* fix (CR1 F6): a reference written as a file name that does not exist was taken as the inline reference -- the text of the path; it is an error when the dataset is read. A task with `id: 0` was rejected
+* fix (CR1 F6): Trial.to_dict() deep-copied the agent's output and crashed on anything that cannot be copied; such values are kept as their repr. A spec using `from __future__ import annotations` with a dataclass failed to load (the module was not in sys.modules), and a spec that is not a .py file failed with AttributeError
+* fix (CR1 F6): labels typed as text -- "false" -- counted as yes in the agreement (bool('false') is True); mean_score left out trials judged only by optional checks
 * fix (CR1 F5): pruning the local report archive deleted the whole archive when an index entry had an empty run_id
 * fix (CR1 F5): the pass-rate caption always said "skips and unverified are not counted", so one pass beside nine errors read as a plain 100%. It names what the denominator leaves out, with counts (report.json gains pass_rate_note)
 * fix (CR1 F5): `ipandora run` exits by the report's verdict -- the same rule as `ipandora merge` and the report's "退出码" line; an empty run used to read "exit 1" in the report while the command exited 0. report.json gains gate_weakened
