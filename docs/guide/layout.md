@@ -32,10 +32,12 @@ my-tests/
 | 层 | 做什么 | 不做什么 |
 |---|---|---|
 | `apis/` | 声明接口：路径、方法、参数；返回响应 | 不判定；不登录（登录在提供者里，见 [登录态](auth.md)）；不写死地址 |
-| `pages/` | 定位器（优先 `get_by_role`、`get_by_label`、`get_by_test_id`）和操作 | 不判定；不 `sleep`，Playwright 会自己等待 |
+| `pages/` | 定位器（优先 `get_by_role`、`get_by_label`、`get_by_test_id`）和操作 | 不判定；不 `sleep`、不 `wait_for_timeout`：Playwright 的操作会自己等待，要等某个状态用 `locator.wait_for()`、`page.wait_for_url()` |
 | `flows/` | 多步造数，返回造出来的数据 | 不判定；造数失败用 `require()`，报"前置条件不满足"，不让用例失败 |
 | `data/` | 工厂函数为每条用例生成唯一数据，方便并行 | 不放口令 |
 | `tests/` | 一条用例一个行为；文档字符串第一行是标题；`assert_all` / `expect` 判定，`require` 前置，`@pytest.mark.dims` 进覆盖矩阵 | 不直接调 `requests`，不拼 URL，不 `sleep`（用 `eventually`） |
+
+**检查**：`ipandora check layout` 按上表静态检查（不导入、不运行任何代码），每处问题给出文件和行号，有问题时退出码为 1，`ipandora init` 生成的 CI 已经带上这一步。正在把老项目迁过来时，可以先用 `--warn-only`，只打印不失败。检查的内容：`apis/`、`pages/`、`flows/` 里的判定（`assert`、`assert_all`、Playwright 的 `expect(...)`、`pytest.raises`、`matches_golden`；`require` 不算判定，`flows/` 可以用；`child.expect(...)` 这类同名方法不算），`pages/`、`flows/`、`tests/` 里的固定等待（`time.sleep`、`asyncio.sleep`、`page.wait_for_timeout` 等，不管怎么 import），`tests/` 里直接 import `requests`（`tests/conftest.py` 除外，登录提供者可能放在那里），`apis/` 里写死的 `http(s)://` 地址。
 
 **为什么判定只放在 `tests/`**：判定写在页面类里也会被记录，不会漏；但写在用例里，读用例就知道它在验证什么，评审判定的改动也只看 `tests/` 的 diff。`.github/CODEOWNERS` 可以给 `tests/` 和 `conf/judgements.json` 指定负责人。
 

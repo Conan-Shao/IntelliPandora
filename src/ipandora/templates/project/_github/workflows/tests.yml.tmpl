@@ -24,6 +24,11 @@ jobs:
       - name: Install
         run: pip install "intellipandora=={{version}}"
 
+      # Judgements only in tests/, no fixed sleeps, no direct requests in
+      # cases (docs: guide/layout.md). Cheap and static: it runs first.
+      - name: Layout
+        run: ipandora check layout
+
       # --fail-on-weakened: a pass that judges less than conf/judgements.json
       # fails the build. That is the gate behind AGENTS.md's rules.
       - name: Tests

@@ -10,6 +10,19 @@
 | `-v`, `--verbosity` |  | log verbosity |
 | `-V`, `--version` |  | print version |
 
+## `ipandora check`
+
+static checks of a case library: layout
+
+### `ipandora check layout`
+
+judgements only in tests/; no sleeps, no direct requests in cases, no fixed addresses in apis/. Exit 1 on any finding
+
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `directory` | `.` | the project root, holding apis/, pages/, flows/, tests/ |
+| `--warn-only` |  | print the findings but exit 0, while a library is being moved over |
+
 ## `ipandora eval`
 
 agent evaluation: run a spec, self-check references, label samples

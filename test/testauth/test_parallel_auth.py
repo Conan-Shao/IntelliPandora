@@ -58,6 +58,10 @@ def _handler(srv):
 
         def do_POST(self):
             _body = json.loads(self.rfile.read(int(self.headers.get('Content-Length') or 0)) or b'{}')
+            if self.path == '/expire':
+                with srv.lock:
+                    srv.tokens.clear()
+                return self._reply(200, {})
             return self._reply(200, {'token': srv.login(_body['user'])})
 
         def do_GET(self):
@@ -147,19 +151,39 @@ class TestSingleSession:
         assert srv.logins['buyer'] > 1
 
     def test_the_shared_directory_is_private_and_removed(self, srv, tmp_path, monkeypatch):
-        _seen = {}
-        _real = auth._write_shared
+        _out = tmp_path / 'seen.json'
+        monkeypatch.setenv('SEEN', str(_out))
+        _dir = tmp_path / 'suite'
+        _dir.mkdir()
+        (_dir / 'conftest.py').write_text(textwrap.dedent(SINGLE), encoding='utf-8')
+        (_dir / 'test_seen.py').write_text(textwrap.dedent('''
+            import json, os, stat
+            from ipandora.core import api, auth
 
-        def _spy(name, entry):
-            _real(name, entry)
-            _dir = os.environ[auth.AUTH_DIR_VAR]
-            _seen['dir'] = _dir
-            _seen['mode_dir'] = stat.S_IMODE(os.stat(_dir).st_mode)
-            _seen['mode_file'] = stat.S_IMODE(os.stat(auth._shared_path(name) + '.json').st_mode)
-        monkeypatch.setattr(auth, '_write_shared', _spy)
-        assert run(project(tmp_path, SINGLE), persist=False, quiet=True, baseline='').ok
+            class Me:
+                @api.http.get(os.environ['SRV'] + '/me')
+                def me(self):
+                    return {}
+
+            def test_seen():
+                with auth.identity('buyer'):
+                    Me().me()
+                _dir = os.environ[auth.AUTH_DIR_VAR]
+                _file = auth._shared_path('buyer', _dir) + '.json'
+                with open(os.environ['SEEN'], 'w') as _f:
+                    json.dump({'dir': _dir, 'mode_dir': stat.S_IMODE(os.stat(_dir).st_mode),
+                               'mode_file': stat.S_IMODE(os.stat(_file).st_mode)}, _f)
+        '''), encoding='utf-8')
+        assert run(str(_dir), workers=2, persist=False, quiet=True, baseline='').ok
+        _seen = json.loads(_out.read_text())
         assert _seen['mode_dir'] == 0o700 and _seen['mode_file'] == 0o600
         assert not os.path.exists(_seen['dir'])
+        assert auth.AUTH_DIR_VAR not in os.environ
+
+    def test_a_serial_run_keeps_the_login_in_memory(self, srv, tmp_path):
+        # one process has nobody to share with: nothing is written
+        assert run(project(tmp_path, SINGLE), persist=False, quiet=True, baseline='').ok
+        assert srv.logins == {'buyer': 1}
 
 
 POOL = '''
@@ -208,3 +232,121 @@ class TestAccountPool:
         assert _back.headers == _c.headers and _back.params == _c.params
         assert (_back.expires_at, _back.issued_at, _back.data) == (123.0, 100.0, {'r': 1})
         assert [(_x.name, _x.value, _x.domain, _x.path) for _x in _back.cookies] == [('sid', 'x', 'a.example', '/p')]
+
+
+class TestCr3:
+    """Found in code review CR3 (docs/design/reviews/03-CR3.md)."""
+
+    def test_a_rejected_shared_login_is_renewed_by_one_worker_only(self, srv, tmp_path):
+        _dir = tmp_path / 'suite'
+        _dir.mkdir()
+        (_dir / 'conftest.py').write_text(textwrap.dedent(SINGLE), encoding='utf-8')
+        (_dir / 'test_expire.py').write_text(textwrap.dedent(CASES + '''
+    import requests
+
+    def test_the_server_forgets_every_token():
+        _case()
+        requests.post(os.environ['SRV'] + '/expire', json={}, proxies={'http': None})
+        _case()
+'''), encoding='utf-8')
+        _result = run(str(_dir), workers=4, persist=False, quiet=True, baseline='')
+        assert _result.ok, [_c.message for _c in _result.cases if _c.message][:3]
+        assert srv.logins == {'buyer': 2}
+
+    def test_forget_logs_in_afresh_even_when_shared(self, srv, tmp_path):
+        _dir = tmp_path / 'suite'
+        _dir.mkdir()
+        (_dir / 'conftest.py').write_text(textwrap.dedent(SINGLE), encoding='utf-8')
+        (_dir / 'test_forget.py').write_text(textwrap.dedent('''
+            import os
+            from ipandora.core import api, auth
+            from ipandora.core.assertion import assert_all, status_ok
+
+            class Me:
+                @api.http.get(os.environ['SRV'] + '/me')
+                def me(self):
+                    return {}
+
+            def test_forget():
+                with auth.identity('buyer'):
+                    assert_all(status_ok(Me().me()))
+                    auth.forget('buyer')
+                    assert_all(status_ok(Me().me()))
+        '''), encoding='utf-8')
+        assert run(str(_dir), workers=2, persist=False, quiet=True, baseline='').ok
+        assert srv.logins == {'buyer': 2}
+
+    def test_a_pool_smaller_than_the_workers_says_so_at_once(self, srv, tmp_path):
+        _small = POOL.replace("['buyer01', 'buyer02', 'buyer03', 'buyer04']", "['buyer01']")
+        _result = run(project(tmp_path, _small), workers=2, persist=False, quiet=True, baseline='')
+        assert not _result.ok
+        assert any('add accounts' in (_c.message or '') for _c in _result.cases)
+
+    def test_a_lease_does_not_take_the_resource_of_the_same_name(self, srv):
+        from ipandora.core.runner.plugin import ResourceLock, lock_path
+        auth.reset()
+
+        class P(auth.Provider):
+            accounts = {'buyer': ['vip']}
+        auth.provider(P())
+        try:
+            assert auth.account('buyer') == 'vip'
+            _lock = ResourceLock(lock_path('account:vip'))
+            assert _lock.acquire(0)             # @pytest.mark.resource('account:vip') still runs
+            _lock.release()
+        finally:
+            auth.reset()
+
+    def test_store_writes_a_shared_login_for_every_worker(self, tmp_path, monkeypatch):
+        monkeypatch.setenv(auth.AUTH_DIR_VAR, str(tmp_path))
+        monkeypatch.setenv('PYTEST_XDIST_WORKER', 'gw0')
+        auth.reset()
+
+        class P(auth.Provider):
+            single_session = 'buyer'
+
+            def login(self, name, session):
+                raise AssertionError('not called: the stored login is used')
+        auth.provider(P())
+        try:
+            auth.store('buyer', auth.Bearer('from-the-browser'))
+            _version, _cred = auth._read_shared('buyer', str(tmp_path))
+            assert _cred.headers == {'Authorization': 'Bearer from-the-browser'}
+            auth._CACHE.clear()                 # another worker
+            assert auth.credential('buyer', session=None)[0] == _version
+        finally:
+            auth.reset()
+
+    def test_a_single_session_name_is_not_a_set_of_letters(self):
+        class P(auth.Provider):
+            single_session = 'admin'
+        assert P().shares('admin') and not P().shares('ad') and not P().shares('min')
+
+    def test_a_pooled_identity_is_never_shared(self, tmp_path, monkeypatch):
+        # sharing would put every worker on the first worker's account
+        monkeypatch.setenv(auth.AUTH_DIR_VAR, str(tmp_path))
+        monkeypatch.setenv('PYTEST_XDIST_WORKER', 'gw0')
+        auth.reset()
+
+        class P(auth.Provider):
+            single_session = True
+            accounts = {'buyer': ['b1', 'b2']}
+        auth.provider(P())
+        try:
+            assert auth._shared_dir('buyer') == ''
+            assert auth._shared_dir('seller') == str(tmp_path)
+        finally:
+            auth.reset()
+
+    def test_plain_pytest_with_workers_shares_the_login_too(self, srv, tmp_path):
+        # the directory is made by the plugin, not only by `ipandora run`
+        import subprocess
+        import sys
+        _env = dict(os.environ)
+        _env.pop(auth.AUTH_DIR_VAR, None)
+        _proc = subprocess.run(
+            [sys.executable, '-m', 'pytest', '-q', '-p', 'no:cacheprovider', '-p', 'ipandora.core.runner.plugin',
+             '-n', '3', project(tmp_path, SINGLE)],
+            cwd=str(tmp_path), env=_env, capture_output=True, text=True, timeout=300)
+        assert _proc.returncode == 0, _proc.stdout[-2000:] + _proc.stderr[-2000:]
+        assert srv.logins == {'buyer': 1}
