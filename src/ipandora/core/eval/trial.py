@@ -71,6 +71,22 @@ class AgentResult:
     """usd, tokens_in, tokens_out, turns, tool_calls -- whatever the harness knows."""
 
 
+def _plain(value: Any, _depth: int = 0) -> Any:
+    """JSON-shaped data as is; anything else as its repr."""
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if _depth > 50:
+        return repr(value)
+    if isinstance(value, dict):
+        return {str(_k): _plain(_v, _depth + 1) for _k, _v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_plain(_v, _depth + 1) for _v in value]
+    try:
+        return repr(value)
+    except Exception:  # noqa: BLE001 -- a repr that raises is still an output to record
+        return '<{} object>'.format(type(value).__name__)
+
+
 @dataclass
 class Trial:
     task_id: str
@@ -112,7 +128,10 @@ class Trial:
 
     @property
     def score(self) -> Optional[float]:
-        if self.status != GRADED:
+        # A trial judged only by optional checks has no success verdict but
+        # does have a score; it was dropped from mean_score. No score only
+        # when nothing was judged: the harness failed, or the grader raised.
+        if self.status == INFRA or self.category == 'grader':
             return None
         _counted = self._counted()
         _total = sum(float(_c.get('weight', 1.0)) for _c in _counted)
@@ -125,9 +144,17 @@ class Trial:
         return [_c for _c in self.checks if _c.get('src') == LLM_JUDGE]
 
     def to_dict(self) -> Dict[str, Any]:
-        _out = asdict(self)
-        _out.update({'success': self.success, 'score': self.score})
-        return _out
+        """
+        Plain data. Not asdict(): it deep-copies every field, and an agent's
+        output is whatever the agent returned -- a client object, a generator,
+        something holding a lock -- which raised on copy and lost the run.
+        Anything that is not JSON data is kept as its repr.
+        """
+        return {'task_id': self.task_id, 'index': self.index, 'status': self.status,
+                'checks': [dict(_c) for _c in self.checks], 'output': _plain(self.output),
+                'trajectory': [_plain(_e) for _e in self.trajectory],
+                'cost': _plain(self.cost), 'seconds': self.seconds, 'error': self.error,
+                'category': self.category, 'success': self.success, 'score': self.score}
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'Trial':

@@ -40,7 +40,7 @@ run every task k times, grade, compare with the baseline
 | `--no-baseline` |  | compare with nothing |
 | `--update-baseline` |  | write this run as the baseline. Commit it; review its diff |
 | `--noise` `RATE` |  | infrastructure noise as a rate (0.021 for ±2.1 points): a difference smaller than this is never called better or worse |
-| `--partial` |  | compare partial scores instead of success |
+| `--partial` |  | compare each task's partial score (the weighted share of its checks that held) instead of whether it succeeded |
 
 ### `ipandora eval samples`
 

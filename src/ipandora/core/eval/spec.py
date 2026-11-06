@@ -43,14 +43,25 @@ def load(path: str) -> Spec:
     _path = os.path.abspath(path)
     if not os.path.isfile(_path):
         raise ValueError('no such spec file: {}'.format(path))
+    if not _path.endswith('.py'):
+        # importlib finds no loader for any other extension and the next line
+        # failed with an AttributeError on None
+        raise ValueError('a spec is a Python file (.py): {}'.format(path))
     _dir = os.path.dirname(_path)
     _name = 'ipandora_eval_spec_{}'.format(abs(hash(_path)))
     _module_spec = importlib.util.spec_from_file_location(_name, _path)
     _module = importlib.util.module_from_spec(_module_spec)
+    # Registered before it runs, as an import would: a @dataclass in the spec
+    # looks its own module up in sys.modules, and failed with an
+    # AttributeError on None when it was not there.
+    sys.modules[_name] = _module
     # the spec's own imports (its graders, its agent wrapper) sit beside it
     sys.path.insert(0, _dir)
     try:
         _module_spec.loader.exec_module(_module)
+    except Exception:
+        sys.modules.pop(_name, None)
+        raise
     finally:
         if sys.path and sys.path[0] == _dir:
             sys.path.pop(0)

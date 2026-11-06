@@ -11,6 +11,11 @@ from argparse import Namespace
 from ipandora.run.commandbase import CommandBase
 
 
+SELFCHECK_KINDS = (('fails', '的参考解判不过（任务或评分器有问题）'),
+                   ('grader', '的评分器在参考解上报错或没有给出判定'),
+                   ('missing', '没有参考解，无法自检'))
+
+
 class Command(CommandBase):
     """
     Agent evaluation: run a spec, check its reference solutions, and the human
@@ -28,7 +33,8 @@ class Command(CommandBase):
                 sys.exit(self._samples(options))
             if _action == 'agreement':
                 sys.exit(self._agreement(options))
-        except ValueError as exc:
+        except (ValueError, OSError) as exc:
+            # a missing file, bad YAML or JSON: a message, not a traceback
             print('  ERROR  {}'.format(exc), file=sys.stderr)
             sys.exit(2)
         self.parser.print_help()
@@ -40,6 +46,10 @@ class Command(CommandBase):
         _spec = spec.load(options.spec)
         _run = evaluate(_spec.dataset, _spec.agent, _spec.grade, trials=options.trials,
                         split=options.split, workers=options.workers, manifest=_spec.manifest)
+        if options.baseline and not options.no_baseline and not os.path.isfile(options.baseline) \
+                and not options.update_baseline:
+            # asked for by name: a typo must not turn into "no baseline, all fine"
+            raise ValueError('--baseline {}: no such file'.format(options.baseline))
         _path = '' if options.no_baseline else (options.baseline or baseline.default_path())
         _base = baseline.load(_path) if _path else None
         _comparison = baseline.compare(_run, _base, noise=options.noise,
@@ -58,14 +68,21 @@ class Command(CommandBase):
                 report._pct(_s['success_rate']), report._pct(_s['interval'][0]),
                 report._pct(_s['interval'][1]), _s['k'], report._pct(_s['pass_hat_k']),
                 _s['trials'], _s['infra']))
-        if _run.selfcheck:
-            print('  {} 道题的参考解判不过：{}'.format(
-                len(_run.selfcheck), '、'.join(_p['task_id'] for _p in _run.selfcheck[:5])))
+        for _kind, _text in SELFCHECK_KINDS:
+            _ids = [_p['task_id'] for _p in _run.selfcheck if _p.get('kind') == _kind]
+            if _ids:
+                print('  {} 道题{}：{}'.format(len(_ids), _text, '、'.join(_ids[:5])))
         print('  报告  {}'.format(_paths['html']))
         if options.update_baseline:
             print('  评测基线已更新  {}'.format(baseline.save(_path or baseline.default_path(), _run)))
         print('')
-        return 0
+        # The verdict is the exit code, as for `ipandora run` and `merge`: a
+        # run that is worse than the baseline -- or cannot be compared with it
+        # -- must fail the job that ran it. It always exited 0, so a CI gate on
+        # an evaluation never fired.
+        if options.update_baseline:
+            return 0
+        return 1 if _verdict['status'] in ('worse', 'not_comparable') else 0
 
     @staticmethod
     def _selfcheck(options) -> int:
@@ -77,12 +94,17 @@ class Command(CommandBase):
             print('  OK  {} 道题的参考解全部判过'.format(len(_data.tasks)))
             return 0
         for _p in _problems:
-            print('  FAIL  {}  {}'.format(_p['task_id'], _p['problem']))
+            print('  {}  {}  {}'.format('WARN' if _p.get('kind') == 'missing' else 'FAIL',
+                                        _p['task_id'], _p['problem']))
             for _c in _p['checks']:
                 print('        {}：{}'.format(_c['name'], _c['expr']))
-        print('  {} / {} 道题没有通过自检。参考解判不过，是任务或评分器有问题'.format(
-            len(_problems), len(_data.tasks)))
-        return 1
+        _counts = {_k: sum(1 for _p in _problems if _p.get('kind') == _k) for _k, _ in SELFCHECK_KINDS}
+        print('  {} 道题中：{}'.format(len(_data.tasks), '；'.join(
+            '{} 道{}'.format(_counts[_k], _t) for _k, _t in SELFCHECK_KINDS if _counts[_k])))
+        # Only a reference that fails, or a grader that cannot judge it, is a
+        # broken task. A task without a reference is reported, not failed:
+        # there is nothing wrong to find in it.
+        return 1 if _counts['fails'] or _counts['grader'] else 0
 
     @staticmethod
     def _samples(options) -> int:
@@ -134,7 +156,8 @@ class Command(CommandBase):
                           help='infrastructure noise as a rate (0.021 for ±2.1 points): a '
                                'difference smaller than this is never called better or worse')
         _run.add_argument('--partial', action='store_true',
-                          help='compare partial scores instead of success')
+                          help='compare each task\'s partial score (the weighted share of its '
+                               'checks that held) instead of whether it succeeded')
 
         _check = _sub.add_parser('selfcheck', help='grade every reference solution; exit 1 if any fails')
         _check.add_argument('spec')

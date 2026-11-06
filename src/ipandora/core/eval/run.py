@@ -69,7 +69,7 @@ def run_trial(task: Task, index: int, agent: Callable, grade: Callable,
                    trajectory=list(_result_value.trajectory or []),
                    cost=dict(_result_value.cost or {}), seconds=_seconds)
     try:
-        _trial.checks = grade_one(task, _result_value, grade)
+        _trial.checks = grade_one(task, _result_value, grade) + _budget_checks(task, _trial)
     except Exception as exc:  # noqa: BLE001 -- the grader is under test too
         _trial.status, _trial.category = NO_VERDICT, GRADER
         _trial.error = 'grader raised {}: {}\n{}'.format(
@@ -80,6 +80,37 @@ def run_trial(task: Task, index: int, agent: Callable, grade: Callable,
     elif not _trial.success:
         _trial.category = TASK if task.id in broken_tasks else AGENT
     return _trial
+
+
+BUDGET = 'budget'
+"""Check.src of the budget judgements this module adds."""
+
+
+def _budget_checks(task: Task, trial: Trial) -> List[Dict[str, Any]]:
+    """
+    The task's budget as required judgements: time taken, and any cost the
+    agent reported under the same key (`usd`, `tokens_in`, ...).
+
+    The budget was written into datasets and documented, and nothing read
+    it: an agent that took ten times as long, or spent ten times as much,
+    succeeded all the same. A run cannot be stopped from here -- the agent is
+    a function call -- so an overrun is judged afterwards: the answer may be
+    right, but not within what the task allows.
+    """
+    _out = []
+    for _key, _limit in sorted((task.budget or {}).items()):
+        try:
+            _limit = float(_limit)
+        except (TypeError, ValueError):
+            continue
+        _used = trial.seconds if _key == 'seconds' else (trial.cost or {}).get(_key)
+        if not isinstance(_used, (int, float)) or isinstance(_used, bool):
+            continue                    # not reported: nothing to judge
+        _out.append({'name': '预算内：{}'.format(_key), 'ok': _used <= _limit,
+                     'expr': '{} = {:g}（上限 {:g}）'.format(_key, _used, _limit), 'src': BUDGET,
+                     'kind': 'assert', 'claim': 'budget {} <= {:g}'.format(_key, _limit),
+                     'weight': 1.0, 'required': True, 'uncertain': False})
+    return _out
 
 
 def selfcheck(dataset: Dataset, grade: Callable) -> List[Dict[str, Any]]:
@@ -117,6 +148,15 @@ def selfcheck(dataset: Dataset, grade: Callable) -> List[Dict[str, Any]]:
     return _problems
 
 
+POLARITY_TAG = 'polarity'
+
+
+def _value_of(task: Dict[str, Any], key: str):
+    if key == POLARITY_TAG and key not in (task.get('tags') or {}):
+        return task.get('polarity') or 'do'
+    return (task.get('tags') or {}).get(key)
+
+
 @dataclass
 class EvalRun:
     run_id: str
@@ -143,7 +183,7 @@ class EvalRun:
 
     def task_ids(self, **tags) -> List[str]:
         return [_t['id'] for _t in self.tasks
-                if all(_t.get('tags', {}).get(_k) == _v for _k, _v in tags.items())]
+                if all(_value_of(_t, _k) == _v for _k, _v in tags.items())]
 
     # -- numbers --------------------------------------------------------------
 
@@ -156,7 +196,10 @@ class EvalRun:
         _k = self.manifest.trials or 1
         _pass_at = [stats.pass_at_k(len(_v), int(sum(_v)), _k) for _v in _by_task.values()]
         _pass_hat = [stats.pass_hat_k(len(_v), int(sum(_v)), _k) for _v in _by_task.values()]
-        _scores = [_t.score for _t in _decided if _t.score is not None]
+        # every graded trial that has a score, not only those with a success
+        # verdict: a trial judged only by optional checks has a score and no
+        # success, and was left out of the mean
+        _scores = [_t.score for _t in _trials if _t.score is not None]
 
         def _mean(values):
             _v = [_x for _x in values if _x is not None]
@@ -198,7 +241,18 @@ class EvalRun:
         return _out
 
     def tag_values(self) -> Dict[str, List[str]]:
+        """
+        Every tag and its values, and polarity when the run has `dont` tasks.
+
+        Polarity is grouped like a tag so the report and the comparison show
+        "should do" and "should refuse" apart, as the guide promises: an agent
+        that refuses everything scores perfectly on the dont tasks, and a
+        single rate over both hides that.
+        """
         _out = {}
+        _polarities = sorted({_t.get('polarity') or 'do' for _t in self.tasks})
+        if len(_polarities) > 1 or _polarities == ['dont']:
+            _out[POLARITY_TAG] = _polarities
         for _task in self.tasks:
             for _k, _v in (_task.get('tags') or {}).items():
                 _out.setdefault(_k, [])

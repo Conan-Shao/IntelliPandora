@@ -85,10 +85,11 @@ class TestDataset:
     def test_a_reference_cannot_reach_outside_the_dataset(self, tmp_path):
         (tmp_path / 'secret.txt').write_text('no', encoding='utf-8')
         (tmp_path / 'data').mkdir()
-        _d = dataset.from_records([{'id': 'x', 'reference': '../secret.txt'}], 'd',
-                                  path=str(tmp_path / 'data' / 'd.yaml'))
-        assert _d.reference_path(_d.tasks[0]) is None
-        assert _d.reference(_d.tasks[0]) == '../secret.txt'   # treated as inline, not read
+        # refused when the dataset is read (CR1: it used to become the inline
+        # text '../secret.txt'); either way the file is never read
+        with pytest.raises(ValueError, match='outside its directory'):
+            dataset.from_records([{'id': 'x', 'reference': '../secret.txt'}], 'd',
+                                 path=str(tmp_path / 'data' / 'd.yaml'))
 
     def test_an_unknown_split_is_refused(self):
         with pytest.raises(ValueError, match='unknown split'):

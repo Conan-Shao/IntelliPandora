@@ -32,6 +32,7 @@ See docs/design/decisions/13 §4.
 import hashlib
 import json
 import os
+import re
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -127,7 +128,8 @@ def _task(raw: Dict[str, Any], where: str) -> Task:
         # a typo ("refrence") must not silently drop the reference solution
         raise ValueError('{}: unknown field(s) {}; known: {}'.format(
             where, ', '.join(_unknown), ', '.join(sorted(_known))))
-    if not raw.get('id'):
+    if raw.get('id') is None or str(raw.get('id')).strip() == '':
+        # `id: 0` is an id; only a missing or empty one is not
         raise ValueError('{}: every task needs an id'.format(where))
     _t = Task(**raw)
     _t.id = str(_t.id)
@@ -142,6 +144,29 @@ def _task(raw: Dict[str, Any], where: str) -> Task:
     return _t
 
 
+# A string reference that looks like a file name: `refs/fix.patch`, `answer.json`.
+# The extension must contain a letter, so an inline answer like `3.14` is not one.
+_LOOKS_LIKE_FILE = re.compile(r'^[\w./\\-]+\.[A-Za-z][\w]{0,9}$')
+
+
+def _check_references(dataset: Dataset) -> None:
+    """
+    A reference written as a file name must be that file. A missing one used
+    to be taken as the inline reference -- the text "refs/fix.patch" -- so
+    the self-check graded the path itself, and the task's hash ignored the
+    file the author meant.
+    """
+    if not dataset.path:
+        return
+    for _task in dataset.tasks:
+        _ref = _task.reference
+        if isinstance(_ref, str) and '\n' not in _ref and _LOOKS_LIKE_FILE.match(_ref.strip()) \
+                and dataset.reference_path(_task) is None:
+            raise ValueError('{}: task {}: reference file {!r} not found next to the dataset '
+                             '(or it points outside its directory)'.format(
+                                 dataset.path, _task.id, _ref))
+
+
 def from_records(records: List[Dict[str, Any]], name: str, version: str = '',
                  path: str = '') -> Dataset:
     _tasks = [_task(_r, '{} task #{}'.format(name, _i + 1)) for _i, _r in enumerate(records)]
@@ -149,7 +174,9 @@ def from_records(records: List[Dict[str, Any]], name: str, version: str = '',
     _twice = sorted({_i for _i in _ids if _ids.count(_i) > 1})
     if _twice:
         raise ValueError('{}: duplicate task id(s): {}'.format(name, ', '.join(_twice)))
-    return Dataset(name=name, version=str(version or ''), tasks=_tasks, path=path)
+    _data = Dataset(name=name, version=str(version or ''), tasks=_tasks, path=path)
+    _check_references(_data)
+    return _data
 
 
 def load(path: str) -> Dataset:
@@ -158,8 +185,11 @@ def load(path: str) -> Dataset:
     (one task per line). Raises ValueError with the place of the problem.
     """
     _name = os.path.splitext(os.path.basename(path))[0]
-    with open(path, 'r', encoding='utf-8') as fh:
-        _text = fh.read()
+    try:
+        with open(path, 'r', encoding='utf-8') as fh:
+            _text = fh.read()
+    except OSError as exc:
+        raise ValueError('cannot read dataset {}: {}'.format(path, exc.strerror or exc))
     if path.endswith('.jsonl'):
         _records = []
         for _n, _line in enumerate(_text.splitlines(), 1):
@@ -170,7 +200,10 @@ def load(path: str) -> Dataset:
                     raise ValueError('{}:{}: {}'.format(path, _n, exc))
         return from_records(_records, _name, path=path)
     import yaml
-    _data = yaml.safe_load(_text)
+    try:
+        _data = yaml.safe_load(_text)
+    except yaml.YAMLError as exc:
+        raise ValueError('{}: not valid YAML: {}'.format(path, exc))
     if isinstance(_data, list):
         return from_records(_data, _name, path=path)
     if not isinstance(_data, dict) or not isinstance(_data.get('tasks'), list):
