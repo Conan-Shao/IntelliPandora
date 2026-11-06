@@ -43,6 +43,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join('src', 'ipandora')
@@ -95,14 +96,13 @@ def _cli_args(tests: str) -> str:
     return '\n    '.join(tests.split())
 
 
-def write_scoped_config(module: str, tests: str) -> str:
+def write_scoped_config(module: str, tests: str, root: str = None) -> str:
     """
-    Point mutmut at one module and one set of tests, keeping the base config.
-
-    Written to setup.cfg because that is where mutmut reads from; the original
-    is restored in `main`'s finally, including when the run is interrupted.
+    Point mutmut at one module and one set of tests, keeping the base config,
+    in `root`'s setup.cfg -- the run's own copy of the project (see
+    work_copy), never the checkout's.
     """
-    _path = os.path.join(REPO, 'setup.cfg')
+    _path = os.path.join(root or REPO, 'setup.cfg')
     with open(_path, encoding='utf-8') as fh:
         _text = fh.read()
 
@@ -124,7 +124,30 @@ def write_scoped_config(module: str, tests: str) -> str:
     return _text
 
 
-def counts() -> dict:
+WORK = os.environ.get('IPANDORA_MUTATION_DIR') or os.path.join(tempfile.gettempdir(), 'ipandora-mutation')
+"""Where a run happens. Kept afterwards, so `mutmut results` / `mutmut show` can be run there."""
+
+_NOT_COPIED = ('.git', '.venv', 'venv', 'mutants', '__pycache__', '*.egg-info', 'build', 'dist', '.pytest_cache',
+               'reports', 'node_modules')
+
+
+def work_copy(work: str = None) -> str:
+    """
+    A fresh copy of the project to run mutmut in. mutmut reads its settings
+    from the setup.cfg of the directory it runs in, and the scoped settings
+    used to be written into the checkout's own, then restored: a commit made
+    during a run took the scoped file with it, and a run that was killed
+    left it behind.
+    """
+    _work = os.path.abspath(work or WORK)
+    if os.path.normcase(_work).startswith(os.path.normcase(REPO + os.sep)) or _work == REPO:
+        raise SystemExit('the mutation work directory must be outside the checkout: {}'.format(_work))
+    shutil.rmtree(_work, ignore_errors=True)
+    shutil.copytree(REPO, _work, ignore=shutil.ignore_patterns(*_NOT_COPIED), symlinks=True)
+    return _work
+
+
+def counts(root: str = None) -> dict:
     """
     Verdict -> count, from mutmut's own CI export.
 
@@ -133,9 +156,10 @@ def counts() -> dict:
     nothing" -- a 0% score on a module whose tests demonstrably do catch
     things. The first version of this script did exactly that.
     """
+    _root = root or REPO
     subprocess.run([sys.executable, '-m', 'mutmut', 'export-cicd-stats'],
-                   cwd=REPO, capture_output=True, text=True)
-    _path = os.path.join(REPO, 'mutants', 'mutmut-cicd-stats.json')
+                   cwd=_root, capture_output=True, text=True)
+    _path = os.path.join(_root, 'mutants', 'mutmut-cicd-stats.json')
     if not os.path.isfile(_path):
         raise SystemExit('mutmut produced no stats file; the run did not finish')
     with open(_path, encoding='utf-8') as fh:
@@ -166,14 +190,10 @@ def main(argv=None) -> int:
     print('mutating {}'.format(_module))
     print('against  {}{}'.format(_tests, '' if _options.tests else '  (guessed)'))
 
-    _original = write_scoped_config(_module, _tests)
-    try:
-        shutil.rmtree(os.path.join(REPO, 'mutants'), ignore_errors=True)
-        subprocess.run([sys.executable, '-m', 'mutmut', 'run'], cwd=REPO)
-        _counts = counts()
-    finally:
-        with open(os.path.join(REPO, 'setup.cfg'), 'w', encoding='utf-8') as fh:
-            fh.write(_original)
+    _work = work_copy()
+    write_scoped_config(_module, _tests, root=_work)
+    subprocess.run([sys.executable, '-m', 'mutmut', 'run'], cwd=_work)
+    _counts = counts(_work)
 
     _score = score(_counts)
     if _options.as_json:
@@ -188,7 +208,7 @@ def main(argv=None) -> int:
         print('  变异得分 {:.1f}%'.format(_score))
         if _counts.get('survived'):
             print('')
-            print('  看存活的那些：mutmut results，然后 mutmut show <name>')
+            print('  看存活的那些：cd {} && mutmut results，然后 mutmut show <name>'.format(_work))
             print('  存活不一定是测试的漏洞——不改变行为的变异本来就杀不掉。')
 
     if _options.min_score is not None and _score < _options.min_score:

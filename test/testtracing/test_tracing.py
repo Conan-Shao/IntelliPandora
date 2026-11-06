@@ -319,3 +319,7 @@ class TestR1:
         assert self._routed(monkeypatch, {'enabled': False}, 'https://shop.test')[:2] == (False, [])
         assert self._routed(monkeypatch, {'enabled': True}, '')[:2] == (False, [])
         assert self._routed(monkeypatch, {'enabled': True, 'hosts': None}, '')[:2] == (False, [])
+        from types import SimpleNamespace
+        _installed = []
+        assert tracing.browser(SimpleNamespace(route=lambda *a: _installed.append(a))) is False   # no base_url given
+        assert _installed == []

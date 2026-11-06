@@ -390,6 +390,27 @@ def test_mutation_passes_several_test_paths_as_separate_arguments(tmp_path, monk
     assert _cfg['mutmut']['pytest_add_cli_args'].split('\n') == ['test/testx', 'test/testy/test_z.py']
 
 
+def test_mutation_runs_in_a_copy_and_never_touches_the_checkout(tmp_path, monkeypatch):
+    # the scoped settings used to be written into the checkout's setup.cfg and
+    # restored afterwards: a commit made during a run took the scoped file with it
+    import mutation
+    _repo = tmp_path / 'repo'
+    (_repo / '.git').mkdir(parents=True)
+    (_repo / '.venv').mkdir()
+    (_repo / 'src').mkdir()
+    (_repo / 'src' / 'x.py').write_text('x = 1\n', encoding='utf-8')
+    (_repo / 'setup.cfg').write_text('[mutmut]\npaths = src\n', encoding='utf-8')
+    monkeypatch.setattr(mutation, 'REPO', str(_repo))
+    _work = mutation.work_copy(str(tmp_path / 'work'))
+    mutation.write_scoped_config('src/x.py', 'test/testx', root=_work)
+    assert (_repo / 'setup.cfg').read_text(encoding='utf-8') == '[mutmut]\npaths = src\n'
+    assert 'only_mutate = src/x.py' in open(os.path.join(_work, 'setup.cfg'), encoding='utf-8').read()
+    assert os.path.isfile(os.path.join(_work, 'src', 'x.py'))
+    assert not os.path.exists(os.path.join(_work, '.git')) and not os.path.exists(os.path.join(_work, '.venv'))
+    with pytest.raises(SystemExit, match='outside the checkout'):
+        mutation.work_copy(str(_repo / 'mutation-here'))
+
+
 def test_the_cli_reference_documents_subcommands():
     import check_docs
     _md = check_docs.cli_reference()
