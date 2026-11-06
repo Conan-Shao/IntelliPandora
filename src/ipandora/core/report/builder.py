@@ -47,6 +47,9 @@ def _redact_exchange(exchange: Dict[str, Any]) -> Dict[str, Any]:
     for _side in ('request_body', 'response_body'):
         if _side in _out:
             _out[_side] = redact_body((exchange or {}).get(_side))
+    if _out.get('trace_id'):
+        from ipandora.core import tracing
+        _out['trace_url'] = tracing.link(_out['trace_id'])    # tracing.link, e.g. a Jaeger trace page
     return _out
 
 

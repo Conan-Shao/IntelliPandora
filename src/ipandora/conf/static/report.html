@@ -423,6 +423,10 @@
         {%- set total_ms = case.exchange_ms or 1 %}
         <div>
           <h3>HTTP · {{ case.exchanges|length }} 次请求 · {{ case.exchange_ms|ms }}</h3>
+          {%- set traces = case.traces %}
+          {%- if traces %}
+          <div class="hint">链路（服务端的调用记录）：{% for t in traces %}{% if t.url %}<a href="{{ t.url }}" target="_blank" rel="noopener noreferrer"><code>{{ t.id }}</code></a>{% else %}<code>{{ t.id }}</code>{% endif %}{% if not loop.last %}、{% endif %}{% endfor %}</div>
+          {%- endif %}
           <div style="margin-top:8px">
           {%- for ex in case.exchanges %}
           {%- set broke = ex.error or not (ex.status and 200 <= ex.status < 400) %}
@@ -442,6 +446,7 @@
                 {%- if ex.status %}<span class="code-n {{ 'bad' if broke else 'ok' }}">{{ ex.status }} {{ ex.reason }}</span>{% endif %}
                 <button type="button" class="copy" data-curl="{{ ex|curl }}">复制为 curl</button>
               </div>
+              {%- if ex.trace_id %}<div class="hint">链路 {% if ex.trace_url %}<a href="{{ ex.trace_url }}" target="_blank" rel="noopener noreferrer"><code>{{ ex.trace_id }}</code></a>{% else %}<code>{{ ex.trace_id }}</code>{% endif %}</div>{% endif %}
               <div class="panes">
                 <div class="pane"><h5>请求头</h5>{% if ex.request_headers %}<pre class="hdr">{% for k, v in ex.request_headers.items() %}{{ k }}: {{ v }}
 {% endfor %}</pre>{% else %}<div class="hint">无</div>{% endif %}</div>

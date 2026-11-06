@@ -85,6 +85,8 @@ class Exchange:
     """'login': made by the provider to log in, not by the case. 'replayed': the
     first attempt was rejected as not logged in and was sent again after a
     fresh login. '' otherwise."""
+    trace_id: str = ''
+    """The W3C trace id the request went out with (core/tracing.py); '' without a traceparent."""
 
     @property
     def ok(self) -> bool:
@@ -109,6 +111,8 @@ class CaseEvidence:
     """Where the case lives: its file, and the browser it ran in (core/runner/plugin.py)."""
     faults: List[Dict[str, Any]] = field(default_factory=list)
     """Faults the case injected (core/faults.py): what, where, from when to when. Read by triage."""
+    trace_id: str = ''
+    """The W3C trace id of this case's requests (core/tracing.py); set on first use."""
 
     def to_dict(self) -> Dict[str, Any]:
         return {'checks': list(self.checks), 'exchanges': list(self.exchanges)}
@@ -271,6 +275,11 @@ class Recorder:
         _current = getattr(self._local, 'current', None)
         if _current is None:
             return
+        if not exchange.trace_id:
+            # read from what went out, so a traceparent the case or an
+            # instrumentation wrote is the one the report links to
+            from ipandora.core.tracing import of_headers
+            exchange.trace_id = of_headers(exchange.request_headers)
         exchange.request_body = _clip(_readable(exchange.request_body))
         exchange.response_body = _clip(_readable(exchange.response_body))
         _entry = exchange.to_dict()

@@ -1,0 +1,28 @@
+# 跨服务链路
+
+一个请求失败，原因常常在下游第三个服务里。被测系统接了链路追踪（Jaeger、Tempo，或任何读 [W3C Trace Context](https://www.w3.org/TR/trace-context/) 的后端）时，打开链路，就能从用例直接跳到服务端那一次调用的完整记录。
+
+## 打开
+
+```yaml
+# conf/config.yaml，或某个环境的 conf/<env>.yaml
+tracing:
+  enabled: true
+  link: http://jaeger.test:16686/trace/{trace_id}
+```
+
+- `enabled: true`：用例发出的每个 HTTP 请求都带一个 `traceparent` 头。同一条用例的请求同属一个 trace（`concurrently()` 的线程里发出的也一样），每个请求是其中一个新的 span。默认关闭。
+- `link`：报告里把 trace id 变成链接，`{trace_id}` 处填入 trace id。只接受 `http://` / `https://` 地址。Tempo 用 Grafana 的 explore 链接，写法同理。
+
+报告的用例详情里，"HTTP"一节开头列出这条用例的 trace，每个请求下面写着它的 trace id。连接失败、没有拿到响应的请求也有：请求可能已经到了某个服务，被记了下来。
+
+## 规则
+
+- **用例或埋点自己写的 `traceparent` 优先**：用例在请求头里写了，或者装了 OpenTelemetry 的 requests 埋点、在发送时写了自己的，框架就不覆盖。证据里记的是实际发出去的那个，报告链接到的也是它。
+- **签名覆盖它**：`traceparent` 在身份凭据和 `Provider.sign()` 之前加上，按全部请求头签名的方案不会因此失效。未登录被拒、重新登录后重放的请求是一个新的 span，同一个 trace。
+- **框架不上报自己的 span**：不引入追踪 SDK，只发起 trace，由服务记录。后端会把服务的第一个 span 显示为根（有的后端会提示"缺少父 span"），不影响查看。
+- `traceparent` 的采样标志是 1（请求采样）。后端按自己的采样策略决定是否保留；用例要看的 trace 被丢掉时，检查服务端的采样配置。
+
+## 范围
+
+只覆盖经框架 HTTP 层（`api.http`）发出的请求。浏览器里页面自己发的请求（Web 用例）不带，用例直接用 `requests` 发的也不带。
