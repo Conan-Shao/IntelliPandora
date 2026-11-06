@@ -37,6 +37,25 @@ agreement and Cohen kappa between two raters
 | `--a` `A` | `judge` | first rater column |
 | `--b` `B` | `human` | second rater column |
 
+### `ipandora eval code`
+
+grade a coding agent's work directory: change scope, its tests, weakened judgements, mutation score; exit 1 if any check fails
+
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `dir` |  | the work directory (a git repository for --base) |
+| `--base` `REF` |  | compare the changes with this commit |
+| `--allow` `GLOB` |  | changes must stay inside these paths |
+| `--forbid` `GLOB` |  | paths that must not change |
+| `--max-files` `MAX_FILES` |  |  |
+| `--max-lines` `MAX_LINES` |  | lines added plus removed |
+| `--tests` `PATH` |  | tests to run: they must pass and every one must judge something |
+| `--targets` `PATH` |  | source files to mutate; the --tests must catch the mutants |
+| `--baseline` `FILE` |  | judgement inventory (conf/judgements.json): the tests must not judge less |
+| `--min-score` `MIN_SCORE` | `0.6` | mutation score to reach (default 0.6) |
+| `--max-mutants` `MAX_MUTANTS` | `40` | per target file (default 40) |
+| `--json` |  | print the checks as JSON, for coding.from_json() |
+
 ### `ipandora eval inspect`
 
 read Inspect logs as an evaluation run: report, baseline, gate (needs the inspect extra)

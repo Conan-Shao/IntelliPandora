@@ -29,13 +29,15 @@ class Command(CommandBase):
                 sys.exit(self._run(options))
             if _action == 'inspect':
                 sys.exit(self._inspect(options))
+            if _action == 'code':
+                sys.exit(self._code(options))
             if _action == 'selfcheck':
                 sys.exit(self._selfcheck(options))
             if _action == 'samples':
                 sys.exit(self._samples(options))
             if _action == 'agreement':
                 sys.exit(self._agreement(options))
-        except (ValueError, OSError, ImportError) as exc:
+        except (ValueError, OSError, ImportError, RuntimeError) as exc:
             # a missing file, bad YAML or JSON: a message, not a traceback
             print('  ERROR  {}'.format(exc), file=sys.stderr)
             sys.exit(2)
@@ -74,6 +76,25 @@ class Command(CommandBase):
                 '、'.join('{}（{}）'.format(_k, _v) for _k, _v in sorted(_unfinished.items()))))
             return 1
         return _code
+
+    @staticmethod
+    def _code(options) -> int:
+        from ipandora.core.eval import coding
+        if options.targets and not options.tests:
+            raise ValueError('--targets needs --tests: the mutants are judged by those tests')
+        _checks = coding.grade_workdir(
+            options.dir, base=options.base, allow=options.allow or (), forbid=options.forbid or (),
+            max_files=options.max_files, max_lines=options.max_lines, tests=options.tests or (),
+            targets=options.targets or (), baseline=options.baseline, min_score=options.min_score,
+            max_mutants=options.max_mutants)
+        if not _checks:
+            raise ValueError('nothing to grade: give --base (with --allow / --forbid / --max-*) or --tests')
+        if options.json:
+            print(coding.to_json(_checks))
+        else:
+            for _c in _checks:
+                print('  {}  {}：{}'.format('PASS' if _c.ok else 'FAIL', _c.name, _c.expr))
+        return 0 if all(_c.ok for _c in _checks) else 1
 
     @staticmethod
     def _conclude(_run, options) -> int:
@@ -202,6 +223,24 @@ class Command(CommandBase):
                               help='a scorer that asks a model: shown, counted only once calibrated. '
                                    'model_graded_qa and model_graded_fact always are')
         _common(_inspect)
+
+        _code = _sub.add_parser('code', help='grade a coding agent\'s work directory: change scope, its tests, '
+                                             'weakened judgements, mutation score; exit 1 if any check fails')
+        _code.add_argument('dir', help='the work directory (a git repository for --base)')
+        _code.add_argument('--base', default=None, metavar='REF', help='compare the changes with this commit')
+        _code.add_argument('--allow', action='append', metavar='GLOB', help='changes must stay inside these paths')
+        _code.add_argument('--forbid', action='append', metavar='GLOB', help='paths that must not change')
+        _code.add_argument('--max-files', type=int, default=None)
+        _code.add_argument('--max-lines', type=int, default=None, help='lines added plus removed')
+        _code.add_argument('--tests', action='append', metavar='PATH',
+                           help='tests to run: they must pass and every one must judge something')
+        _code.add_argument('--targets', action='append', metavar='PATH',
+                           help='source files to mutate; the --tests must catch the mutants')
+        _code.add_argument('--baseline', default=None, metavar='FILE',
+                           help='judgement inventory (conf/judgements.json): the tests must not judge less')
+        _code.add_argument('--min-score', type=float, default=0.6, help='mutation score to reach (default 0.6)')
+        _code.add_argument('--max-mutants', type=int, default=40, help='per target file (default 40)')
+        _code.add_argument('--json', action='store_true', help='print the checks as JSON, for coding.from_json()')
 
         _check = _sub.add_parser('selfcheck', help='grade every reference solution; exit 1 if any fails')
         _check.add_argument('spec')
