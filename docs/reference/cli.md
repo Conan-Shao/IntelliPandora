@@ -51,9 +51,10 @@ grade a coding agent's work directory: change scope, its tests, weakened judgeme
 | `--max-lines` `MAX_LINES` |  | lines added plus removed |
 | `--tests` `PATH` |  | tests to run: they must pass and every one must judge something |
 | `--targets` `PATH` |  | source files to mutate; the --tests must catch the mutants |
-| `--baseline` `FILE` |  | judgement inventory (conf/judgements.json): the tests must not judge less |
+| `--baseline` `FILE` |  | judgement inventory (conf/judgements.json): the tests must not judge less. With --base it is read as committed there, not as the agent left it |
 | `--min-score` `MIN_SCORE` | `0.6` | mutation score to reach (default 0.6) |
 | `--max-mutants` `MAX_MUTANTS` | `40` | per target file (default 40) |
+| `--allow-harness-changes` |  | do not fail when conftest.py, pytest.ini, pyproject.toml ... changed (checked by default with --base: code there runs inside the test run) |
 | `--json` |  | print the checks as JSON, for coding.from_json() |
 
 ### `ipandora eval inspect`

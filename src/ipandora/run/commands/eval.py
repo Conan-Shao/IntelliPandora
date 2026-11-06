@@ -86,7 +86,7 @@ class Command(CommandBase):
             options.dir, base=options.base, allow=options.allow or (), forbid=options.forbid or (),
             max_files=options.max_files, max_lines=options.max_lines, tests=options.tests or (),
             targets=options.targets or (), baseline=options.baseline, min_score=options.min_score,
-            max_mutants=options.max_mutants)
+            max_mutants=options.max_mutants, allow_harness=options.allow_harness_changes)
         if not _checks:
             raise ValueError('nothing to grade: give --base (with --allow / --forbid / --max-*) or --tests')
         if options.json:
@@ -237,9 +237,13 @@ class Command(CommandBase):
         _code.add_argument('--targets', action='append', metavar='PATH',
                            help='source files to mutate; the --tests must catch the mutants')
         _code.add_argument('--baseline', default=None, metavar='FILE',
-                           help='judgement inventory (conf/judgements.json): the tests must not judge less')
+                           help='judgement inventory (conf/judgements.json): the tests must not judge less. '
+                                'With --base it is read as committed there, not as the agent left it')
         _code.add_argument('--min-score', type=float, default=0.6, help='mutation score to reach (default 0.6)')
         _code.add_argument('--max-mutants', type=int, default=40, help='per target file (default 40)')
+        _code.add_argument('--allow-harness-changes', action='store_true',
+                           help='do not fail when conftest.py, pytest.ini, pyproject.toml ... changed '
+                                '(checked by default with --base: code there runs inside the test run)')
         _code.add_argument('--json', action='store_true', help='print the checks as JSON, for coding.from_json()')
 
         _check = _sub.add_parser('selfcheck', help='grade every reference solution; exit 1 if any fails')
