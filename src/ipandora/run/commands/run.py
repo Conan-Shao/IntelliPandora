@@ -42,8 +42,6 @@ class Command(CommandBase):
                     'continuing with rule-based triage only ({})'.format(exc))
 
         _extra = list(options.pytest_arg or [])
-        if options.exclude_flaky:
-            _extra += ['-m', 'not flaky']
         from ipandora.core.runner import inventory
         _baseline = '' if options.no_baseline else options.baseline
         from ipandora.core.runner.api import MissingExtra
@@ -54,7 +52,8 @@ class Command(CommandBase):
                           baseline=_baseline,
                           workers=options.workers,
                           timeout=options.timeout,
-                          update_goldens=options.update_baseline)
+                          update_goldens=options.update_baseline,
+                          exclude_flaky=options.exclude_flaky)
         except (MissingExtra, ValueError) as exc:
             print('  ERROR  {}'.format(exc), file=sys.stderr)
             sys.exit(2)
@@ -87,11 +86,17 @@ class Command(CommandBase):
 
         self._print_summary(_result, _report, _paths)
 
+        _refused = False
         if options.update_baseline:
             _path = options.baseline or inventory.default_path()
-            _saved = inventory.save(_path, inventory.updated(inventory.load(_path), _result))
-            print('  判定基线已更新  {}'.format(_saved))
-            print('  把这个文件的改动和用例改动一起提交，评审时看它的 diff 就知道判定变了什么')
+            try:
+                _saved = inventory.save(_path, inventory.updated(inventory.load(_path), _result))
+            except inventory.NotAcceptable as exc:
+                _refused = True
+                print('  FAIL  判定基线没有更新：{}'.format(exc))
+            else:
+                print('  判定基线已更新  {}'.format(_saved))
+                print('  把这个文件的改动和用例改动一起提交，评审时看它的 diff 就知道判定变了什么')
             print('')
 
         # The exit code is the run's verdict, not the report's. A suite that
@@ -104,7 +109,7 @@ class Command(CommandBase):
             print('  FAIL  --fail-on-weakened：{} 处判定比基线弱。确认无误后用 --update-baseline 接受'.format(
                 len(_result.weakened)))
             print('')
-        sys.exit(0 if _result.ok and not _weakened else 1)
+        sys.exit(0 if _result.ok and not _weakened and not _refused else 1)
 
     @staticmethod
     def _write_junit(report, path):
@@ -178,7 +183,7 @@ class Command(CommandBase):
         # failure that has been parked.
         _deselected = list(getattr(result, 'deselected', []) or [])
         if _deselected:
-            print('  {} 条被 --exclude-flaky 排除，未进入本次判定：{}'.format(
+            print('  {} 条标记为不稳定、被 --exclude-flaky 排除，未进入本次判定：{}'.format(
                 len(_deselected),
                 '、'.join(_n.rsplit('::', 1)[-1] for _n in _deselected[:3])
                 + ('…' if len(_deselected) > 3 else '')))

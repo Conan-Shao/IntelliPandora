@@ -86,7 +86,9 @@ class RunResult:
     """Coverage axes declared by the suite, for the matrix. See COVERAGE."""
     collect_error: str = ''
     deselected: List[str] = field(default_factory=list)
-    """Cases a -m expression removed, e.g. --exclude-flaky."""
+    """Cases marked flaky that --exclude-flaky left out. Not what a selector left out."""
+    narrowed: bool = False
+    """A `-k` or `-m` passed to pytest left cases out, beyond the selector."""
     baseline: str = ''
     """The judgement inventory this run was compared with. Empty: none."""
     judgement_changes: List[Dict[str, Any]] = field(default_factory=list)
@@ -209,6 +211,8 @@ class RunResult:
             'exit_code': self.exit_code,
             'collect_error': self.collect_error,
             'deselected': list(self.deselected),
+            'narrowed': self.narrowed,
+            'coverage': list(self.coverage),
             'baseline': self.baseline,
             'judgement_changes': list(self.judgement_changes),
             'against_baseline': dict(self.against_baseline),
@@ -228,6 +232,8 @@ class RunResult:
             exit_code=data.get('exit_code', 0),
             collect_error=data.get('collect_error', ''),
             deselected=list(data.get('deselected', []) or []),
+            narrowed=bool(data.get('narrowed', False)),
+            coverage=list(data.get('coverage', []) or []),
             baseline=data.get('baseline', ''),
             judgement_changes=list(data.get('judgement_changes', []) or []),
             against_baseline=dict(data.get('against_baseline', {}) or {}),

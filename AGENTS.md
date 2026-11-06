@@ -42,5 +42,6 @@ CI 上的全部作业都要通过，包括删掉 `src/ipandora/ai` 后的那一�
 | `docs/reference/` | 从代码生成，不要手改 |
 | `docs/design/architecture.md` | 当前架构，随代码更新 |
 | `docs/design/decisions/` | 决策记录。已有的不再改写，只在末尾追加修正 |
+| `docs/design/reviews/` | 代码审查（CR）报告：缺陷、复现方式、修复批次 |
 | `docs/security/` | 组件登记表、漏洞例外、安全报告（报告由脚本生成） |
 | `docs/dev/` | 给框架开发者：开发环境、发布流程 |

@@ -44,14 +44,45 @@ _clock = time.monotonic
 _sleep = time.sleep
 
 
+def _skip_types() -> tuple:
+    """
+    What require() raises when a precondition is unmet: pytest's skip outcome,
+    or PreconditionNotMet without pytest.
+    """
+    from ipandora.utils.error import PreconditionNotMet
+    try:
+        import pytest
+        return (PreconditionNotMet, pytest.skip.Exception)
+    except ImportError:
+        return (PreconditionNotMet,)
+
+
+def _read(probe: Callable):
+    # judgements made inside the probe are not the case's: see checks_withheld
+    try:
+        from ipandora.core.evidence import recorder
+    except ImportError:  # pragma: no cover -- evidence is part of core
+        return probe()
+    with recorder.checks_withheld():
+        return probe()
+
+
 def _attempt(probe: Callable) -> List[Check]:
     """
     One read. A probe that raises -- a node not answering yet, an assert_all
     inside the probe -- is a read that did not hold, not the end of waiting:
     during a failover that is exactly what the first reads look like.
+
+    So is a require() inside the probe. Its skip is a BaseException and used
+    to escape the loop: the first read before the data had arrived skipped
+    the whole case, which is the one thing the wait was there to prevent.
     """
     try:
-        _result = probe()
+        _result = _read(probe)
+    except _skip_types() as exc:
+        _text = str(getattr(exc, 'msg', '') or exc).strip()
+        return [Check(name='probe', ok=False,
+                      expr='前置条件不满足：' + (_text.splitlines()[0] if _text else ''))]
     except AssertionError as exc:
         _first = str(exc).strip().splitlines()[0] if str(exc).strip() else 'AssertionError'
         return [Check(name='probe', ok=False, expr=_first)]
