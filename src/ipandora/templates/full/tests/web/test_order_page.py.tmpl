@@ -16,9 +16,9 @@ from pages.orders import OrderPage  # noqa: E402
 
 
 @pytest.mark.dims(role='buyer', channel='web')
-def test_a_paid_order_shows_as_paid(page, shop_url):
-    """已支付的订单，页面上显示已支付和金额"""
-    order = paid_order(shop_url, identity='buyer', amount='88.00')
-    view = OrderPage(page, shop_url).open(order.id)
+def test_a_paid_order_shows_as_paid(page_as, shop_url):
+    """已支付的订单，买家在页面上看到已支付和金额"""
+    order = paid_order(shop_url, identity='buyer', amount='88.00')     # 接口造数
+    view = OrderPage(page_as('buyer'), shop_url).open(order.id)        # 同一个身份在浏览器里
     expect(view.status).to_have_text('PAID')
     expect(view.amount).to_have_text('88.00')

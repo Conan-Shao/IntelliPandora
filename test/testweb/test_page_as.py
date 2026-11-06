@@ -175,7 +175,7 @@ PAGE_LOGIN = '''
             page.get_by_label('用户').fill(name)
             page.get_by_label('密码').fill(os.environ.get('PW', 'pw'))
             page.get_by_role('button', name='登录').click()
-            page.wait_for_url('**/app')
+            page.wait_for_url('**/app', timeout=3000)
 
     auth.provider(PageLogin())
 '''
@@ -270,6 +270,121 @@ class TestSessionStorage:
         assert _result.ok, [_c.message for _c in _result.cases]
 
 
+class TestCr2:
+    """Found in code review CR2 (docs/design/reviews/02-CR2.md)."""
+
+    def test_a_domain_cookie_keeps_its_leading_dot(self):
+        import requests
+        _jar = requests.cookies.RequestsCookieJar()
+        _jar.set('sid', 'x', domain='.shop.example', path='/')
+        assert web.browser_cookies(_jar)[0]['domain'] == '.shop.example'
+
+    def test_a_dotless_host_gets_its_own_name_back(self):
+        import requests
+        _jar = requests.cookies.RequestsCookieJar()
+        _jar.set('sid', 'x', domain='localhost.local', path='/')
+        _jar.set('mdns', 'y', domain='printer.office.local', path='/')
+        _cookies = {_c['name']: _c['domain'] for _c in web.browser_cookies(_jar, 'http://web.example')}
+        assert _cookies == {'sid': 'localhost', 'mdns': 'printer.office.local'}
+
+    def test_values_are_text_and_httponly_is_case_blind(self):
+        import requests
+        _jar = requests.cookies.RequestsCookieJar()
+        _jar.set('sid', 'x', domain='a.example', path='/', rest={'HTTPOnly': None})
+        assert web.browser_cookies(_jar)[0]['httpOnly'] is True
+        assert web.browser_cookies({'uid': 42}, 'http://a.example')[0]['value'] == '42'
+
+    def test_login_url_matches_the_whole_path_only(self):
+        class P(auth.Provider):
+            login_url = r'/login'
+
+        class Page:
+            def __init__(self, url):
+                self.url = url
+        assert P().web_logged_in(Page('http://a/login')) is False
+        assert P().web_logged_in(Page('http://a/account/login-history')) is True
+        assert P().web_logged_in(Page('http://a/app?next=/login')) is True
+
+    def test_header_credentials_are_added_to_the_suites_own(self, tmp_path):
+        _result = go(suite(tmp_path, API_LOGIN + '''
+
+    class Headers(ApiLogin):
+        web_headers = True
+
+        def login(self, name, session):
+            return auth.Bearer('tok-' + name)
+
+    auth.provider(Headers())
+''', '''
+            import json, os
+            import pytest
+
+            @pytest.fixture(scope='session')
+            def browser_context_args(browser_context_args):
+                return dict(browser_context_args, extra_http_headers={'X-Tenant': 'cn'})
+
+            def test_headers(page_as):
+                page = page_as('buyer')
+                seen = {}
+                page.on('request', lambda r: seen.update(r.headers))
+                page.goto(os.environ['APP'] + '/spa')
+                assert seen.get('authorization') == 'Bearer tok-buyer'
+                assert seen.get('x-tenant') == 'cn'
+        '''))
+        assert _result.ok, [_c.message for _c in _result.cases]
+
+    def test_a_browser_login_reaches_the_api_side(self, tmp_path, app):
+        _result = go(suite(tmp_path, PAGE_LOGIN, '''
+            import os, json
+            from ipandora.core import api, auth, web
+            from ipandora.core.assertion.http import json_body
+
+            APP = os.environ['APP']
+
+            class App:
+                @api.http.get(APP + '/app')
+                def home(self):
+                    return {'allow_redirects': False}
+
+            def test_share(page_as):
+                page = page_as('buyer', APP + '/app')
+                web.share_with_api('buyer', page)
+                with auth.identity('buyer'):
+                    r = App().home()
+                assert 'buyer' in r.response.text
+        '''))
+        assert _result.ok, [_c.message for _c in _result.cases]
+
+    def test_a_custom_logged_in_check_is_used(self, tmp_path, app):
+        _result = go(suite(tmp_path, API_LOGIN + '''
+
+    class Never(ApiLogin):
+        def web_logged_in(self, page):
+            return False
+
+    auth.provider(Never())
+''', '''
+            import os
+
+            def test_x(page_as):
+                page_as('buyer', os.environ['APP'] + '/app')
+        '''))
+        assert not _result.ok and 'still lands on the login page' in _result.cases[0].message
+
+    def test_a_page_login_with_storage_state_in_context_args_is_refused(self, tmp_path):
+        _result = go(suite(tmp_path, PAGE_LOGIN, '''
+            import pytest
+
+            @pytest.fixture(scope='session')
+            def browser_context_args(browser_context_args):
+                return dict(browser_context_args, storage_state={'cookies': [], 'origins': []})
+
+            def test_x(page_as):
+                page_as('buyer')
+        '''))
+        assert not _result.ok and 'storage_state' in _result.cases[0].message
+
+
 class TestPieces:
     def test_dict_cookies_take_the_base_url_host(self):
         assert web.browser_cookies({'sid': 'x'}, 'https://shop.example/app') == [
@@ -278,9 +393,22 @@ class TestPieces:
             web.browser_cookies({'sid': 'x'})
 
     def test_trace_can_be_turned_off(self, monkeypatch):
-        monkeypatch.setattr(Runtime.Web, 'trace', 'off')
-        _args = web.pytest_args([], '')
-        assert _args[_args.index('--tracing') + 1] == 'off'
+        monkeypatch.setattr(Runtime, 'settings', dict(Runtime.settings, web={'trace': 'off'}))
+        Runtime.reset('Web')
+        try:
+            _args = web.pytest_args([], '')
+            assert _args[_args.index('--tracing') + 1] == 'off'
+        finally:
+            Runtime.reset('Web')
+
+    def test_a_misspelt_trace_is_named(self, monkeypatch):
+        monkeypatch.setattr(Runtime, 'settings', dict(Runtime.settings, web={'trace': 'retain_on_failure'}))
+        Runtime.reset('Web')
+        try:
+            with pytest.raises(ValueError, match='web.trace'):
+                Runtime.Web.trace
+        finally:
+            Runtime.reset('Web')
 
     def test_yaml_off_reads_as_off(self, monkeypatch):
         monkeypatch.setattr(Runtime, 'settings', dict(Runtime.settings, web={'trace': False}))

@@ -62,7 +62,12 @@ class RequestObject(BaseObject):
             pass
         elif 'Content-Type' not in _h_n:
             _h_n.update({"Content-type": "application/json"})
-            _h_n.update(SessionManager.getHeaders())
+            # The session's headers fill in, they do not override: merged on
+            # top, requests' defaults (Accept */*, User-Agent) replaced what
+            # the case asked for -- Accept: text/csv went out as */*.
+            for _k, _v in SessionManager.getHeaders().items():
+                if _k not in _h_n:
+                    _h_n[_k] = _v
 
         self._headers = _h_n
         self.kwargs.update({"headers": _h_n})

@@ -210,7 +210,12 @@ class Runtime(object):
                     _v = 'off'
                 elif _v is True:
                     _v = 'on'
-                self._trace = str(_v) if _v else 'retain-on-failure'
+                _v = str(_v) if _v else 'retain-on-failure'
+                if _v not in ('retain-on-failure', 'on', 'off'):
+                    # passed on as given, pytest stopped with a usage error the
+                    # runner could only report as "check the selector"
+                    raise ValueError('web.trace must be retain-on-failure, on or off, not {!r}'.format(_v))
+                self._trace = _v
             return self._trace
 
         @trace.set

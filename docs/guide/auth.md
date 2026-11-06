@@ -109,10 +109,11 @@ def test_two_roles(page_as):
 | **接口登录**（默认，推荐） | 只写 `login()`。`page_as` 用这个身份的 HTTP 会话登录，把会话里的 cookie 放进浏览器 | 登录走接口、凭据在 cookie 里的系统。最快，不打开登录页 |
 | **页面登录** | 再写 `web_login(name, page)`，在页面上填表登录 | SSO 跳转，或者 token 存在 localStorage 的单页应用。每个进程每个身份登录一次，浏览器状态存在内存里复用 |
 
-- **知道"已登录"**：在提供者上设 `login_url = r'/login'`（或者重写 `web_logged_in(page)`）。`page_as(name, url)` 打开页面后检查：被跳回登录页，就重新登录、再打开一次；还是不行，判为"测试数据"问题。不设的话，`page_as` 发现不了"登录了但页面没登录"。
-- **token 在 sessionStorage 里**：浏览器状态不保存 sessionStorage。在 `web_prepare(name, credential, context)` 里用 `context.add_init_script(...)` 写回去。token 在 IndexedDB 里的（例如 Firebase），设 `web_indexed_db = True`。
-- **token 在请求头里**：设 `web_headers = True`，浏览器的每个请求都会带上凭据的请求头。默认关闭，因为页面加载的其他站点也会收到。
-- **只能在浏览器里完成的登录**，接口用例也要用：在 `login()` 里驱动浏览器登录，然后 `return web.credential_from_browser(context)`（cookie），或者 `credential_from_browser(context, local_storage_key='token')`（localStorage 里的 token）。
+- **知道"已登录"**：在提供者上设 `login_url = r'/login'`（或者重写 `web_logged_in(page)`）。它是一个正则，和登录页 URL 的**路径**完整匹配：`/account/login-history`、`?next=/login` 都不算登录页。`page_as(name, url)` 打开页面后检查：被跳回登录页，就重新登录、再打开一次；还是不行，判为"测试数据"问题。不设的话，`page_as` 发现不了"登录了但页面没登录"。
+- **token 在 sessionStorage 里**：浏览器状态不保存 sessionStorage。在 `web_prepare(name, credential, context)` 里用 `context.add_init_script(...)` 写回去，并返回 `True`，表示凭据已经交给浏览器。token 在 IndexedDB 里的（例如 Firebase），设 `web_indexed_db = True`。
+- **token 在请求头里**：设 `web_headers = True`，浏览器的每个请求都会带上凭据的请求头，和用例在 `browser_context_args` 里设的请求头合并。默认关闭，因为页面加载的其他站点也会收到。
+- **只能在浏览器里完成的登录**（SSO），接口用例也要用：提供者实现 `web_login`，用例里先 `page = page_as('buyer', '/')`，再 `web.share_with_api('buyer', page)`；之后以 `buyer` 发的接口请求都用这次浏览器登录的 cookie。token 在 localStorage 里的，加 `local_storage_key='token'`。不要在 `login()` 里自己启动浏览器：pytest-playwright 已经在同一线程里运行，第二个 Playwright 起不来。
+- 页面登录用的浏览器上下文不录制 trace，输入的口令不会进失败现场。
 - 接口登录转 cookie 时，没有域名的 cookie 用 `web.base_url` 的主机名补全。
 - **trace 里有凭据**：Playwright 的 trace 记录请求头和请求体，没法脱敏。失败现场只作为私有制品保存；敏感环境在配置里设 `web.trace: off`。
 

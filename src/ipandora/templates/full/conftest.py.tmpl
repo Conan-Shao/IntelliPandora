@@ -30,15 +30,20 @@ DEMO = {}
 DEMO_PASSWORD = 'demo'  # pragma: allowlist secret
 
 
-def _login(name, session):
-    r = LoginApi(DEMO['url']).login(name, auth.secret('DEMO_SHOP_PASSWORD', DEMO_PASSWORD))
-    body, problem = json_body(r)
-    if status_code(r) != 200 or problem:
-        raise RuntimeError('login returned {}: {}'.format(status_code(r), problem or body))
-    return auth.Bearer(body['token'], expires_in=body['expires_in'])
+class DemoLogin(auth.Provider):
+    login_url = r'/login'     # where the shop sends a browser that is not logged in
+
+    def login(self, name, session):
+        r = LoginApi(DEMO['url']).login(name, auth.secret('DEMO_SHOP_PASSWORD', DEMO_PASSWORD))
+        body, problem = json_body(r)
+        if status_code(r) != 200 or problem:
+            raise RuntimeError('login returned {}: {}'.format(status_code(r), problem or body))
+        # the token for API calls; the login's cookie stays in the session, and
+        # page_as moves it into the browser for web cases
+        return auth.Bearer(body['token'], expires_in=body['expires_in'])
 
 
-auth.provider(_login)
+auth.provider(DemoLogin())
 
 
 # -- the demo shop ------------------------------------------------------------------
@@ -51,7 +56,13 @@ class _Shop:
 
     def user(self, headers):
         _auth = headers.get('Authorization') or ''
-        return self.tokens.get(_auth[7:]) if _auth.startswith('Bearer ') else None
+        if _auth.startswith('Bearer '):
+            return self.tokens.get(_auth[7:])
+        for _part in (headers.get('Cookie') or '').split(';'):
+            _k, _, _v = _part.strip().partition('=')
+            if _k == 'sid':
+                return self.tokens.get(_v)
+        return None
 
 
 def _handler(shop):
@@ -59,11 +70,13 @@ def _handler(shop):
         def log_message(self, *args):
             pass
 
-        def _reply(self, code, body=None, html=None):
+        def _reply(self, code, body=None, html=None, headers=None):
             _data = html.encode() if html is not None else json.dumps(body or {}).encode()
             self.send_response(code)
             self.send_header('Content-Type', 'text/html; charset=utf-8' if html is not None
                              else 'application/json')
+            for _k, _v in (headers or {}).items():
+                self.send_header(_k, _v)
             self.send_header('Content-Length', str(len(_data)))
             self.end_headers()
             self.wfile.write(_data)
@@ -83,7 +96,8 @@ def _handler(shop):
                 with shop.lock:
                     _token = 'demo-{}-{}'.format(_body.get('user'), len(shop.tokens) + 1)
                     shop.tokens[_token] = _body.get('user')
-                return self._reply(200, {'token': _token, 'expires_in': 3600})
+                return self._reply(200, {'token': _token, 'expires_in': 3600},
+                                   headers={'Set-Cookie': 'sid={}; Path=/; HttpOnly'.format(_token)})
             _user = shop.user(self.headers)
             if not _user:
                 return self._reply(401, {'message': 'not logged in'})
@@ -112,9 +126,14 @@ def _handler(shop):
 
         def do_GET(self):
             _parts = self.path.strip('/').split('/')
+            if _parts == ['login']:
+                return self._reply(200, html='<!doctype html><meta charset="utf-8"><h1>请先登录</h1>')
             if len(_parts) == 3 and _parts[:2] == ['web', 'orders'] and _parts[2].isdigit():
+                _user = shop.user(self.headers)
+                if not _user:
+                    return self._reply(302, html='', headers={'Location': '/login'})
                 _order = shop.orders.get(int(_parts[2]))
-                if not _order:
+                if not _order or _order['owner'] != _user:
                     return self._reply(404, html='<h1>没有这个订单</h1>')
                 return self._reply(200, html=(
                     '<!doctype html><meta charset="utf-8"><title>订单 {id}</title>'
