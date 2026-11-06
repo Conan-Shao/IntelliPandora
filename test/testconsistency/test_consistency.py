@@ -156,3 +156,46 @@ def test_the_admitted_hash_is_the_one_registered_and_the_one_ci_checks():
     _ci = open(os.path.join(_root, '.github', 'workflows', 'ci.yml'), encoding='utf-8').read()
     assert consistency.ELLE_CLI_SHA256 in _registry and consistency.ELLE_CLI_SHA256 in _ci
     assert consistency.ELLE_CLI_URL in _ci and consistency.ELLE_CLI_VERSION in _registry
+
+
+class TestCr8:
+    """Found in code review CR8 (docs/design/reviews/08-CR8.md)."""
+
+    def test_a_base_exception_still_completes_the_operation(self):
+        class Stop(BaseException):
+            pass
+
+        def stop():
+            raise Stop()
+        _h = History()
+        with pytest.raises(Stop):
+            _h.call('write', 1, stop)
+        _h.call('write', 2, lambda: None)
+        assert [(_o['process'], str(_o['type'])) for _o in _h.ops] == [
+            (0, 'invoke'), (0, 'info'), (1, 'invoke'), (1, 'ok')]
+
+    def test_a_name_that_is_not_a_keyword_is_refused_before_running(self):
+        _ran = []
+        with pytest.raises(ValueError, match='EDN keyword'):
+            History().call('add one', 1, lambda: _ran.append(1))
+        assert _ran == []
+        assert K('read') == 'read' and K('cas-op?') == 'cas-op?'
+
+    def test_a_value_that_is_not_finite_is_refused(self):
+        with pytest.raises(ValueError, match='finite'):
+            History().call('add', float('nan'), lambda: None)
+        with pytest.raises(ValueError, match='finite'):
+            consistency.edn([float('inf')])
+
+    def test_a_jar_swapped_after_it_was_checked_is_checked_again(self, tmp_path, monkeypatch):
+        _java, _ = _checker_or_skip()
+        _jar = tmp_path / 'elle-cli.jar'
+        _jar.write_bytes(b'admitted')
+        _hash = __import__('hashlib').sha256(b'admitted').hexdigest()
+        monkeypatch.setattr(consistency, '_settings', lambda: {'elle_cli': str(_jar), 'java': _java,
+                                                               'elle_cli_sha256': _hash})
+        assert consistency.checker()[1] == str(_jar)
+        time.sleep(0.01)
+        _jar.write_bytes(b'swapped!')
+        with pytest.raises(RuntimeError, match='refusing'):
+            consistency.checker()

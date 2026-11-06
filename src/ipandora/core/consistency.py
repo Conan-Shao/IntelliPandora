@@ -74,8 +74,21 @@ MODELS = ('cas-register', 'mutex', 'rw-register', 'list-append', 'counter', 'set
           'long-fork')
 
 
+_KEYWORD = re.compile(r'^[A-Za-z*+!_?<>=][A-Za-z0-9*+!_?<>=.\-]*$')
+
+
 class K(str):
-    """An EDN keyword: K('append') is written `:append`."""
+    """
+    An EDN keyword: K('append') is written `:append`. Only names EDN can read
+    back: `add one` would be `:add one`, which the checker parsed as two
+    things and died on.
+    """
+
+    def __new__(cls, name):
+        if not _KEYWORD.match(str(name)):
+            raise ValueError('{!r} cannot be an EDN keyword: letters, digits and - _ . * + ! ? < > = only, '
+                             'starting with a letter'.format(name))
+        return super().__new__(cls, name)
 
 
 def append(key, value) -> list:
@@ -101,6 +114,9 @@ def edn(value) -> str:
         return ':' + str(value)
     if isinstance(value, bool):
         return 'true' if value else 'false'
+    if isinstance(value, float) and (value != value or value in (float('inf'), float('-inf'))):
+        # the checkers do arithmetic on values; a NaN in a history crashed them
+        raise ValueError('a history value must be a finite number, not {}'.format(value))
     if isinstance(value, (int, float)):
         return repr(value)
     if isinstance(value, str):
@@ -152,23 +168,29 @@ class History:
         Returns what `operation` returned; re-raises what it raised, after
         recording the operation as `info`.
         """
+        _f = K(f)
+        edn(value)                    # refuse a value the history could not be written with, before running
         _process = self._process()
-        self._add({'process': _process, 'type': K('invoke'), 'f': K(f), 'value': value})
+        self._add({'process': _process, 'type': K('invoke'), 'f': _f, 'value': value})
         try:
             _r = operation()
-        except Exception as exc:
-            self._add({'process': _process, 'type': K('info'), 'f': K(f), 'value': value,
+        except BaseException as exc:
+            # BaseException too: pytest.skip() / fail() and KeyboardInterrupt are
+            # not Exceptions. Without a completion the process kept an open
+            # invoke, its next operation opened a second one, and the checker
+            # crashed on the history instead of judging it.
+            self._add({'process': _process, 'type': K('info'), 'f': _f, 'value': value,
                        'error': '{}: {}'.format(type(exc).__name__, exc)[:200]})
             self._process(renew=True)
             raise
         if fail is not None and fail(_r):
-            self._add({'process': _process, 'type': K('fail'), 'f': K(f), 'value': value})
+            self._add({'process': _process, 'type': K('fail'), 'f': _f, 'value': value})
         elif ok is None or ok(_r):
-            self._add({'process': _process, 'type': K('ok'), 'f': K(f),
+            self._add({'process': _process, 'type': K('ok'), 'f': _f,
                        'value': result(_r) if result is not None else value})
         else:
             # neither confirmed nor refused: it may have happened
-            self._add({'process': _process, 'type': K('info'), 'f': K(f), 'value': value})
+            self._add({'process': _process, 'type': K('info'), 'f': _f, 'value': value})
             self._process(renew=True)
         return _r
 
@@ -309,14 +331,18 @@ def checker():
                   expr='设置 ELLE_CLI_JAR 或 consistency.elle_cli 指向 elle-cli-{}-standalone.jar（{}）'.format(
                       ELLE_CLI_VERSION, ELLE_CLI_URL)))
     _expected = (_s.get('elle_cli_sha256') or ELLE_CLI_SHA256).lower()
-    if _VERIFIED.get(_jar) != _expected:
+    # keyed by what the file is now, not only its path: a jar swapped after
+    # the first check of the process must be checked again
+    _stat = os.stat(_jar)
+    _key = (_jar, _stat.st_size, _stat.st_mtime_ns)
+    if _VERIFIED.get(_key) != _expected:
         with open(_jar, 'rb') as _f:
             _actual = hashlib.sha256(_f.read()).hexdigest()
         if _actual != _expected:
             raise RuntimeError('{} has SHA-256 {}, not the admitted {}: refusing to run it. A different build '
                                'needs its own admission and `consistency.elle_cli_sha256`'.format(
                                    _jar, _actual, _expected))
-        _VERIFIED[_jar] = _expected
+        _VERIFIED[_key] = _expected
     return _java, _jar
 
 
