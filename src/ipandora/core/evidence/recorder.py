@@ -258,6 +258,15 @@ class Recorder:
         with self._write:
             _current.faults.append(record)
 
+    def add_artifact(self, entry: Dict[str, str]) -> None:
+        """A file the case produced for the report: kind, path, group (and a command that opens it)."""
+        _current = self.current()
+        if _current is None:
+            return
+        with self._write:
+            if entry not in _current.artifacts:
+                _current.artifacts.append(dict(entry))
+
     def add_exchange(self, exchange: Exchange) -> None:
         _current = getattr(self._local, 'current', None)
         if _current is None:

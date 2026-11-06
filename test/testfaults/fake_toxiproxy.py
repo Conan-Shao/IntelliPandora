@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 A stand-in for Toxiproxy, for tests: the HTTP API subset core/faults.py uses,
-and real TCP forwarding that honours latency, reset_peer, timeout and a
+and real TCP forwarding that honours latency (either stream), reset_peer, timeout and a
 disabled proxy. Not a product: just enough to see a fault take effect.
 """
 import json
@@ -53,17 +53,18 @@ class _Proxy:
             return
         _host, _port = self.upstream.rsplit(':', 1)
         _up = socket.create_connection((_host, int(_port)))
-        threading.Thread(target=self._pipe, args=(client, _up), daemon=True).start()
-        self._pipe(_up, client, delay=True)
+        threading.Thread(target=self._pipe, args=(client, _up, 'upstream'), daemon=True).start()
+        self._pipe(_up, client, 'downstream')
 
-    def _pipe(self, src, dst, delay=False):
+    def _pipe(self, src, dst, stream):
         try:
             while True:
                 _data = src.recv(65536)
                 if not _data:
                     break
-                _lat = self.toxic('latency')
-                if delay and _lat:
+                _lat = next((_t for _t in self.toxics if _t['type'] == 'latency'
+                             and _t.get('stream', 'downstream') == stream), None)
+                if _lat:
                     time.sleep(_lat['attributes'].get('latency', 0) / 1000.0)
                 dst.sendall(_data)
         except OSError:

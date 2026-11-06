@@ -391,7 +391,20 @@
         </div>
         {%- endfor %}
 
-        {%- set others = case.artifacts|rejectattr('kind', 'in', ['golden', 'actual', 'diff'])|list %}
+        {%- set histories = case.artifacts|selectattr('kind', 'in', ['history', 'checker-result'])|list %}
+        {%- if histories %}
+        <div>
+          <h3>操作历史</h3>
+          <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px">
+          {%- for a in histories %}
+          {%- if a.kind == 'history' %}<div class="trace">{{ a.group }} 模型的历史（EDN），复查<code>{{ a.command }}</code></div>
+          {%- else %}<div class="trace">检查器的完整结论<code>{{ a.path }}</code></div>{% endif %}
+          {%- endfor %}
+          </div>
+        </div>
+        {%- endif %}
+
+        {%- set others = case.artifacts|rejectattr('kind', 'in', ['golden', 'actual', 'diff', 'history', 'checker-result'])|list %}
         {%- if others %}
         <div>
           <h3>失败现场</h3>
