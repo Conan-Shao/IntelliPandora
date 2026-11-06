@@ -23,4 +23,22 @@ def same(a, b) -> bool:
     """
     if isinstance(a, bool) != isinstance(b, bool):
         return False
+    a, b = aligned(a, b)
     return a == b
+
+
+def aligned(a, b):
+    """
+    A Decimal and a float made comparable: the float read the way it is written.
+
+    Python compares Decimal('0.1') with the float 0.1 by the float's binary
+    value, 0.1000000000000000055..., so `that(x).decimal() == 0.1` could never
+    hold, and `<= 0.1` held for the wrong reason. Decimal(str(f)) is what the
+    test author typed.
+    """
+    from decimal import Decimal
+    if isinstance(a, Decimal) and isinstance(b, float):
+        return a, Decimal(repr(b))
+    if isinstance(b, Decimal) and isinstance(a, float):
+        return Decimal(repr(a)), b
+    return a, b

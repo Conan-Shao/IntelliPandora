@@ -48,7 +48,7 @@ from typing import Any, Callable, Iterable, List
 
 from ipandora.core.assertion.check import Check, Source, brief
 from ipandora.core.assertion.jsonpath import MISSING, resolve
-from ipandora.utils.match import same
+from ipandora.utils.match import aligned, same
 
 _SYMBOL = {operator.lt: '<', operator.le: '<=', operator.gt: '>', operator.ge: '>='}
 
@@ -72,6 +72,10 @@ def _to_decimal(value) -> Decimal:
     elif isinstance(value, (int, float)):
         _d = Decimal(str(value))      # str(): 0.1 -> Decimal('0.1'), not 0.1000000000000000055
     elif isinstance(value, str):
+        if '_' in value:
+            # Decimal('1_000') is 1000 -- Python literal syntax, not a number
+            # any API sends. Accepting it would let a malformed amount pass.
+            raise ValueError('not a number: {!r}'.format(value))
         try:
             _d = Decimal(value.strip())
         except InvalidOperation:
@@ -176,7 +180,7 @@ class Field:
                     raise TypeError('expected a string, got {}'.format(type(value).__name__))
             else:
                 raise TypeError('cannot order by a {}'.format(type(_value).__name__))
-            return op(value, _value)
+            return op(*aligned(value, _value))
         return self._judge(_claim, _test, '{} {}'.format(_SYMBOL[op], _shown), _blocked)
 
     def __lt__(self, other) -> Check:

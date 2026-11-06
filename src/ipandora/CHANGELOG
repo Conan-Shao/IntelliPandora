@@ -1,5 +1,12 @@
 v1.11.0
 ==============
+* fix (CR1 F3): `.decimal()` compared with a float by the float's binary value, so `that('0.1').decimal() == 0.1` never held and `< 0.1` held. A float is now read as written. `'1_000'` is no longer accepted as a number
+* fix (CR1 F3): a malformed path was silently read as another one -- `data..items` as `data.items`, `items[0` as `items.0`, `a[x]` as `a.x` -- so a check over the wrong field could pass. It is a failed check saying "bad path" now. A JSON body starting with a byte-order mark parses
+* fix (CR1 F3): triage blamed the environment whenever "timed out" or "ConnectionError" appeared anywhere in the message, including a failed judgement quoting a response body ("upstream timed out"). A raised transport exception, or an eventually() whose every read was one, is still the environment; a judgement that failed on a response is a defect
+* fix (CR1 F3): a locator error the test caught and handled decided the triage of a case that failed for another reason. The selector the failure message names decides; failing that, a locator failure counts only when no judgement failed
+* fix (CR1 F3): a failed check with no expr took the next line of the message as its expr in triage
+* fix (CR1 F3): golden names that are not ASCII all became 'image', and long artifact names sharing their first 80 characters shared a file: one golden or diff overwrote another. Such names get a hash; ASCII golden names keep their paths. An unreadable image or golden file is a failed check instead of an exception
+* fix (CR1 F3): Web identities were not recorded for elements whose aria line carries attributes (`- heading "价格" [level=2]`, `[checked]`); two `expect(response)` checks in one case had the same claim, so the inventory saw one -- the claim now names the response's path; locator memory is written under a lock with a per-process temp file, so two runs finishing together no longer lose each other's entries
 * fix (CR1 F2): redaction missed credentials quoted with a colon -- a dict repr in a message (`{'password': 'x'}`), a JSON fragment, a YAML line, a `Cookie:` header line in text. They are masked now, alongside key=value pairs
 * fix (CR1 F2): anything nested deeper than 20 levels was returned unredacted; it is masked whole now
 * fix (CR1 F2): brief() cut long values before the report masked them, so a PEM block cut before its END line, a JWT cut after a dot or a seed phrase cut short matched no pattern and its first part was published. Long values are masked before they are cut

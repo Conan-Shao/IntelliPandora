@@ -100,7 +100,18 @@ def _png(img) -> bytes:
 
 
 def _slug(text: str) -> str:
-    return re.sub(r'[^A-Za-z0-9._-]+', '-', text).strip('-')[:80] or 'image'
+    """
+    A filename for `text`. ASCII names stay as they always were, so existing
+    goldens keep their paths. A name with other characters, or one too long,
+    gets a hash of the full text: '价格区' and '总价' both became 'image', and
+    two long node ids sharing their first 80 characters shared a file -- one
+    case's golden or diff overwrote another's.
+    """
+    _plain = re.sub(r'[^A-Za-z0-9._-]+', '-', text).strip('-')
+    if text.isascii() and len(_plain) <= 80:
+        return _plain or 'image'
+    _digest = hashlib.sha256(text.encode('utf-8')).hexdigest()[:10]
+    return '{}-{}'.format(_plain[:60].strip('-') or 'image', _digest)
 
 
 # -- where things go ----------------------------------------------------------
@@ -225,11 +236,17 @@ def matches_golden(value: Any, name: str, label: str = 'screen', tolerance: floa
         _shown = os.path.relpath(_golden_file)
     except ValueError:            # another drive, on Windows
         _shown = _golden_file
-    _actual = _masked(_image(value), mask)
-
     def _check(ok, digest, expr):
         _claim = claim_for(label, name, digest, threshold, tolerance, noise, mask)
         return Check(name=check_name or _claim, ok=ok, expr=expr, src=Source.VISUAL, claim=_claim)
+
+    # A value that is not an image, or a golden file that is not one, is a
+    # failed judgement like any other -- it raised, and took assert_all's
+    # other checks down with it.
+    try:
+        _actual = _masked(_image(value), mask)
+    except Exception as exc:  # noqa: BLE001 -- PIL raises several unrelated types
+        return _check(False, 'unreadable', '实际图像无法读取：{}: {}'.format(type(exc).__name__, exc))
 
     if os.environ.get(UPDATE_VAR):
         os.makedirs(os.path.dirname(_golden_file), exist_ok=True)
@@ -248,7 +265,11 @@ def matches_golden(value: Any, name: str, label: str = 'screen', tolerance: floa
     with open(_golden_file, 'rb') as _f:
         _data = _f.read()
     _digest_now = _digest(_data)
-    _golden = _masked(_image(_data), mask)
+    try:
+        _golden = _masked(_image(_data), mask)
+    except Exception as exc:  # noqa: BLE001 -- PIL raises several unrelated types
+        return _check(False, _digest_now, '基准图 {} 无法读取：{}: {}'.format(
+            _shown, type(exc).__name__, exc))
     if _golden.size != _actual.size:
         _keep(_evidence, name, {'golden': _golden_file, 'actual': _actual})
         return _check(False, _digest_now, '尺寸不同：基准图 {}x{}，实际 {}x{}'.format(
