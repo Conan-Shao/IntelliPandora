@@ -133,6 +133,12 @@ class Command(CommandBase):
             report.pass_rate, _basis['passed'], _basis['denominator'], report.pass_rate_note,
             result.duration, result.run_id))
 
+        # a hint the runner added to a collection error (api.local_import_hint):
+        # pytest's own output above shows the error, not what to do about it
+        from ipandora.core.runner.api import HINT_PREFIX
+        if result.collect_error and HINT_PREFIX in result.collect_error:
+            print('  ' + result.collect_error[result.collect_error.index(HINT_PREFIX):]
+                  .replace('\n', '\n  '))
         _base = report.against_baseline
         if _base.get('newly_failing'):
             print('  基线里通过、这次失败：{}'.format(_names(_base['newly_failing'])))

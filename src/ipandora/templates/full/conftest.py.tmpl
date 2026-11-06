@@ -1,0 +1,159 @@
+# -*- coding: utf-8 -*-
+"""
+Suite-wide setup: who can log in, and the demo service the examples call.
+
+Two things live here and nowhere else:
+
+- the login provider (`auth.provider`): how an identity -- buyer, seller --
+  gets its credential. Cases only ever say `auth.identity('buyer')`.
+- `demo_service`: a tiny shop on this machine, so the examples pass straight
+  after `ipandora init --layout full` with nothing else running and no
+  network. Replace it with your real system: put its address in
+  conf/<env>.yaml and read it in tests/conftest.py.
+"""
+import json
+import os
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+import pytest
+
+from apis.auth import LoginApi
+from ipandora.core import auth
+from ipandora.core.assertion.http import json_body, status_code
+
+DEMO = {}
+"""The demo service's address, once it is running."""
+
+# The demo accepts this password for every user. A real one comes from the
+# environment -- auth.secret('BUYER_PASSWORD') -- never from the repository.
+DEMO_PASSWORD = 'demo'  # pragma: allowlist secret
+
+
+def _login(name, session):
+    r = LoginApi(DEMO['url']).login(name, auth.secret('DEMO_SHOP_PASSWORD', DEMO_PASSWORD))
+    body, problem = json_body(r)
+    if status_code(r) != 200 or problem:
+        raise RuntimeError('login returned {}: {}'.format(status_code(r), problem or body))
+    return auth.Bearer(body['token'], expires_in=body['expires_in'])
+
+
+auth.provider(_login)
+
+
+# -- the demo shop ------------------------------------------------------------------
+
+class _Shop:
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.tokens = {}
+        self.orders = {}
+
+    def user(self, headers):
+        _auth = headers.get('Authorization') or ''
+        return self.tokens.get(_auth[7:]) if _auth.startswith('Bearer ') else None
+
+
+def _handler(shop):
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def _reply(self, code, body=None, html=None):
+            _data = html.encode() if html is not None else json.dumps(body or {}).encode()
+            self.send_response(code)
+            self.send_header('Content-Type', 'text/html; charset=utf-8' if html is not None
+                             else 'application/json')
+            self.send_header('Content-Length', str(len(_data)))
+            self.end_headers()
+            self.wfile.write(_data)
+
+        def _body(self):
+            _len = int(self.headers.get('Content-Length') or 0)
+            try:
+                return json.loads(self.rfile.read(_len) or b'{}') if _len else {}
+            except ValueError:
+                return {}
+
+        def do_POST(self):
+            _body = self._body()
+            if self.path == '/api/login':
+                if _body.get('password') != DEMO_PASSWORD:
+                    return self._reply(403, {'message': 'wrong password'})
+                with shop.lock:
+                    _token = 'demo-{}-{}'.format(_body.get('user'), len(shop.tokens) + 1)
+                    shop.tokens[_token] = _body.get('user')
+                return self._reply(200, {'token': _token, 'expires_in': 3600})
+            _user = shop.user(self.headers)
+            if not _user:
+                return self._reply(401, {'message': 'not logged in'})
+            if self.path == '/api/orders':
+                with shop.lock:
+                    _id = len(shop.orders) + 1
+                    shop.orders[_id] = {'id': _id, 'owner': _user, 'status': 'CREATED',
+                                        'amount': str(_body.get('amount', '0'))}
+                return self._reply(201, {'data': shop.orders[_id]})
+            _parts = self.path.strip('/').split('/')         # api/orders/<id>/<action>
+            if len(_parts) == 4 and _parts[:2] == ['api', 'orders'] and _parts[2].isdigit():
+                _order = shop.orders.get(int(_parts[2]))
+                if not _order:
+                    return self._reply(404, {'message': 'no such order'})
+                if _order['owner'] != _user:
+                    return self._reply(403, {'message': 'not your order'})
+                if _parts[3] == 'pay':
+                    _order['status'] = 'PAID'
+                    return self._reply(200, {'data': _order})
+                if _parts[3] == 'refund':
+                    if _order['status'] != 'PAID':
+                        return self._reply(409, {'message': 'only a paid order can be refunded'})
+                    _order['status'] = 'REFUNDED'
+                    return self._reply(200, {'data': dict(_order, refund_amount=_order['amount'])})
+            return self._reply(404, {'message': 'no such endpoint'})
+
+        def do_GET(self):
+            _parts = self.path.strip('/').split('/')
+            if len(_parts) == 3 and _parts[:2] == ['web', 'orders'] and _parts[2].isdigit():
+                _order = shop.orders.get(int(_parts[2]))
+                if not _order:
+                    return self._reply(404, html='<h1>没有这个订单</h1>')
+                return self._reply(200, html=(
+                    '<!doctype html><meta charset="utf-8"><title>订单 {id}</title>'
+                    '<h1>订单 {id}</h1><p>状态：<span data-testid="status">{status}</span></p>'
+                    '<p>金额：<span data-testid="amount">{amount}</span></p>').format(**_order))
+            if len(_parts) == 3 and _parts[:2] == ['api', 'orders'] and _parts[2].isdigit():
+                _user = shop.user(self.headers)
+                if not _user:
+                    return self._reply(401, {'message': 'not logged in'})
+                _order = shop.orders.get(int(_parts[2]))
+                if not _order:
+                    return self._reply(404, {'message': 'no such order'})
+                if _order['owner'] != _user:
+                    return self._reply(403, {'message': 'not your order'})
+                return self._reply(200, {'data': _order})
+            return self._reply(404, {'message': 'no such endpoint'})
+
+    return Handler
+
+
+@pytest.fixture(scope='session')
+def demo_service():
+    # A local service must not go through a proxy meant for the outside
+    # world. Both spellings: requests reads no_proxy first. Put back after.
+    _before = {_k: os.environ.get(_k) for _k in ('no_proxy', 'NO_PROXY')}
+    for _k in _before:
+        os.environ[_k] = ','.join(filter(None, [_before[_k], '127.0.0.1', 'localhost']))
+    _server = ThreadingHTTPServer(('127.0.0.1', 0), _handler(_Shop()))
+    _server.daemon_threads = True
+    threading.Thread(target=_server.serve_forever, daemon=True).start()
+    DEMO['url'] = 'http://127.0.0.1:{}'.format(_server.server_address[1])
+    try:
+        yield DEMO['url']
+    finally:
+        _server.shutdown()
+        _server.server_close()
+        DEMO.clear()
+        for _k, _v in _before.items():
+            if _v is None:
+                os.environ.pop(_k, None)
+            else:
+                os.environ[_k] = _v

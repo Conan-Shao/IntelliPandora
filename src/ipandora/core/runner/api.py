@@ -297,7 +297,10 @@ def run(selector: str = '', env: str = '', extra_args: Sequence[str] = (),
             Runtime.settings = _settings_before
             Runtime.reset()
 
-    _collect_error = '\n'.join(_collector.collect_errors)
+    _start_dir = _collector.rootdir or (
+        os.path.dirname(os.path.abspath(selector.split('::', 1)[0]))
+        if selector and looks_like_path(selector) else os.getcwd())
+    _collect_error = local_import_hint('\n'.join(_collector.collect_errors), _start_dir)
     if not _collect_error and int(_exit) in EXIT_CODE_REASONS:
         # Asking to run something and having nothing run is a failed request,
         # not a clean run. Without this a typo'd selector or a missing file
@@ -305,6 +308,10 @@ def run(selector: str = '', env: str = '', extra_args: Sequence[str] = (),
         _reason = EXIT_CODE_REASONS[int(_exit)]
         _collect_error = ('{} (selector {!r})'.format(_reason, selector)
                           if selector else _reason)
+        if int(_exit) in (3, 4):
+            # a conftest.py that fails to import stops pytest before
+            # collection: no collect report, only an exit code
+            _collect_error = local_import_hint(_collect_error, _start_dir, probe=True)
 
     _result = RunResult(
         run_id=_run_id,
@@ -352,6 +359,56 @@ def _compare_with_baseline(result: RunResult, baseline: Optional[str]) -> None:
     result.baseline = _path
     result.judgement_changes = [_f.to_dict() for _f in inventory.compare(_base, result)]
     result.against_baseline = inventory.against(_base, result)
+
+
+HINT_PREFIX = '提示：'
+
+
+def _upwards(start: str, levels: int = 6):
+    _dir = os.path.abspath(start)
+    for _ in range(levels):
+        if os.path.isdir(_dir):
+            yield _dir
+        _parent = os.path.dirname(_dir)
+        if _parent == _dir:
+            return
+        _dir = _parent
+
+
+def local_import_hint(error: str, rootdir: str, probe: bool = False) -> str:
+    """
+    "No module named 'apis'" when apis/ is right there in the project: say why.
+
+    The runner imports test modules with --import-mode=importlib, which does
+    not put the project root on sys.path, so a layered library (apis/,
+    flows/, pages/ beside tests/) cannot be imported without
+    `pythonpath = .` in pytest.ini. The bare error sends people looking for a
+    missing install.
+    """
+    import re
+    if not error or not rootdir:
+        return error
+    _missing = sorted({_m.split('.')[0] for _m in re.findall(r"No module named '([\w.]+)'", error)})
+    if probe and not _missing:
+        # no message to read: name the project's packages that cannot be imported
+        import importlib.util
+        _missing = sorted({_n for _d in _upwards(rootdir) for _n in os.listdir(_d)
+                           if os.path.isfile(os.path.join(_d, _n, '__init__.py'))
+                           and _n.isidentifier() and importlib.util.find_spec(_n) is None})
+    # Without a pytest.ini, pytest's rootdir is the directory that was asked
+    # for (tests/api), not the project: look upwards for the package.
+    _local, _home = [], ''
+    for _dir in _upwards(rootdir):
+        _local = [_m for _m in _missing if os.path.isdir(os.path.join(_dir, _m))
+                  or os.path.isfile(os.path.join(_dir, _m + '.py'))]
+        if _local:
+            _home = _dir
+            break
+    if not _local:
+        return error
+    return error + ('\n\n' + HINT_PREFIX + '{} 在项目目录 {} 里，但不在导入路径上。在这个目录的 '
+                    'pytest.ini 里写上：\n[pytest]\npythonpath = .\n（ipandora init --layout full '
+                    '生成的项目已经带上这一行）').format('、'.join(_local), _home)
 
 
 def looks_like_path(selector: str) -> bool:

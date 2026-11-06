@@ -1,0 +1,13 @@
+from ipandora.core import api
+
+
+class LoginApi:
+    """Used by the login provider in conftest.py, never by a case directly."""
+
+    def __init__(self, base_url: str):
+        self.base_url = base_url
+
+    @api.http.post('{base}/api/login')
+    def login(self, user: str, password: str):
+        return dict(other_params={'base': self.base_url},
+                    json={'user': user, 'password': password})

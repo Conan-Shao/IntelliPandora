@@ -70,6 +70,7 @@ start a test project: config, a passing example, AGENTS.md and CI with the gate
 | 参数 | 默认值 | 说明 |
 |---|---|---|
 | `directory` | `.` | where to create the project. Default: the current directory |
+| `--layout` `LAYOUT` | `minimal` | minimal: one example file. full: a layered case library -- apis/, flows/, pages/, data/, tests/api, tests/web, with pytest.ini -- whose examples log in as buyer and seller |
 | `--force` |  | overwrite files that already exist. Without it they are kept |
 
 ## `ipandora mcp`

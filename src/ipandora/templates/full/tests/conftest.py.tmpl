@@ -1,0 +1,19 @@
+"""
+Fixtures the cases share: where the system is, and the API clients.
+
+In a real project the address comes from conf/<env>.yaml (`ipandora run -e
+staging`), not from the demo service.
+"""
+import pytest
+
+from apis.orders import OrderApi
+
+
+@pytest.fixture
+def shop_url(demo_service):
+    return demo_service
+
+
+@pytest.fixture
+def orders(shop_url):
+    return OrderApi(shop_url)
