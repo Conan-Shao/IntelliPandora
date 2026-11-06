@@ -38,6 +38,15 @@ Fault injection through Toxiproxy (core/faults.py). Off unless an environment tu
 | `faults.allowed` | `false` |  |
 | `faults.toxiproxy` | `null` | default http://127.0.0.1:8474, or $TOXIPROXY_URL |
 
+## `tracing`
+
+Cross-service traces (core/tracing.py): each request carries a W3C traceparent, one trace per case, so the services' spans line up under the case.
+
+| 键 | 默认值 | 说明 |
+|---|---|---|
+| `tracing.enabled` | `false` | true: add a traceparent to every request that has none |
+| `tracing.link` | `null` | e.g. http://jaeger.test:16686/trace/{trace_id} -- the report links each trace |
+
 ## `consistency`
 
 Consistency checks on an operation history (core/consistency.py): elle-cli, a Java 21 tool. Not installed with the package -- see docs/guide/consistency.md.

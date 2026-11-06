@@ -192,7 +192,10 @@ def concurrently(operation: Union[Callable[[], Any], Sequence[Callable[[], Any]]
     # a timed-out thread -- which cannot be stopped -- keep adding requests to
     # the case after concurrently() returned, or to a case that had ended. And
     # merged in operation order, the report reads the same on every run.
-    _own = [CaseEvidence(nodeid=_evidence.nodeid, context=dict(_evidence.context))
+    # one trace for the whole case (core/tracing.py): its threads' requests too
+    from ipandora.core import tracing
+    _trace = tracing.trace_id() if _evidence is not None else ''
+    _own = [CaseEvidence(nodeid=_evidence.nodeid, context=dict(_evidence.context), trace_id=_trace)
             if _evidence is not None else None for _ in _calls]
 
     def _worker(index: int, call: Callable[[], Any]):

@@ -176,6 +176,15 @@ class ReportCase:
     """Faults the case injected on purpose (core/faults.py): what, on which proxy, from when to when."""
 
     @property
+    def traces(self) -> List[Dict[str, str]]:
+        """The distinct traces this case's requests went out under (core/tracing.py), in order: {id, url}."""
+        _seen: Dict[str, str] = {}
+        for _e in self.exchanges:
+            if _e.get('trace_id') and _e['trace_id'] not in _seen:
+                _seen[_e['trace_id']] = _e.get('trace_url') or ''
+        return [{'id': _k, 'url': _v} for _k, _v in _seen.items()]
+
+    @property
     def conclusive(self) -> bool:
         return self.status not in INCONCLUSIVE
 

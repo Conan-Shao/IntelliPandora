@@ -86,13 +86,16 @@ class PandoraRequest(metaclass=ABCMeta):
         """
         try:
             from ipandora.core.evidence import add_exchange
+            from ipandora.core.tracing import of_headers
             _identity, _role = self._who()
             add_exchange(
                 method=str(self.request_object.method).upper(),
                 url=self.request_object.url,
                 ms=round(elapsed * 1000.0, 1),
                 error='{}: {}'.format(type(exc).__name__, exc),
-                identity=_identity, role=_role)
+                identity=_identity, role=_role,
+                # a request that died may still have reached a service that traced it
+                trace_id=of_headers(self.request_object.kwargs.get('headers')))
         # bandit B110: evidence capture must never fail a request
         except Exception:  # noqa: BLE001  # nosec B110
             pass
@@ -136,6 +139,8 @@ class PandoraRequest(metaclass=ABCMeta):
         _session = self.request_object.option.obj
         _session = _session if hasattr(_session, 'cookies') else None
         _entry = auth.renew(auth.current(), entry[0], _session)
+        from ipandora.core import tracing
+        tracing.inject(self.request_object, renew=True)     # before apply(), so sign() covers it
         auth.apply(self.request_object, _session, _entry)
         self._started = time.perf_counter()
         self.response = self._send()
@@ -143,6 +148,9 @@ class PandoraRequest(metaclass=ABCMeta):
 
     def handle_response(self):
         self._role = ''
+        from ipandora.core import tracing
+        # before authenticating: a provider's sign() must cover every header sent
+        tracing.inject(self.request_object)
         _entry = self._authenticate()
         _start_time = time.perf_counter()
         self._started = _start_time
