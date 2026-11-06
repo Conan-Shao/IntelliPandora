@@ -167,6 +167,11 @@ def counts(root: str = None) -> dict:
     return {_k: int(_stats.get(_k, 0) or 0) for _k in VERDICTS + ('total',)}
 
 
+def judged(counts_map: dict) -> int:
+    """How many mutants a verdict was reached on: killed, survived or timed out."""
+    return sum(counts_map.get(_k, 0) for _k in ('killed', 'survived', 'timeout'))
+
+
 def score(counts_map: dict) -> float:
     _killed = counts_map.get('killed', 0) + counts_map.get('timeout', 0)
     _survived = counts_map.get('survived', 0)
@@ -195,6 +200,14 @@ def main(argv=None) -> int:
     subprocess.run([sys.executable, '-m', 'mutmut', 'run'], cwd=_work)
     _counts = counts(_work)
 
+    if not judged(_counts):
+        # mutmut's clean run failed (a test that fails without any mutant, or
+        # one that needs a file the copy lacks: see also_copy in setup.cfg),
+        # so not one mutant ran. That used to print "0.0%" and exit 0 -- a
+        # setup problem reading as the worst possible score.
+        print('\n没有任何变异被判定：用例在没有变异时就没有通过。到 {} 下看 mutmut 的输出'.format(_work),
+              file=sys.stderr)
+        return 2
     _score = score(_counts)
     if _options.as_json:
         print(json.dumps({'module': _module, 'tests': _tests,

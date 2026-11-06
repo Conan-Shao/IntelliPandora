@@ -411,6 +411,18 @@ def test_mutation_runs_in_a_copy_and_never_touches_the_checkout(tmp_path, monkey
         mutation.work_copy(str(_repo / 'mutation-here'))
 
 
+def test_mutation_fails_when_no_mutant_was_judged(tmp_path, monkeypatch, capsys):
+    # mutmut's clean run failed, so nothing ran: that is not a score of 0%
+    import mutation
+    monkeypatch.setattr(mutation, 'work_copy', lambda: str(tmp_path))
+    monkeypatch.setattr(mutation, 'write_scoped_config', lambda *a, **k: '')
+    monkeypatch.setattr(mutation.subprocess, 'run', lambda *a, **k: None)
+    monkeypatch.setattr(mutation, 'counts', lambda root=None: {'killed': 0, 'survived': 0, 'timeout': 0})
+    assert mutation.main(['core/tracing.py', '--tests', 'test/testtracing']) == 2
+    assert '没有任何变异被判定' in capsys.readouterr().err
+    assert mutation.judged({'killed': 3, 'survived': 1, 'timeout': 1, 'skipped': 9}) == 5
+
+
 def test_the_cli_reference_documents_subcommands():
     import check_docs
     _md = check_docs.cli_reference()
