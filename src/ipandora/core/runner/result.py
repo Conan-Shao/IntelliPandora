@@ -192,8 +192,8 @@ class RunResult:
             return _out
         if self.failures:
             _out['failures'] = [
-                {'case': _c.name,
-                 'nodeid': _c.nodeid,
+                {'case': redact_text(_c.name),
+                 'nodeid': redact_text(_c.nodeid),
                  'outcome': _c.outcome,
                  'message': redact_text(_c.message)[:SUMMARY_MESSAGE_CHARS]}
                 for _c in self.failures]

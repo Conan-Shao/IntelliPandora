@@ -1,5 +1,11 @@
 v1.11.0
 ==============
+* fix (CR1 F2): redaction missed credentials quoted with a colon -- a dict repr in a message (`{'password': 'x'}`), a JSON fragment, a YAML line, a `Cookie:` header line in text. They are masked now, alongside key=value pairs
+* fix (CR1 F2): anything nested deeper than 20 levels was returned unredacted; it is masked whole now
+* fix (CR1 F2): brief() cut long values before the report masked them, so a PEM block cut before its END line, a JWT cut after a dot or a seed phrase cut short matched no pattern and its first part was published. Long values are masked before they are cut
+* fix (CR1 F2): the evaluation report and the labelling samples were not redacted at all: agent output, trajectory and grader / judge messages went out as produced. They are masked like the test report; cost numbers are kept
+* fix (CR1 F2): the LLM triage prompt sent the case id unmasked, and a parametrised id can be the password; parameters are hidden in the prompt. The MCP summary and explain_failure mask case ids too
+* fix (CR1 F2): a request or response body that was not text (a number, a dict) made the HTML report fail with TypeError; copy-as-curl wrote a dict body as a Python repr instead of JSON
 * fix (CR1, docs/design/reviews/01-CR1.md): a `-k` selector or a user `-m` was recorded like --exclude-flaky. Every case it left out counted as "used to pass, now excluded" -- `ipandora run login --fail-on-weakened` failed for cases nobody touched, MCP run_tests told the agent it had weakened them, and with --update-baseline those cases were stored as excluded, so deleting their assertions later went unreported. Only cases marked flaky and removed by --exclude-flaky are excluded now; what a selector leaves out is outside the run, and a run narrowed by `-k` / `-m` no longer reports missing cases as deleted. RunResult gains `narrowed`
 * fix (CR1): --exclude-flaky appended `-m 'not flaky'`, and pytest keeps only the last `-m`, so the user's own marker expression was silently dropped. It is now done by the runner plugin and combines with any `-m`. run() gains exclude_flaky=
 * fix (CR1): --update-baseline after a collection error (a broken conftest, nothing collected) saved an empty baseline, which turned weakening detection off for the whole suite. Such a run is refused, the file is left as it was, and the command exits 1

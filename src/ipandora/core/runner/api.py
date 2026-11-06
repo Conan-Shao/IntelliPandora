@@ -406,7 +406,7 @@ def explain(run_id: str) -> Optional[dict]:
         'collect_error': redact_text(_result.collect_error),
         'triage': redact(_report.to_dict()),
         'failures': [
-            {'case': _c.name, 'nodeid': _c.nodeid, 'outcome': _c.outcome,
+            {'case': redact_text(_c.name), 'nodeid': redact_text(_c.nodeid), 'outcome': _c.outcome,
              'duration': round(_c.duration, 3),
              'message': redact_text(_c.message), 'detail': redact_text(_c.detail)}
             for _c in _result.failures],

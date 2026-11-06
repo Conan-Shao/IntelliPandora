@@ -200,3 +200,11 @@ class TestThePromptCarriesNoSecrets:
                                                        message=_message)])
         _prompt = ai_triage.build_prompt(triage(_run), _run)
         assert _key[:60] not in _prompt
+
+    def test_parameters_of_the_case_id_do_not_leave(self):
+        # CR1: the nodeid went out as is, and a parameter can be the password
+        _run = RunResult(run_id='r', cases=[CaseResult(
+            nodeid='t.py::test_login[admin-P@ssw0rd!]', outcome='failed', message='401')])
+        _prompt = ai_triage.build_prompt(triage(_run), _run)
+        assert 'P@ssw0rd' not in _prompt
+        assert 't.py::test_login[' in _prompt
