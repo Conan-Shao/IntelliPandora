@@ -19,5 +19,6 @@
 | 让 agent 写用例：MCP、AGENTS.md | [接入 agent](agents.md) |
 | 评测 agent：每题跑 k 次、成功率与区间、和基线比较、人工标注；多轮对话的业务 agent；agent 安全；回归门禁与饱和；编码 agent 的评分器（变异得分、改动范围）；读 Inspect 日志 | [评测 agent](eval.md) |
 | 在用例里注入故障（延迟、断开、连接重置），归因分清注入的故障和真实的环境问题 | [故障注入](faults.md) |
+| 记录并发操作的历史，判定线性一致、计数器 / 集合正确、事务隔离级别 | [一致性检查](consistency.md) |
 
 查参数和配置项：[命令行参考](../reference/cli.md)、[配置参考](../reference/config.md)。这两份是从代码生成的，不会和代码不一致。
