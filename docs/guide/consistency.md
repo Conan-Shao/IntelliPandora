@@ -62,3 +62,36 @@ def test_concurrent_increments_are_not_lost():
 - **无法判定**（检查器超时或内存不够）：记为未覆盖（gap），不算通过；只有这一条判定的用例显示为"未判定"。
 
 线性一致检查是 NP 完全问题，历史越长越慢。一条用例里几十到几百个操作是合适的规模。
+
+**读到空值不算数**：`cas-register` 把读到 `None` 理解为"读了，但不知道读到什么"，它和任何顺序都不矛盾。所以"还没写过的键读到空"这种旧值是查不出来的。先把初始值写进历史（`history.call('write', 0, ...)`），再开始读。判定成立时，结论里会写有几个读到空值、没有据此判定。
+
+## 证据
+
+用例里每调用一次 `check()`，历史和检查器的完整结论都会存成文件，列在报告里这条用例的"操作历史"下面：历史是 EDN，附一条命令，可以拿同一个 elle-cli 复查；结论是 JSON，反例很长时看这里。文件放在本次运行的产物目录，CI 会上传，所以字符串值会先去掉凭据（和报告里的请求一样）。
+
+## 在故障下检查
+
+和 [故障注入](faults.md) 一起用，就是 Jepsen 的做法：注入故障，记录历史，交给检查器判定。
+
+```python
+from ipandora.core import consistency, faults
+from ipandora.core.assertion import assert_all, eventually, that
+
+
+def test_replica_reads_under_replication_lag():
+    history = consistency.History()
+    write = lambda v: history.call('write', v, lambda: KvApi().put('k', v), ok=lambda r: r.status_code == 200)
+    read = lambda: history.call('read', None, lambda: ReplicaApi().get('k'), result=lambda r: r.json()['value'])
+
+    write(0)
+    with faults.injected(faults.latency('replication', ms=300, stream='upstream')):
+        write(1)
+        read()
+        strict = history.check('cas-register')                       # 线性一致吗？
+        eventual = eventually(lambda: that(ReplicaApi().get('k').json()['value']) == 1, within=5)  # 最终一致吗？
+    assert_all(eventual)
+```
+
+- 每个操作记下它发出和完成时正在生效的故障（`:faults`，检查器不看这个键）。结论末尾写"其中 N 个操作发生在注入的故障期间（…）"；寄存器的反例还会说出那个操作完成时生效的故障。
+- 不一致仍然是判定不成立，归为产品缺陷，不归为"注入的故障"：故障是测试条件，不是失败的原因。
+- 系统声明的是最终一致时，`cas-register` 判不可线性化是预期的结论，不该作为判定；该判定的是"最终会收敛"，用 `eventually()`。上面的例子两个都算出来，只把 `eventual` 作为判定，`strict.expr` 说明了不一致在哪里。

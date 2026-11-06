@@ -8,8 +8,7 @@ Acceptance: a counter with a read-modify-write race, driven by
 concurrently(), is judged inconsistent with a counterexample; the fixed one
 is judged consistent.
 
-The checker tests need Java 21 and elle-cli (ELLE_CLI_JAR); CI provides
-both and sets IPANDORA_REQUIRE_CHECKER, which turns a skip into a failure.
+The checker tests need Java 21 and elle-cli: see conftest.py.
 """
 import os
 import subprocess
@@ -22,17 +21,7 @@ from ipandora.core import consistency
 from ipandora.core.concurrency import concurrently
 from ipandora.core.consistency import K, History
 
-
-def _checker_or_skip():
-    try:
-        return consistency.checker()
-    except BaseException as exc:          # require() skips via pytest's own exception
-        if os.environ.get('IPANDORA_REQUIRE_CHECKER'):
-            pytest.fail('the consistency checker is required here: {}'.format(exc))
-        pytest.skip('no consistency checker: {}'.format(exc))
-
-
-needs_checker = pytest.fixture(_checker_or_skip)
+from .conftest import checker_or_skip as _checker_or_skip
 
 
 class TestEdn:

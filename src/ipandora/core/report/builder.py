@@ -72,6 +72,8 @@ def _artifact(artifact: dict) -> dict:
             pass
     elif _kind == 'trace':
         _out['command'] = 'playwright show-trace "{}"'.format(_path)
+    elif _kind == 'history':
+        _out['command'] = artifact.get('command', '')     # core/consistency.py: re-check it by hand
     return _out
 
 

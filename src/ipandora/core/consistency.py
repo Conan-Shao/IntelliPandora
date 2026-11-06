@@ -57,8 +57,10 @@ import sys
 import tempfile
 import threading
 import time
+import uuid
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
+from ipandora.core import faults
 from ipandora.core.assertion.check import Check, brief, gap
 
 CONSISTENCY = 'consistency'
@@ -153,6 +155,11 @@ class History:
             return self._processes[_thread]
 
     def _add(self, op: Dict[str, Any]) -> None:
+        # the faults in effect when this happened (core/faults.py), so a verdict
+        # under faults says so; the checkers ignore keys they do not know
+        _faults = [_f['description'] for _f in faults.active()]
+        if _faults:
+            op['faults'] = _faults
         with self._lock:
             op['time'] = time.monotonic_ns() - self._start
             self.ops.append(op)
@@ -220,19 +227,21 @@ class History:
         if not self.ops:
             return Check(name=_name, ok=False, expr='历史是空的：没有记录任何操作', src=CONSISTENCY, claim=_claim)
         _java, _jar = checker()
+        _options = []
+        for _c in consistency_models:
+            _options += ['--consistency-models', _c]
+        for _a in anomalies:
+            _options += ['--anomalies', _a]
         _work = tempfile.mkdtemp(prefix='ipandora-history-')
         try:
             _file = self.save(os.path.join(_work, 'history.edn'))
-            _cmd = [_java, '-jar', _jar, '--model', model, '--output', 'json']
-            for _c in consistency_models:
-                _cmd += ['--consistency-models', _c]
-            for _a in anomalies:
-                _cmd += ['--anomalies', _a]
+            _cmd = [_java, '-jar', _jar, '--model', model, '--output', 'json'] + _options
             try:
                 # bandit B603: the verified checker jar, our own arguments and file; no shell
                 _done = subprocess.run(_cmd + [_file], capture_output=True, text=True,  # nosec B603
                                        timeout=timeout, cwd=_work)
             except subprocess.TimeoutExpired:
+                self._keep(model, _options, None)
                 return gap(_name, '检查器 {:g} 秒内没有给出结论，无法判定'.format(timeout), src=CONSISTENCY)
         finally:
             shutil.rmtree(_work, ignore_errors=True)
@@ -240,16 +249,94 @@ class History:
         if self.result is None:
             raise RuntimeError('elle-cli gave no result (exit {}): {}'.format(
                 _done.returncode, (_done.stderr or _done.stdout).strip()[-500:]))
+        self._keep(model, _options, self.result)
         _valid = self.result.get('valid?')
         if _valid is True:
-            return Check(name=_name, ok=True, expr='{} 个操作，检查器判定一致'.format(self._operations()),
-                         src=CONSISTENCY, claim=_claim)
+            return Check(name=_name, ok=True, src=CONSISTENCY, claim=_claim,
+                         expr='{} 个操作，检查器判定一致'.format(self._operations()) + self._unjudged(model)
+                         + self._under_faults())
         if _valid is False:
-            return Check(name=_name, ok=False, expr=counterexample(self.result), src=CONSISTENCY, claim=_claim)
-        return gap(_name, '检查器无法判定（{}）'.format(_valid), src=CONSISTENCY)
+            return Check(name=_name, ok=False, src=CONSISTENCY, claim=_claim,
+                         expr=counterexample(self.result) + self._under_faults())
+        return gap(_name, '检查器无法判定（{}）'.format(_valid) + self._under_faults(), src=CONSISTENCY)
 
     def _operations(self) -> int:
         return sum(1 for _op in self.ops if _op['type'] == 'invoke')
+
+    def _under_faults(self) -> str:
+        """'' without injected faults; else how many operations ran under which."""
+        with self._lock:
+            _ops = list(self.ops)
+        _invoked, _faulted, _which = {}, set(), []
+        for _i, _op in enumerate(_ops):
+            if _op['type'] == 'invoke':
+                _invoked[_op['process']] = _i
+            _start = _invoked.get(_op['process'], _i)
+            if _op.get('faults'):
+                _faulted.add(_start)               # an operation is under a fault if it began or ended in one
+                _which += [_f for _f in _op['faults'] if _f not in _which]
+        if not _faulted:
+            return ''
+        return '；其中 {} 个操作发生在注入的故障期间（{}）'.format(len(_faulted), '、'.join(_which))
+
+    def _unjudged(self, model: str) -> str:
+        """
+        Knossos takes a read of nil as "read something, not known what": it
+        never contradicts anything, so a stale read of a key nobody wrote yet
+        passes unseen. Said, so a pass is not read as more than it is.
+        """
+        if model not in ('cas-register', 'mutex'):
+            return ''
+        with self._lock:
+            _blind = sum(1 for _op in self.ops if _op['type'] == 'ok' and _op['f'] == 'read'
+                         and _op.get('value') is None)
+        if not _blind:
+            return ''
+        return '；{} 个读到空值（None），检查器不据此判定：先把初始值写进历史'.format(_blind)
+
+    def _keep(self, model: str, options: List[str], result: Optional[Dict[str, Any]]) -> None:
+        """
+        The history, and the checker's full answer, as evidence of the case
+        running now: a verdict can be re-checked, and a counterexample read
+        in full, after the run. String values pass through redaction first --
+        the files sit next to the report, which CI uploads.
+        """
+        from ipandora.core.evidence import recorder
+        _evidence = recorder.current()
+        if _evidence is None:
+            return
+        from ipandora.core.assertion.visual import ARTIFACTS_VAR
+        _dir = os.environ.get(ARTIFACTS_VAR) or os.path.join(tempfile.gettempdir(), 'ipandora-histories')
+        os.makedirs(_dir, exist_ok=True)
+        _stem = os.path.join(_dir, '{}-{}-{}'.format(
+            re.sub(r'[^A-Za-z0-9_.-]+', '_', _evidence.nodeid or 'case')[-120:], model, uuid.uuid4().hex[:8]))
+        with self._lock:
+            _ops = [_scrub(_op) for _op in self.ops]
+        with open(_stem + '.edn', 'w', encoding='utf-8') as _f:
+            _f.write(''.join(edn(_op) + '\n' for _op in _ops))
+        _entries = [{'kind': 'history', 'path': os.path.abspath(_stem + '.edn'), 'group': model,
+                     'command': ' '.join(['java -jar elle-cli-{}-standalone.jar --model {}'.format(
+                         ELLE_CLI_VERSION, model)] + options + ['"{}"'.format(os.path.abspath(_stem + '.edn'))])}]
+        if result is not None:
+            with open(_stem + '.json', 'w', encoding='utf-8') as _f:
+                json.dump(_scrub(result), _f, ensure_ascii=False, indent=1)
+            _entries.append({'kind': 'checker-result', 'path': os.path.abspath(_stem + '.json'), 'group': model})
+        for _entry in _entries:
+            recorder.add_artifact(_entry)
+
+
+def _scrub(value):
+    """`value` with every string redacted (core/report/redact.py); keywords and structure kept."""
+    from ipandora.core.report.redact import redact_text
+    if isinstance(value, K):
+        return value
+    if isinstance(value, str):
+        return redact_text(value)
+    if isinstance(value, dict):
+        return {_k: _scrub(_v) for _k, _v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_scrub(_v) for _v in value]
+    return value
 
 
 def _parse(stdout: str) -> Optional[Dict[str, Any]]:
@@ -273,9 +360,11 @@ def counterexample(result: Dict[str, Any], limit: int = 400) -> str:
     if _paths and _paths[0]:
         _last = _paths[0][-1]
         _op = _last.get('op') or {}
-        return '没有任何顺序能解释这个操作：进程 {} 的 {} {}（{}）'.format(
+        return '没有任何顺序能解释这个操作：进程 {} 的 {} {}（{}）{}'.format(
             _op.get('process'), _op.get('f'), brief(_op.get('value'), 80),
-            (_last.get('model') or {}).get('msg', ''))[:limit]
+            (_last.get('model') or {}).get('msg', ''),
+            '，它完成时故障正在生效：{}'.format('、'.join(map(str, _op['faults']))) if _op.get('faults') else ''
+        )[:limit]
     _errors = result.get('errors') or []
     if _errors and all(isinstance(_e, list) and len(_e) == 3 for _e in _errors):
         # Jepsen's counter: [lowest possible, value read, highest possible]
