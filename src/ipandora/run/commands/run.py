@@ -109,18 +109,15 @@ class Command(CommandBase):
             print('  FAIL  --fail-on-weakened：{} 处判定比基线弱。确认无误后用 --update-baseline 接受'.format(
                 len(_result.weakened)))
             print('')
-        sys.exit(0 if _result.ok and not _weakened and not _refused else 1)
+        # One rule for the exit code, the report's "退出码" line and `ipandora
+        # merge`: the verdict. Two implementations had already drifted -- an
+        # empty run read "exit 1" in the report while the command exited 0.
+        sys.exit(0 if _report.verdict['releasable'] and not _refused else 1)
 
     @staticmethod
     def _write_junit(report, path):
-        """Write the JUnit XML to an explicit path, creating its directory."""
-        from ipandora.core.report.junit import to_junit
-
-        _directory = os.path.dirname(os.path.abspath(path))
-        os.makedirs(_directory, exist_ok=True)
-        with open(path, 'w', encoding='utf-8') as fh:
-            fh.write(to_junit(report))
-        return os.path.abspath(path)
+        from ipandora.core.report.junit import write_to
+        return write_to(report, path)
 
     @staticmethod
     def _print_summary(result, report, paths):
@@ -132,8 +129,8 @@ class Command(CommandBase):
         print('  {}  {}'.format('PASS' if result.ok else 'FAIL', result.headline()))
         _basis = report.pass_rate_basis
         print('  {}：{}'.format(report.verdict['label'], report.verdict['sentence']))
-        print('  通过率 {}（{} / {}，跳过与未判定不进分母）· {:.2f}s · {}'.format(
-            report.pass_rate, _basis['passed'], _basis['denominator'],
+        print('  通过率 {}（{} / {}，{}）· {:.2f}s · {}'.format(
+            report.pass_rate, _basis['passed'], _basis['denominator'], report.pass_rate_note,
             result.duration, result.run_id))
 
         _base = report.against_baseline

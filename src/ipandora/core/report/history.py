@@ -97,6 +97,7 @@ def _entry_for(report: ReportData, previous: Optional[Dict[str, Any]]) -> Dict[s
         'ok': report.ok,
         'totals': report.totals,
         'pass_rate': report.pass_rate,
+        'pass_rate_basis': report.pass_rate_basis,
         'checks': report.check_totals,
         'coverage': [{'title': _g['title'], 'filled': _g['filled'], 'total': _g['total']}
                      for _g in report.coverage_matrix],
@@ -111,7 +112,14 @@ def _prune(directory: str, entries: List[Dict[str, Any]]) -> List[Dict[str, Any]
     _keep, _drop = entries[:KEEP_REPORTS], entries[KEEP_REPORTS:]
     import shutil
     for _entry in _drop:
-        _dir = os.path.join(directory, str(_entry.get('run_id') or ''))
+        # Validated like a run directory being written: an entry with an empty
+        # run_id joined to `<archive>/`, whose dirname is the archive itself,
+        # and the check below passed -- the whole archive was deleted.
+        try:
+            _run_id = _safe(str(_entry.get('run_id') or ''))
+        except ValueError:
+            continue
+        _dir = os.path.join(directory, _run_id)
         if os.path.isdir(_dir) and os.path.dirname(_dir) == directory.rstrip(os.sep):
             shutil.rmtree(_dir, ignore_errors=True)
     return _keep
@@ -130,7 +138,11 @@ def archive(report: ReportData, directory: str = None) -> Dict[str, str]:
     _paths = write(report, _run_dir)
 
     _entries = load_index(_root)
-    _previous = _entries[0] if _entries else None
+    # The previous run of the same selector and environment: "new failures"
+    # against whatever ran last on this machine compared a smoke run with a
+    # full regression, and called every case outside the smoke set fixed.
+    _previous = next((_e for _e in _entries if _e.get('selector') == report.selector
+                      and (_e.get('env') or '') == (report.env or '')), None)
     _entries = [_e for _e in _entries if _e.get('run_id') != report.run_id]
     _entries.insert(0, _entry_for(report, _previous))
     _entries = _prune(_root, _entries)
@@ -154,12 +166,19 @@ def render_index(entries: List[Dict[str, Any]]) -> str:
     from ipandora.core.report.render import environment
     _rates = []
     for _entry in entries:
-        _totals = _entry.get('totals') or {}
-        _conclusive = (_totals.get('total', 0)
-                       - _totals.get('skipped', 0) - _totals.get('blocked', 0)
-                       - _totals.get('gap', 0) - _totals.get('error', 0))
-        _rates.append(round(100.0 * _totals.get('passed', 0) / _conclusive, 1)
-                      if _conclusive else None)
+        # The report's own numbers. Recomputed from totals, the index forgot
+        # that unverified cases are not in the denominator and showed a
+        # different rate from the report it links to.
+        _basis = _entry.get('pass_rate_basis')
+        if _basis:
+            _passed, _denominator = _basis.get('passed', 0), _basis.get('denominator', 0)
+        else:       # an entry written before the basis was stored
+            _totals = _entry.get('totals') or {}
+            _passed = _totals.get('passed', 0)
+            _denominator = (_totals.get('total', 0) - _totals.get('skipped', 0)
+                            - _totals.get('blocked', 0) - _totals.get('gap', 0)
+                            - _totals.get('error', 0) - _totals.get('unverified', 0))
+        _rates.append(round(100.0 * _passed / _denominator, 1) if _denominator else None)
     return environment().get_template(INDEX_TEMPLATE).render(
         entries=entries, rates=_rates, count=len(entries))
 

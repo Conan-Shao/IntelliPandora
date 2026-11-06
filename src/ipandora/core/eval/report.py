@@ -74,6 +74,12 @@ def context(run: EvalRun, comparison: Optional[Dict[str, Any]] = None,
                 _rows.append({'tag': _tag, 'value': _value, 'tasks': _sub['tasks'],
                               'now_rate': _sub['success_rate'], 'interval': _sub['interval']})
     _failed = [_t for _t in run.trials if _t.success is False or _t.status != 'graded']
+    # One anchor per task, on its first listed trial: every trial of a task
+    # carried id="task-<id>", and the links from the worst-tasks table went
+    # to whichever one the browser picked.
+    _anchors = {}
+    for _i, _t in enumerate(_failed[:50]):
+        _anchors.setdefault(_t.task_id, _i)
     _by_cat = [{'key': _k, 'label': CATEGORY_LABEL.get(_k, _k), 'count': _n}
                for _k, _n in sorted(_s['by_category'].items(), key=lambda _i: -_i[1])]
     return {
@@ -81,7 +87,7 @@ def context(run: EvalRun, comparison: Optional[Dict[str, Any]] = None,
         'run': run, 'run_id': run.run_id, 'manifest': run.manifest, 'summary': _s,
         'verdict': verdict(run, comparison), 'comparison': comparison or {},
         'tag_rows': _rows, 'by_category': _by_cat, 'failed_trials': _failed[:50],
-        'failed_total': len(_failed), 'selfcheck': run.selfcheck,
+        'failed_total': len(_failed), 'selfcheck': run.selfcheck, 'anchors': _anchors,
         'generated': datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'pct': _pct,
         'category_label': CATEGORY_LABEL,
     }

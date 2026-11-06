@@ -306,6 +306,19 @@ class ReportData:
                 'not_counted': _not_counted}
 
     @property
+    def pass_rate_note(self) -> str:
+        """
+        What the denominator leaves out, by name and count. The caption used to
+        say "skips and unverified are not counted" whatever was left out, so
+        nine errors beside one pass read as a plain 100%.
+        """
+        _names = (('error', '出错'), ('skipped', '跳过'), ('blocked', '受阻'),
+                  ('gap', '未覆盖'), ('unverified', '未判定'))
+        _left = self.pass_rate_basis['not_counted']
+        _parts = ['{} {} 条'.format(_label, _left[_key]) for _key, _label in _names if _left.get(_key)]
+        return '不计入分母：' + '、'.join(_parts) if _parts else '所有用例都计入分母'
+
+    @property
     def verdict(self) -> Dict[str, Any]:
         """
         The report's first line: can this run be trusted, and why.
@@ -552,6 +565,10 @@ class ReportData:
             'totals': self.totals,
             'pass_rate': self.pass_rate,
             'pass_rate_basis': self.pass_rate_basis,
+            'pass_rate_note': self.pass_rate_note,
+            # whether weaker judgements fail this run: the template's
+            # "不会让这次运行失败" hint reads it, and it was missing from both
+            'gate_weakened': self.gate_weakened,
             'collect_error': self.collect_error,
             'baseline': self.baseline,
             'judgement_changes': self.judgement_changes,
