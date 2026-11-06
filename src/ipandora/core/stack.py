@@ -230,7 +230,7 @@ class Stack:
         os.makedirs(_dir, exist_ok=True)
         _entries = []
         for _service in self.services():
-            _lines = self.logs(_service, since=since).splitlines()[-LOG_LINES:]
+            _lines = self.logs(_service, since=since, tail=LOG_LINES).splitlines()[-LOG_LINES:]
             if not _lines:
                 continue
             _text = redact_text('\n'.join(_lines))
@@ -297,6 +297,24 @@ def compose(files: Union[str, Iterable[str]], services: Sequence[str] = (), env:
     return _Up(_files, list(services), env, wait, name)
 
 
+def _project_name(name: str, files: Sequence[str]) -> str:
+    """
+    `ipandora-<host>-<pid>-<name>-<files>`, and a number when the same files
+    are up twice at once. The files' paths are in it: by its name alone, the
+    compose.yaml of shop/ and of payment/ were one project -- the second `up`
+    joined the first, and taking either down removed both.
+    """
+    _base = '{}{}-{}-{}-{}'.format(PREFIX, _host_tag(), os.getpid(), _slug(name),
+                                   hashlib.sha256('\n'.join(files).encode()).hexdigest()[:6])
+    with _GUARD:
+        _taken = {_s.project for _s in _ACTIVE}
+    _project, _n = _base, 1
+    while _project in _taken:
+        _n += 1
+        _project = '{}-{}'.format(_base, _n)
+    return _project
+
+
 class _Up:
     def __init__(self, files, services, env, wait, name):
         self.files, self.services, self.env, self.wait = files, services, env, wait
@@ -314,7 +332,7 @@ class _Up:
             except StackError as exc:
                 _log.warning('could not look for leftover stacks: %s', exc)
         _env = dict(os.environ, **{_k: str(_v) for _k, _v in (self.env or {}).items()})
-        _project = '{}{}-{}-{}'.format(PREFIX, _host_tag(), os.getpid(), _slug(self.name))
+        _project = _project_name(self.name, self.files)
         self.stack = Stack(self.files, _project, _exe, _env, str(_settings().get('host') or '127.0.0.1'))
         try:
             self.stack.up(self.services, self.wait)
