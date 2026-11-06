@@ -39,6 +39,7 @@ import logging
 import os
 import re
 import sys
+import time
 
 import pytest
 
@@ -82,6 +83,7 @@ _DECLARED = pytest.StashKey[dict]()
 _LOCKS = pytest.StashKey[list]()
 _EXCLUDED = pytest.StashKey[bool]()
 _AUTH_DIR = pytest.StashKey[str]()
+_STARTED = pytest.StashKey[float]()
 _PATCHED = {}
 _SESSIONS = {'depth': 0}
 """How many pytest sessions in this process have this plugin configured.
@@ -407,6 +409,9 @@ def pytest_runtest_makereport(item, call):
     that already has one is left alone.
     """
     _excinfo = getattr(call, 'excinfo', None)
+    if call.when in ('setup', 'call') and _excinfo is not None \
+            and not _excinfo.errisinstance(pytest.skip.Exception):
+        _keep_service_logs(item)
     if call.when != 'call' or _excinfo is None \
             or not _excinfo.errisinstance(AssertionError):
         return None
@@ -416,6 +421,17 @@ def pytest_runtest_makereport(item, call):
     _expr = ' / '.join(_lines[:2]) or 'AssertionError'
     _record_judgement('assert (failed)', ok=False, expr=_expr)
     return None
+
+
+def _keep_service_logs(item) -> None:
+    """
+    A case failed while services of a compose stack were up (core/stack.py):
+    keep what each of them logged since the case began. Their side of the
+    story is usually where a 500 is explained.
+    """
+    from ipandora.core import stack
+    if stack.active():
+        stack.keep_logs(item.nodeid, item.stash.get(_STARTED, time.time()))
 
 
 def pytest_runtest_setup(item):
@@ -428,6 +444,7 @@ def pytest_runtest_setup(item):
     logs in with the shared account is already using it.
     """
     _params = getattr(getattr(item, 'callspec', None), 'params', {}) or {}
+    item.stash[_STARTED] = time.time()
     recorder.begin(item.nodeid, path=getattr(item, 'path', ''),
                    browser=_params.get('browser_name', ''))
     item.stash[_DECLARED] = _declarations(item)

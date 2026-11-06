@@ -61,6 +61,16 @@
 | 组件 | 用途 | 版本 | 来源 | SHA-256 | 许可证 | 运行期行为 | 审查日期 |
 |---|---|---|---|---|---|---|---|
 | elle-cli | 一致性检查（`core/consistency.py`，决策 18 D3）：Knossos 判线性一致，Elle 判事务隔离异常，Jepsen 的 counter / set / bank 检查器 | 0.1.11（2026-09-01 构建） | GitHub release `elle-cli-bin-0.1.11.zip`（zip 的 SHA-256 `9d3c72eaf3ccc4d0c7dc1da710264dee01f03af58c9fa177fec3f78ff5af1779`） | jar：`85c39a6247509075bf21762d4c8ed3a2cb3d2c9b2c169cb2c80dde25fa760388` | EPL-1.0 或更新版本（Elle、Knossos、Jepsen 同为 EPL-1.0）。**不在白名单内，经单独评审接受**（决策 18 §7）：作为外部工具调用，不分发、不链接，框架代码与它之间只有命令行和文件 | 需要 Java 21+。读一个历史文件，向标准输出写结论，不联网；`--directory` 未使用，不写图。发布流程带 `overwrite: true`，同名文件可能被替换，所以核对哈希而不是只看版本号 | 2026-11-06 |
+| Docker Engine + Docker Compose | 依赖环境编排（`core/stack.py`，决策 19 D5）：`up --wait`、`port`、`logs`、`down -v` | Compose ≥ 2.20（`--wait-timeout`），运行时检查 | 用户自己安装的系统工具；框架不下载、不分发 | —（系统工具，版本由用户环境决定，不钉哈希） | Apache-2.0 | 框架只用完整路径调用 `docker compose`，参数为列表、不经 shell，只操作自己创建的 `ipandora-<主机>-<进程>-` 项目；清理只删本机已不存在的进程留下的项目。容器里运行什么由用户的 compose 文件决定 | 2026-11-06 |
+
+## 测试用容器镜像
+
+只在本仓库的测试和 CI 里拉取（`test/teststack/compose/`），不随包分发。按摘要（digest）钉住，标签被改指向也拉不到别的内容；测试核对这里登记的摘要与 compose 文件一致。
+
+| 镜像 | 用途 | 版本 | 来源 | 摘要 | 许可证 | 运行期行为 | 审查日期 |
+|---|---|---|---|---|---|---|---|
+| busybox | 依赖环境测试里的 HTTP 服务（`httpd`）、健康检查（`wget`） | 1.37.0（2024-09-26 构建） | Docker 官方镜像，经 `mirror.gcr.io/library/busybox` 拉取（Docker Hub 匿名拉取限流） | `sha256:a7dbc319b1438115a207e11930dc4bb3e643dcb3ec0bdd694bb36cd8fad289ec` | GPL-2.0。**不在白名单内，经单独评审接受**：只在本仓库的测试里作为容器运行，不链接、不随包分发；几乎所有基础镜像都带 GPL 的用户态工具 | 容器内运行测试自己的命令，只监听容器端口，由 Docker 随机映射到本机 | 2026-11-06 |
+| toxiproxy | 依赖环境测试里的真实 Toxiproxy（D4 故障注入经它作用于服务） | 2.12.0（2025-03-18 构建） | `ghcr.io/shopify/toxiproxy`，Shopify 官方 | `sha256:9378ed52a28bc50edc1350f936f518f31fa95f0d15917d6eb40b8e376d1a214e` | MIT | 转发 TCP；HTTP 管理接口只映射到本机随机端口 | 2026-11-06 |
 
 ## CI 动作
 

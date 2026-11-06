@@ -75,6 +75,10 @@ def _artifact(artifact: dict) -> dict:
             pass
     elif _kind == 'trace':
         _out['command'] = 'playwright show-trace "{}"'.format(_path)
+    elif _kind == 'service-log':
+        # quoted in the report: the run's files do not travel with it
+        from ipandora.core.report.redact import redact_text
+        _out['text'] = redact_text(str(artifact.get('text') or ''))
     elif _kind == 'history':
         _out['command'] = artifact.get('command', '')     # core/consistency.py: re-check it by hand
     return _out
