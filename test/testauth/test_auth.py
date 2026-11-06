@@ -397,3 +397,33 @@ class TestFailuresAndLifetime:
         assert [_e['role'] for _e in _exchanges] == ['login', '']
         assert all(_e['identity'] == 'buyer' for _e in _exchanges)
         assert auth.provider() is None
+
+
+class TestCr2:
+    """Found in code review CR2 (docs/design/reviews/02-CR2.md)."""
+
+    def test_a_query_key_is_added_to_list_and_string_params(self):
+        from types import SimpleNamespace
+        auth.provider(lambda name, session: auth.ApiKey('k', param='api_key'))
+        for _params, _expected in (([('tag', 'a'), ('tag', 'b')], [('tag', 'a'), ('tag', 'b'), ('api_key', 'k')]),
+                                   ('tag=a', 'tag=a&api_key=k')):
+            _request = SimpleNamespace(kwargs={'params': _params}, explicit_headers={})
+            with auth.identity('robot'):
+                auth.apply(_request, None, (1, auth.ApiKey('k', param='api_key')))
+            assert _request.kwargs['params'] == _expected
+
+    def test_forget_keeps_counting_versions(self, svc):
+        _p = auth.provider(TokenLogin(svc))
+        with auth.identity('buyer'):
+            _v1, _ = auth.credential()
+            auth.forget('buyer')
+            _v2, _ = auth.credential()
+            # a request rejected with _v1 must find the newer login, not log in again
+            _v3, _ = auth.renew('buyer', _v1, None)
+        assert _v2 == _v1 + 1 and _v3 == _v2 and len(_p.calls) == 2
+
+    def test_a_case_header_is_not_overwritten_by_session_defaults(self, svc):
+        from ipandora.core.protocol.http.model.data.requestobject import RequestObject
+        from ipandora.core.protocol.http.model.option.httpontion import HttpOption
+        _r = RequestObject(HttpOption(), 'get', svc.url + '/me', headers={'Accept': 'text/csv'})
+        assert _r.kwargs['headers']['Accept'] == 'text/csv'

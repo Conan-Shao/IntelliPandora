@@ -21,6 +21,7 @@ web:
   base_url:             # e.g. https://staging.example.com, then page.goto('/orders')
   browser:              # chromium | firefox | webkit; default chromium
   viewport:             # e.g. {width: 1280, height: 720}; default Playwright's
+  trace: retain-on-failure   # on | off. A trace holds request headers and bodies -- tokens and cookies -- unmasked
 
 # LLM access is OFF by default and stays that way unless explicitly enabled.
 # It is never used at test-execution time -- only post-run (triage, report

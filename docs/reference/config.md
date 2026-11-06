@@ -27,6 +27,7 @@ Web (pip install intellipandora[web]). Defaults for pytest-playwright's own opti
 | `web.base_url` | `null` | e.g. https://staging.example.com, then page.goto('/orders') |
 | `web.browser` | `null` | chromium \| firefox \| webkit; default chromium |
 | `web.viewport` | `null` | e.g. {width: 1280, height: 720}; default Playwright's |
+| `web.trace` | `retain-on-failure` | on \| off. A trace holds request headers and bodies -- tokens and cookies -- unmasked |
 
 ## `ai`
 

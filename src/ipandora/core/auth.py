@@ -160,6 +160,55 @@ class Provider:
         """Which identities this provider logs in. Default: all but default and anonymous."""
         return name not in (DEFAULT, ANONYMOUS)
 
+    # -- the browser (page_as, core/web.py; §2.5) ----------------------------------
+
+    login_url = None
+    """A regular expression the *path* of the login page matches in full,
+    e.g. r'/login' or r'/auth/.*'. The path only, and in full: /login-history
+    or ?next=/login are not the login page. page_as(name, url) checks it
+    after opening the page: sent there, it logs in afresh and opens the page
+    once more. Without it -- or web_logged_in() -- page_as cannot tell
+    "logged in, but the page is not" from a page that works."""
+
+    web_headers = False
+    """Send the credential's headers (a Bearer token) with every request the
+    browser makes, for an application that reads them. Off by default: the
+    browser then sends them to every host a page loads from."""
+
+    web_indexed_db = False
+    """Keep IndexedDB in the saved browser state (Firebase keeps its token there)."""
+
+    def web_login(self, name: str, page) -> None:
+        """
+        Log in through the login page, for systems where only the browser can
+        (SSO, a token in localStorage). Implement it and page_as uses it: once
+        per identity and process, the browser state saved and reused. Leave it
+        out and page_as uses the API login instead -- faster, no login page --
+        by moving the identity's cookies into the browser.
+        """
+        raise NotImplementedError
+
+    def web_prepare(self, name: str, credential: Optional['Credential'], context) -> Optional[bool]:
+        """
+        Anything else the browser needs before the first page opens: a token
+        into sessionStorage, which a saved browser state does not keep --
+        `context.add_init_script(...)`. Return True when this put the
+        credential into the browser; page_as refuses a header-only credential
+        that nothing delivered. Default: nothing.
+        """
+        return None
+
+    def web_logged_in(self, page) -> Optional[bool]:
+        """Whether an opened page is logged in. Default: by login_url; None when unknown."""
+        if not self.login_url:
+            return None
+        import re
+        from urllib.parse import urlsplit
+        return re.fullmatch(self.login_url, urlsplit(page.url or '').path or '/') is None
+
+    def logs_in_with_page(self) -> bool:
+        return type(self).web_login is not Provider.web_login
+
 
 class _FunctionProvider(Provider):
     def __init__(self, login: Callable):
@@ -176,6 +225,8 @@ class LoginFailed(RuntimeError):
 # -- state -------------------------------------------------------------------------------
 
 _STATE = {'provider': None}
+BROWSER_STATES = {}
+"""identity -> Playwright storage state from a page login; this process only, never on disk."""
 _CACHE = {}         # name -> (version, Credential)
 _LOCKS = {}         # name -> Lock: one login at a time per identity
 _GUARD = threading.Lock()
@@ -212,6 +263,7 @@ def reset() -> None:
         _STATE['provider'] = None
         _CACHE.clear()
         _LOCKS.clear()
+        BROWSER_STATES.clear()
     from ipandora.core.schedule.session import SessionManager
     SessionManager.forget_identities()
 
@@ -253,6 +305,23 @@ def logging_in() -> bool:
     return bool(getattr(_LOCAL, 'logging_in', False))
 
 
+@contextmanager
+def logging_in_as():
+    """Requests made inside are a login's: not authenticated, recorded as 'login'. Nests."""
+    _before = logging_in()
+    _LOCAL.logging_in = True
+    try:
+        yield
+    finally:
+        _LOCAL.logging_in = _before
+
+
+def login_failed(name: str, exc: BaseException, how: str = '') -> 'LoginFailed':
+    """The error a failed login raises; triage keys on its first words."""
+    return LoginFailed('{} for identity {!r}{}: {}: {}'.format(
+        LOGIN_FAILED, name, ' ({})'.format(how) if how else '', type(exc).__name__, exc))
+
+
 def managed(name: Optional[str] = None) -> bool:
     _name = current() if name is None else name
     _p = _STATE['provider']
@@ -280,15 +349,12 @@ def _lock_for(name: str) -> threading.Lock:
 
 def _obtain(name: str, old: Optional[Credential], session) -> Credential:
     _p = _STATE['provider']
-    _LOCAL.logging_in = True
     _start = time.time()
     try:
-        _got = _p.login(name, session) if old is None else _p.refresh(name, old, session)
+        with logging_in_as():
+            _got = _p.login(name, session) if old is None else _p.refresh(name, old, session)
     except Exception as exc:  # noqa: BLE001 -- re-raised as a login failure, with its cause
-        raise LoginFailed('{} for identity {!r}: {}: {}'.format(
-            LOGIN_FAILED, name, type(exc).__name__, exc)) from exc
-    finally:
-        _LOCAL.logging_in = False
+        raise login_failed(name, exc) from exc
     if _got is None:
         # the login left its cookies in the session
         _got = Credential(cookies=session.cookies.copy(), issued_at=_start)
@@ -319,6 +385,35 @@ def credential(name: Optional[str] = None, session=None):
         _entry = ((_entry[0] + 1) if _entry else 1, _new)
         _CACHE[_name] = _entry
         return _entry
+
+
+def forget(name: str) -> None:
+    """
+    Make the next use of `name` log in afresh, and drop its browser state.
+
+    The entry is marked expired rather than removed: its version counter must
+    keep counting, or a request rejected with version 1 just before would
+    find a new version 1 and log in a second time -- on a single-session
+    server, revoking the login it was handed.
+    """
+    with _GUARD:
+        BROWSER_STATES.pop(name, None)
+        _entry = _CACHE.get(name)
+        if _entry is not None:
+            from dataclasses import replace as _replace
+            _CACHE[name] = (_entry[0], _replace(_entry[1], expires_at=0.0, issued_at=0.0))
+
+
+def store(name: str, credential: Credential) -> None:
+    """
+    Use `credential` for `name` from now on: a login done some other way --
+    in the browser, by page_as -- handed to the HTTP side (web.share_with_api).
+    """
+    if not isinstance(credential, Credential):
+        raise TypeError('auth.store() takes a Credential')
+    with _lock_for(name):
+        _entry = _CACHE.get(name)
+        _CACHE[name] = ((_entry[0] + 1) if _entry else 1, credential)
 
 
 def renew(name: str, seen_version: int, session):
@@ -368,9 +463,19 @@ def apply(request, session, entry) -> bool:
     for _k, _v in _cred.headers.items():
         _headers[_k] = _v
     if _cred.params:
+        # whatever form the case gave its own parameters in: a credential
+        # quietly left out sent the request unauthenticated, and its replay too
         _params = request.kwargs.get('params')
         if _params is None or isinstance(_params, dict):
             request.kwargs['params'] = dict(_cred.params, **(_params or {}))
+        elif isinstance(_params, (list, tuple)):
+            _given = {_p[0] for _p in _params if isinstance(_p, (list, tuple)) and _p}
+            request.kwargs['params'] = list(_params) + [
+                (_k, _v) for _k, _v in _cred.params.items() if _k not in _given]
+        elif isinstance(_params, (str, bytes)):
+            from urllib.parse import urlencode
+            _text = _params.decode('utf-8') if isinstance(_params, bytes) else _params
+            request.kwargs['params'] = '&'.join(filter(None, [_text, urlencode(_cred.params)]))
     if _cred.cookies is not None and session is not None:
         if getattr(session, '_ipandora_cookie_version', None) != (id(_cred), _version):
             try:
