@@ -108,6 +108,12 @@ def inject(request, renew: bool = False) -> None:
     _ours = getattr(request, _OURS, None)
     if _existing is not None and (_existing != _ours or not renew):
         return
+    # one the case put on its session counts as its own: the session's headers
+    # are copied into a request only when it sets no Content-Type, and a
+    # request-level header of ours would have replaced it at send time
+    _session = getattr(getattr(request, 'option', None), 'obj', None)
+    if _ours is None and any(str(_k).lower() == HEADER for _k in (getattr(_session, 'headers', None) or {})):
+        return
     for _k in [_k for _k in _headers if str(_k).lower() == HEADER]:
         del _headers[_k]
     _value = traceparent()

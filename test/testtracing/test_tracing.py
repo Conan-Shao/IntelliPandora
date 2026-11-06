@@ -209,3 +209,26 @@ class TestReport:
         from ipandora.core.report.model import ReportData
         _html = to_html(ReportData(cases=[_case]))
         assert '<a href="http://jaeger.test:16686/trace/{}"'.format(_trace) in _html
+
+
+class TestCr10:
+    """Found in code review CR10 (docs/design/reviews/10-CR10.md)."""
+
+    def test_a_traceparent_on_the_session_is_the_cases_own(self, svc, on):
+        _own = '00-33333333333333333333333333333333-4444444444444444-01'
+        SessionManager.getSession().headers['traceparent'] = _own
+        with _Case():
+            client(svc).echo(headers={'Content-Type': 'text/plain'})     # the session's headers are not copied in
+            client(svc).echo()
+        assert svc.seen == [_own, _own]
+
+    def test_a_report_rebuilt_from_json_links_only_web_pages(self):
+        from ipandora.core.report.builder import build_from_dict
+        _trace = 'c' * 32
+        _report = build_from_dict({'cases': [{'name': 't', 'nodeid': 't::t', 'exchanges': [
+            {'url': 'http://svc/a', 'trace_id': _trace, 'trace_url': 'javascript:alert(document.cookie)'},
+            {'url': 'http://svc/b', 'trace_id': 'd' * 32, 'trace_url': 'https://tempo.test/t/' + 'd' * 32}]}]})
+        _html = to_html(_report)
+        assert 'javascript:' not in _html
+        assert '<code>{}</code>'.format(_trace) in _html                  # still shown, just not as a link
+        assert '<a href="https://tempo.test/t/{}"'.format('d' * 32) in _html
