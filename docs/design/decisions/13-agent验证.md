@@ -242,3 +242,17 @@
 - **agent 抛异常归为基础设施**，不计入成功率；agent 答错要体现在输出里，由评分器判。
 - 轨迹时间线、版本清单、人工标注（一致率与 Cohen kappa）都已实现；Inspect 日志接入是 E1。
 
+
+---
+
+## 追加（2026-11-06）：E1 的 Inspect 路径已实现
+
+`ipandora.core.eval.inspect_log`、`ipandora.core.eval.inspect_scorer` 与 `ipandora eval inspect`，用法见 [`docs/guide/eval.md`](../../guide/eval.md#inspect-路径)。`inspect_ai` 按 `15` §3 准入，进可选安装组 `inspect`（0.3.283，MIT，传递依赖约 60 个，只在 Python ≥ 3.11 上安装），登记在 `docs/security/components.md`。与本文的差异和补充：
+
+- **日志用 Inspect 自己的读取接口**（`read_eval_log(header_only=True)` 加 `read_eval_log_samples` 逐个读样本），不解析文件格式：`.eval` 是 zip 里压缩的 JSON，格式随版本变化，读取接口是它承诺稳定的那一层。
+- **分数到判定的换算要有阈值。** Inspect 的分数可以是 `C/I/P/N`、数字、布尔、字典、列表；我们的判定是成立 / 不成立。按 Inspect 自己的 `value_to_float` 换成 0 到 1，达到阈值（默认 1）算成立；字典、列表逐项一条判定。用 `inspect_scorer.scorer` 包起来的评分器，判定原样放在分数的 metadata 里，读日志时按名字还原，不经过换算。
+- **模型评分器按模型评委处理**：`model_graded_qa`、`model_graded_fact` 以及用户点名的评分器，校准前不计入成功率。不这样做，Inspect 路径就绕过了"LLM 不参与判定"。
+- **超时算基础设施**（§9），其他上限（token、消息数、费用、轮数）算预算判定不通过，和 pytest 路径的预算一致。样本出错算基础设施；评分器抛异常归评分器。
+- **一次运行一个模型、每个任务一份日志。** 一个目录里可能放了几次运行，同一任务出现两份日志、或者模型不同时直接报错，不悄悄合并。
+- **inspect_swe 不需要适配代码**：它提供的是 solver，和我们的 scorer 正交。E1 验收里"同一模型装进三个外壳"由使用方在 Inspect 里配置三个 solver 跑三次，每次 `ipandora eval inspect` 出报告；需要 Docker，不在 CI 里跑。
+- **还没做的**：生成用例的变异得分、改动范围检查作为现成的评分器，以及干净环境（浅克隆、资源固定）的示例任务。它们是评分器和任务，不是框架接口，放到 E2 之后按需补。

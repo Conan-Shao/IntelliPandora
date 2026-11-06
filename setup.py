@@ -92,6 +92,11 @@ setup(
         # framework calls them, so psutil is not installed by default.
         'system': ['psutil>=5.9,<8'],
         'test': ['httpretty>=1.1,<2'],
+        # The Inspect path of agent evaluation (docs/design/decisions/13 §3, E1):
+        # read Inspect logs, wrap graders as Inspect scorers. inspect_ai needs
+        # Python 3.11, so the extra installs nothing on 3.10. 0.x and released
+        # often, so bounded to the 0.3 line. See docs/security/components.md.
+        'inspect': ['inspect_ai>=0.3.283,<0.4; python_version >= "3.11"'],
     },
     entry_points={
         'console_scripts': [

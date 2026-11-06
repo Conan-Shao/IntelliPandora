@@ -36,6 +36,7 @@
 | pytest-playwright | extra:web | >=0.10,<0.11 | `page` / `browser` fixture、失败截图与 trace | Apache-2.0 | 每次会话开始时清空 `--output` 目录（框架为每次运行单独指定一个）。还是 0.x，锁到一个次版本，并有集成测试检查我们依赖的 fixture 和选项。传递依赖 text-unidecode 为 Artistic / GPL 双许可，按 Artistic 使用，见 `scripts/check_components.py` 的 REVIEWED_LICENSES | 2026-11-05 |
 | pillow | extra:visual | >=12,<14 | 读写图片、遮罩、差异图 | MIT-CMU | 只解码测试自己产生的截图和仓库里的基准图。**图像解析历史上漏洞多**（`15` §7），每日扫描重点关注；13.x 要求 Python ≥ 3.11，3.10 上解析到 12.x | 2026-11-05 |
 | pixelmatch | extra:visual | >=0.4,<0.5 | 逐像素比对：抗锯齿识别、YIQ 色差 | ISC | 纯 Python，无依赖，不联网。整图比对约 0.7 秒（1280×720），只在差异包围盒上运行，局部变化时为毫秒级，计数与整图一致（有测试） | 2026-11-05 |
+| inspect-ai | extra:inspect | >=0.3.283,<0.4 | agent 评测的 Inspect 路径：读 Inspect 日志（`read_eval_log`），把评分器包成 Inspect 的 scorer | MIT | 框架只调用它的日志读取和评分器注册，不启动它的运行器。用户自己用它跑评测时，它会调用模型 API、在 Docker / K8s 里建沙箱、往 `./logs` 写日志、可启动本机 Web 服务（`inspect view`）。英国 AI Security Institute 维护，几乎每周发布；0.3.287 未满 14 天，选 0.3.283（2026-10-21）。**要求 Python ≥ 3.11**，3.10 上这个安装组不装任何东西。传递依赖约 60 个（boto3、aiobotocore、s3fs、fastapi、uvicorn、textual、numpy、tiktoken 等，用于云存储日志、查看器和分词），只在 Python ≥ 3.11 上装；许可证均在白名单内，agent-client-protocol 的元数据未写许可证，wheel 里的 LICENSE 是 Apache-2.0，见 `scripts/check_components.py` 的 LICENSE_OVERRIDES。pip-audit 无已知漏洞（2026-11-06） | 2026-11-06 |
 | httpretty | extra:test | >=1.1,<2 | 测试里模拟 HTTP 响应 | MIT | 只在测试中替换 socket | 2026-11-05 |
 
 ## 构建与工具链

@@ -27,13 +27,15 @@ class Command(CommandBase):
         try:
             if _action == 'run':
                 sys.exit(self._run(options))
+            if _action == 'inspect':
+                sys.exit(self._inspect(options))
             if _action == 'selfcheck':
                 sys.exit(self._selfcheck(options))
             if _action == 'samples':
                 sys.exit(self._samples(options))
             if _action == 'agreement':
                 sys.exit(self._agreement(options))
-        except (ValueError, OSError) as exc:
+        except (ValueError, OSError, ImportError) as exc:
             # a missing file, bad YAML or JSON: a message, not a traceback
             print('  ERROR  {}'.format(exc), file=sys.stderr)
             sys.exit(2)
@@ -42,10 +44,28 @@ class Command(CommandBase):
 
     @staticmethod
     def _run(options) -> int:
-        from ipandora.core.eval import baseline, evaluate, report, spec
+        from ipandora.core.eval import evaluate, spec
         _spec = spec.load(options.spec)
         _run = evaluate(_spec.dataset, _spec.agent, _spec.grade, trials=options.trials,
                         split=options.split, workers=options.workers, manifest=_spec.manifest)
+        return Command._conclude(_run, options)
+
+    @staticmethod
+    def _inspect(options) -> int:
+        from ipandora.core.eval import inspect_log
+        _threshold = {}
+        for _item in options.threshold or ():
+            _name, _sep, _value = _item.rpartition('=')
+            try:
+                _threshold[_name if _sep else '*'] = float(_value)
+            except ValueError:
+                raise ValueError('--threshold {!r}: a number, or SCORER=NUMBER'.format(_item)) from None
+        _run = inspect_log.read(options.logs, threshold=_threshold or 1.0, judges=options.judge or ())
+        return Command._conclude(_run, options)
+
+    @staticmethod
+    def _conclude(_run, options) -> int:
+        from ipandora.core.eval import baseline, report
         if options.baseline and not options.no_baseline and not os.path.isfile(options.baseline) \
                 and not options.update_baseline:
             # asked for by name: a typo must not turn into "no baseline, all fine"
@@ -144,20 +164,18 @@ class Command(CommandBase):
         _run.add_argument('--split', choices=['dev', 'test'], default=None,
                           help='run one split only. Tune on dev; conclude on test')
         _run.add_argument('-w', '--workers', type=int, default=1, help='trials run at once (threads)')
-        _run.add_argument('-o', '--out', default=None,
-                          help='where report.html and report.json go. Default: the report archive')
-        _run.add_argument('--title', default=None, help='report title')
-        _run.add_argument('--baseline', default=None, metavar='PATH',
-                          help='evaluation baseline. Default: conf/eval_baseline.json when it exists')
-        _run.add_argument('--no-baseline', action='store_true', help='compare with nothing')
-        _run.add_argument('--update-baseline', action='store_true',
-                          help='write this run as the baseline. Commit it; review its diff')
-        _run.add_argument('--noise', type=float, default=0.0, metavar='RATE',
-                          help='infrastructure noise as a rate (0.021 for ±2.1 points): a '
-                               'difference smaller than this is never called better or worse')
-        _run.add_argument('--partial', action='store_true',
-                          help='compare each task\'s partial score (the weighted share of its '
-                               'checks that held) instead of whether it succeeded')
+        _common(_run)
+
+        _inspect = _sub.add_parser('inspect', help='read Inspect logs as an evaluation run: report, '
+                                                   'baseline, gate (needs the inspect extra)')
+        _inspect.add_argument('logs', nargs='+', help='.eval / .json log files, or a directory of them')
+        _inspect.add_argument('--threshold', action='append', metavar='[SCORER=]VALUE',
+                              help='the value a score must reach to pass, on Inspect\'s scale '
+                                   '(CORRECT = 1, PARTIAL = 0.5). Default 1. Repeat per scorer')
+        _inspect.add_argument('--judge', action='append', metavar='SCORER',
+                              help='a scorer that asks a model: shown, counted only once calibrated. '
+                                   'model_graded_qa and model_graded_fact always are')
+        _common(_inspect)
 
         _check = _sub.add_parser('selfcheck', help='grade every reference solution; exit 1 if any fails')
         _check.add_argument('spec')
@@ -175,3 +193,21 @@ class Command(CommandBase):
         _agree.add_argument('labels', help='the labelled JSONL')
         _agree.add_argument('--a', default='judge', help='first rater column')
         _agree.add_argument('--b', default='human', help='second rater column')
+
+
+def _common(parser):
+    """Report, baseline and comparison options: `eval run` and `eval inspect` end the same way."""
+    parser.add_argument('-o', '--out', default=None,
+                        help='where report.html and report.json go. Default: the report archive')
+    parser.add_argument('--title', default=None, help='report title')
+    parser.add_argument('--baseline', default=None, metavar='PATH',
+                        help='evaluation baseline. Default: conf/eval_baseline.json when it exists')
+    parser.add_argument('--no-baseline', action='store_true', help='compare with nothing')
+    parser.add_argument('--update-baseline', action='store_true',
+                        help='write this run as the baseline. Commit it; review its diff')
+    parser.add_argument('--noise', type=float, default=0.0, metavar='RATE',
+                        help='infrastructure noise as a rate (0.021 for ±2.1 points): a '
+                             'difference smaller than this is never called better or worse')
+    parser.add_argument('--partial', action='store_true',
+                        help='compare each task\'s partial score (the weighted share of its '
+                             'checks that held) instead of whether it succeeded')

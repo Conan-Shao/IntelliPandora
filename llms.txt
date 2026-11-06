@@ -23,7 +23,7 @@ Documentation is Markdown in the repository and is the single source. The refere
 - [Reports and triage](docs/guide/reports.md): HTML/JSON/JUnit, failure categories, calling run() from Python
 - [CI](docs/guide/ci.md): exit codes, --fail-on-weakened, baseline review, sharding and `ipandora merge`, browsers and goldens in CI
 - [Agents](docs/guide/agents.md): MCP tools run_tests / explain_failure / list_runs / build_report
-- [Evaluating agents](docs/guide/eval.md): datasets with a content hash, k trials per task, Wilson interval, pass@k / pass^k, paired comparison with the baseline, reference self-check, human labelling
+- [Evaluating agents](docs/guide/eval.md): datasets with a content hash, k trials per task, Wilson interval, pass@k / pass^k, paired comparison with the baseline, reference self-check, human labelling; Inspect logs read into the same run (`ipandora eval inspect`) and graders as Inspect scorers
 
 ## Reference
 
