@@ -552,6 +552,8 @@ def _pack(item):
             _payload['faults'] = [dict(_f) for _f in _evidence.faults]
         if _evidence.artifacts:
             _payload['artifacts'] = list(_evidence.artifacts)
+        if _evidence.trace_shown and _evidence.trace_id:
+            _payload['trace_id'] = _evidence.trace_id
     if _INDEX in item.stash:
         _payload['index'] = item.stash[_INDEX]
     # Reports cross a process boundary under xdist, and execnet carries only

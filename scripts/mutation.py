@@ -85,6 +85,16 @@ def guess_tests(path: str) -> str:
     return 'test'
 
 
+def _cli_args(tests: str) -> str:
+    """
+    `tests` as mutmut's list setting: one path per continuation line. mutmut
+    splits a list setting on newlines only, so "test/a test/b" on one line
+    reached pytest as a single argument naming no file, and the run scored
+    0 of 0 instead of failing loudly.
+    """
+    return '\n    '.join(tests.split())
+
+
 def write_scoped_config(module: str, tests: str) -> str:
     """
     Point mutmut at one module and one set of tests, keeping the base config.
@@ -105,7 +115,7 @@ def write_scoped_config(module: str, tests: str) -> str:
     # quietly mutated all of src/ against the guessed tests.
     _scoped, _found = re.subn(
         r'^\[mutmut\][ \t]*\r?$',
-        lambda m: m.group(0) + '\nonly_mutate = {}\npytest_add_cli_args = {}'.format(module, tests),
+        lambda m: m.group(0) + '\nonly_mutate = {}\npytest_add_cli_args = {}'.format(module, _cli_args(tests)),
         _text, count=1, flags=re.MULTILINE)
     if not _found:
         raise SystemExit('setup.cfg has no [mutmut] section; nothing to scope')

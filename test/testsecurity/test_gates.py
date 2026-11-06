@@ -377,6 +377,19 @@ def test_mutation_scopes_a_crlf_config(tmp_path, monkeypatch):
     assert 'only_mutate = src/ipandora/x.py' in _text
 
 
+def test_mutation_passes_several_test_paths_as_separate_arguments(tmp_path, monkeypatch):
+    # mutmut splits a list setting on newlines only: on one line, two paths
+    # reached pytest as one argument naming no file, and the run scored 0 of 0
+    import configparser
+    import mutation
+    (tmp_path / 'setup.cfg').write_text('[mutmut]\npaths = src\n', encoding='utf-8')
+    monkeypatch.setattr(mutation, 'REPO', str(tmp_path))
+    mutation.write_scoped_config('src/ipandora/x.py', 'test/testx  test/testy/test_z.py')
+    _cfg = configparser.ConfigParser()
+    _cfg.read(str(tmp_path / 'setup.cfg'))
+    assert _cfg['mutmut']['pytest_add_cli_args'].split('\n') == ['test/testx', 'test/testy/test_z.py']
+
+
 def test_the_cli_reference_documents_subcommands():
     import check_docs
     _md = check_docs.cli_reference()

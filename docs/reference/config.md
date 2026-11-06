@@ -46,6 +46,7 @@ Cross-service traces (core/tracing.py): each request carries a W3C traceparent, 
 |---|---|---|
 | `tracing.enabled` | `false` | true: add a traceparent to every request that has none |
 | `tracing.link` | `null` | e.g. http://jaeger.test:16686/trace/{trace_id} -- the report links each trace |
+| `tracing.hosts` | `[]` | browser requests carry it to web.base_url's host and these (e.g. api.shop.test:8443) |
 
 ## `stack`
 

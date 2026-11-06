@@ -175,10 +175,14 @@ class ReportCase:
     faults: List[Dict[str, Any]] = field(default_factory=list)
     """Faults the case injected on purpose (core/faults.py): what, on which proxy, from when to when."""
 
+    trace_id: str = ''
+    """The case's own trace, sent by its browser pages (core/tracing.py); '' when only exchanges carry one."""
+    trace_url: str = ''
+
     @property
     def traces(self) -> List[Dict[str, str]]:
         """The distinct traces this case's requests went out under (core/tracing.py), in order: {id, url}."""
-        _seen: Dict[str, str] = {}
+        _seen: Dict[str, str] = {self.trace_id: self.trace_url} if self.trace_id else {}
         for _e in self.exchanges:
             if _e.get('trace_id') and _e['trace_id'] not in _seen:
                 _seen[_e['trace_id']] = _e.get('trace_url') or ''

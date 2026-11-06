@@ -34,6 +34,7 @@ faults:
 tracing:
   enabled: false        # true: add a traceparent to every request that has none
   link:                 # e.g. http://jaeger.test:16686/trace/{trace_id} -- the report links each trace
+  hosts: []             # browser requests carry it to web.base_url's host and these (e.g. api.shop.test:8443)
 
 # Services from a compose file (core/stack.py, stack.compose()): Docker Compose v2.20+.
 stack:

@@ -28,6 +28,7 @@ import re
 import secrets
 import threading
 from typing import Any, Dict, Optional
+from urllib.parse import urlsplit
 
 HEADER = 'traceparent'
 
@@ -119,6 +120,54 @@ def inject(request, renew: bool = False) -> None:
     _value = traceparent()
     _headers[HEADER] = _value
     setattr(request, _OURS, _value)
+
+
+def _netloc(address: str) -> str:
+    _address = str(address or '').strip().lower()
+    if '://' not in _address:
+        _address = 'http://' + _address
+    _parts = urlsplit(_address)
+    _port = _parts.port or {'http': 80, 'https': 443}.get(_parts.scheme)
+    return '{}:{}'.format(_parts.hostname or '', _port) if _parts.hostname else ''
+
+
+def browser(context, base_url: str = '') -> bool:
+    """
+    Make the pages of a Playwright browser context send a traceparent on
+    each request to the application -- the host of `base_url`, and those in
+    `tracing.hosts` -- a new span of the running case's trace each time.
+    Never to other hosts: a CDN or an analytics service is not the system
+    under test, and has no business seeing the trace. Returns whether it did.
+
+    A route handler, so Playwright stops using its HTTP cache for the
+    context: only when tracing is on. A request that already carries a
+    traceparent (the page's own instrumentation) keeps it.
+    """
+    if not enabled():
+        return False
+    _hosts = {_netloc(_h) for _h in list(_settings().get('hosts') or []) + [base_url]} - {''}
+    if not _hosts:
+        return False
+
+    def _handle(route):
+        _request = route.request
+        _headers = dict(_request.headers)
+        if _netloc(_request.url) not in _hosts or any(_k.lower() == HEADER for _k in _headers):
+            route.fallback()
+            return
+        _headers[HEADER] = traceparent()
+        _mark()
+        route.fallback(headers=_headers)
+    context.route('**/*', _handle)
+    return True
+
+
+def _mark() -> None:
+    """The case's trace went out from a browser: the report shows it even without any API request."""
+    from ipandora.core.evidence import recorder
+    _evidence = recorder.current()
+    if _evidence is not None:
+        _evidence.trace_shown = True
 
 
 def link(trace: str) -> str:
