@@ -37,7 +37,7 @@ def _segments(path: str) -> List[Tuple[str, Any]]:
     readings work and neither has to be guessed at parse time.
     """
     _out = []
-    for _sq, _dq, _idx, _bare in _TOKEN.findall(path):
+    for _sq, _dq, _idx, _bare in _tokens(path):
         if _sq:
             _out.append((_KEY, _sq))
         elif _dq:
@@ -47,6 +47,35 @@ def _segments(path: str) -> List[Tuple[str, Any]]:
         elif _bare:
             _kind = _EITHER if re.fullmatch(r'-?\d+', _bare) else _KEY
             _out.append((_kind, _bare))
+    return _out
+
+
+class BadPath(ValueError):
+    """The path does not parse: it would otherwise be read as some other path."""
+
+
+def _tokens(path: str):
+    """
+    The path's tokens, covering all of it.
+
+    findall() skipped whatever matched no token, so a malformed path was read
+    as a different, valid one: `data..items` as `data.items`, `items[0` as
+    `items.0`, `a[x]` as `a.x` -- and a check over the wrong field passed.
+    """
+    _pos, _out, _expect_sep = 0, [], False
+    while _pos < len(path):
+        if _expect_sep:
+            if path[_pos] == '.':
+                _pos += 1
+                if _pos == len(path) or path[_pos] in '.[':
+                    raise BadPath('empty segment at position {} in {!r}'.format(_pos, path))
+            elif path[_pos] != '[':
+                raise BadPath('unexpected {!r} at position {} in {!r}'.format(path[_pos], _pos, path))
+        _match = _TOKEN.match(path, _pos)
+        if _match is None or _match.end() == _pos:
+            raise BadPath('cannot read {!r} at position {}'.format(path, _pos))
+        _out.append(_match.groups())
+        _pos, _expect_sep = _match.end(), True
     return _out
 
 
@@ -85,13 +114,17 @@ def resolve(body: Any, path: str) -> Tuple[Any, str]:
     if not path:
         return body, ''
 
+    try:
+        _parsed = _segments(path)
+    except BadPath as exc:
+        return MISSING, 'bad path: {}'.format(exc)
     _current = body
     _walked = []
 
     def _where():
         return '.'.join(_walked) or '<root>'
 
-    for _kind, _segment in _segments(path):
+    for _kind, _segment in _parsed:
         # An undecided numeric segment takes the reading the node supports.
         if _kind is _EITHER:
             _kind = _INDEX if isinstance(_current, (list, tuple)) else _KEY

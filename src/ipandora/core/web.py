@@ -64,7 +64,11 @@ ACTIONS = ('click', 'dblclick', 'tap', 'hover', 'focus', 'fill', 'clear', 'press
 # kwargs that change how long to wait, not what is judged
 _NOT_PART_OF_THE_CLAIM = ('timeout',)
 
-_ARIA = re.compile(r'^- (?P<role>[\w-]+)(?: "(?P<name>(?:[^"\\]|\\.)*)")?(?::\s*(?P<text>.*))?$')
+# `- heading "价格" [level=2]`, `- checkbox "同意" [checked]`: attributes
+# follow the name. Without them in the pattern, such lines matched nothing and
+# those elements were never remembered.
+_ARIA = re.compile(r'^- (?P<role>[\w-]+)(?: "(?P<name>(?:[^"\\]|\\.)*)")?(?: \[[^\]]*\])*'
+                   r'(?::\s*(?P<text>.*))?$')
 
 _ORIGINALS = {}
 _MEMORY = {'path': None, 'data': None}
@@ -134,7 +138,17 @@ def _target(assertions) -> str:
     _kind = type(assertions).__name__
     if _kind == 'LocatorAssertions':
         return 'locator({!r})'.format(selector_of(getattr(assertions, _ACTUAL, None)) or '?')
-    return 'page' if _kind == 'PageAssertions' else 'response'
+    if _kind == 'PageAssertions':
+        return 'page'
+    # Which response: two `expect(r).to_be_ok()` in one case produced the same
+    # claim, and the inventory, which compares claims as a set, saw one.
+    # The path, not the full URL: a query string often carries an id or a
+    # timestamp that differs every run.
+    _url = getattr(getattr(assertions, _ACTUAL, None), 'url', '') or ''
+    if not isinstance(_url, str) or not _url:
+        return 'response'
+    from urllib.parse import urlsplit
+    return 'response({})'.format(urlsplit(_url).path or '/')
 
 
 def _shown(value) -> str:
@@ -320,18 +334,31 @@ def remember(result) -> None:
     if not _updates:
         return
     _path = memory_path()
-    try:
-        with open(_path, encoding='utf-8') as _f:
-            _data = json.load(_f)
-    except (OSError, ValueError):
-        _data = {}
-    for _nodeid, _locators in _updates.items():
-        _data.setdefault(_nodeid, {}).update(_locators)
     os.makedirs(os.path.dirname(_path) or '.', exist_ok=True)
-    _tmp = _path + '.tmp'
-    with open(_tmp, 'w', encoding='utf-8') as _f:
-        json.dump(_data, _f, ensure_ascii=False, indent=1, sort_keys=True)
-    os.replace(_tmp, _path)
+    # Two runs finishing together -- two CI jobs, the MCP server and a
+    # terminal -- read, merged and wrote the same file, and shared one '.tmp'
+    # name: one run's locators were lost, or a half-written temp file was
+    # moved into place. Read-modify-write under a lock, temp file per process.
+    from ipandora.core.runner.plugin import ResourceLock
+    _lock = ResourceLock(_path + '.lock')
+    _locked = _lock.acquire(10.0)
+    try:
+        try:
+            with open(_path, encoding='utf-8') as _f:
+                _data = json.load(_f)
+        except (OSError, ValueError):
+            _data = {}
+        if not isinstance(_data, dict):
+            _data = {}
+        for _nodeid, _locators in _updates.items():
+            _data.setdefault(_nodeid, {}).update(_locators)
+        _tmp = '{}.{}.tmp'.format(_path, os.getpid())
+        with open(_tmp, 'w', encoding='utf-8') as _f:
+            json.dump(_data, _f, ensure_ascii=False, indent=1, sort_keys=True)
+        os.replace(_tmp, _path)
+    finally:
+        if _locked:
+            _lock.release()
     _MEMORY.update(path=None, data=None)
 
 

@@ -19,11 +19,28 @@ from ipandora.core.triage.category import (BLAMES_SYSTEM_UNDER_TEST, Category, C
                                            NEXT_STEP)
 
 # Assertion sources, emitted by the assertion layer as "[FAIL] name (src) | expr"
-CHECK_LINE = re.compile(r'\[FAIL\]\s*(?P<name>.*?)\s*\((?P<src>\w+)\)\s*\|\s*(?P<expr>.*)')
+# Horizontal space only after '|': with \s, a check with an empty expr took
+# the next line of the message as its expr. And the expr part is optional.
+CHECK_LINE = re.compile(r'\[FAIL\][ \t]*(?P<name>.*?)[ \t]*\((?P<src>\w+)\)(?:[ \t]*\|[ \t]*(?P<expr>.*))?$',
+                        re.MULTILINE)
 
 TRANSPORT_MARKERS = ('HttpTimeoutError', 'HttpConnectionError', 'TransportError',
                      'ConnectionError', 'ReadTimeout', 'ConnectTimeout',
                      'could not connect', 'timed out')
+
+# A transport exception that was raised -- its type starting a line of the
+# message, as an exception does -- as opposed to the same words quoted inside
+# a judgement or a response body.
+RAISED_TRANSPORT = re.compile(
+    r'^(?:E\s+)?(?:[\w.]+\.)?(HttpTimeoutError|HttpConnectionError|TransportError|'
+    r'ConnectionError|ReadTimeout|ConnectTimeout)\b', re.MULTILINE)
+
+# The same exception types named anywhere -- inside an eventually() expr
+# that recorded what each read raised. Not the bare phrases: "timed out" in
+# a judgement is usually a response body quoting its own upstream.
+TRANSPORT_TYPE = re.compile(
+    r'\b(HttpTimeoutError|HttpConnectionError|TransportError|ConnectionError|ReadTimeout|'
+    r'ConnectTimeout)\b')
 
 # A case that ran out of time, or waited too long for a shared resource, says
 # nothing about the system yet. Checked before everything else: a lock timeout
@@ -90,13 +107,27 @@ def classify(nodeid: str, outcome: str, message: str, locator_failures=None) -> 
         return _finding(Category.ENVIRONMENT, Confidence.MEDIUM,
                         '用例超过了时间上限。通常是某个依赖不再响应；如果是被测系统自己卡住，那是缺陷')
 
-    _locator = _locator_finding(locator_failures)
+    _failed_checks = list(CHECK_LINE.finditer(_message))
+    _asserted = bool(_failed_checks) or 'AssertionError' in _message \
+        or any(_l.lstrip().startswith('assert ') for _l in _message.splitlines())
+
+    _locator = _locator_finding(locator_failures, _message, _asserted)
     if _locator:
         return _finding(*_locator)
 
-    # Nothing reached the system under test.
-    _transport = next((_m for _m in TRANSPORT_MARKERS if _m in _message), None)
-    if _transport:
+    # Nothing reached the system under test. Only when no judgement failed:
+    # a failed check means a response came back and was judged, and the words
+    # "timed out" inside its expr or the body it quotes ("upstream timed
+    # out") are what the system said, not a transport failure. Before, any
+    # such message blamed the environment and hid a real defect. A check
+    # whose every read was itself a transport error -- eventually() against
+    # a node that never answered -- is still the environment.
+    _exprs = [(_m.group('expr') or '') for _m in _failed_checks]
+    _raised = RAISED_TRANSPORT.search(_message)
+    _transport = _raised.group(1) if _raised else \
+        next((_m for _m in TRANSPORT_MARKERS if _m in _message), None)
+    if _transport and (_raised or not _asserted or (_exprs and all(
+            TRANSPORT_TYPE.search(_e) for _e in _exprs))):
         return _finding(Category.ENVIRONMENT, Confidence.HIGH,
                         '传输失败（{}）：没有收到响应，被测系统实际上什么都没测到'.format(_transport))
 
@@ -131,17 +162,31 @@ def classify(nodeid: str, outcome: str, message: str, locator_failures=None) -> 
                     '失败信息里没有可识别的特征')
 
 
-def _locator_finding(failures):
+def _locator_finding(failures, message: str = '', asserted: bool = False):
     """
     A selector found nothing. Stale selector, or a missing element?
 
     Decided where the failure happened, while the page was still there
     (core/web.py): the element the selector used to point at -- its role and
     accessible name, remembered from a passing run -- was searched for.
+
+    Only a selector the failure is about. A locator error the test caught
+    and handled -- `try: page.click('#cookie-banner') except Error: pass` --
+    is recorded too, and the first one recorded used to decide the verdict:
+    a case failing on a wrong total was blamed on a stale cookie-banner
+    selector. Playwright names the selector in its error, so the selector
+    has to appear in the failure message; failing that, the latest locator
+    failure is used only when no judgement failed for some other reason.
     """
     if not failures:
         return None
-    _f = failures[0]
+    _named = [_f for _f in failures if _f.get('selector') and _f['selector'] in (message or '')]
+    if _named:
+        _f = _named[-1]
+    elif not asserted:
+        _f = failures[-1]
+    else:
+        return None
     _selector = _f.get('selector', '?')
     _identity = _f.get('identity') or {}
     _what = '{} "{}"'.format(_identity.get('role', '?'), _identity.get('name', '?'))

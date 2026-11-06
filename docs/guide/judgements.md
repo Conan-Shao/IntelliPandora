@@ -76,7 +76,7 @@ Assertion failed (2/3 checks failed)
 | `field(resp, 'data.total') > 0` | 用 Python 运算符判断字段，见下 |
 | `schema_conforms(resp, schema)` | JSON Schema 校验 |
 
-路径支持点号与下标：`data.items[0].name`、`items[-1].id`。
+路径支持点号与下标：`data.items[0].name`、`items[-1].id`，含点号的键用引号：`releases['2.32.0'].url`。写错的路径（`data..items`、`items[0`）直接判为不成立并说明原因，不会被读成另一条路径。
 
 **用 `field` 判断字段**
 
@@ -105,7 +105,7 @@ assert_all(
 | `.startswith(s)` | 前缀 |
 | `.matches(pattern)` | `re.search`；整值匹配自己加 `^…$` |
 | `.len()` | 长度，再接比较：`.len() > 0` |
-| `.decimal()` | 转成精确的 Decimal 再比较，用于字符串形式的数字（如 `"100.50"`） |
+| `.decimal()` | 转成精确的 Decimal 再比较，用于字符串形式的数字（如 `"100.50"`）。和 float 比较时按写出来的样子比：`.decimal() == 0.1` 成立。`"1_000"` 不算数字 |
 | `.each(path)` | 列表的每一项都要满足，失败时指出是第几项 |
 | `.map(fn, label)` | 对值做任意计算，得到新的 field |
 | `field(...) == field(...)` | 两个字段互相比较 |

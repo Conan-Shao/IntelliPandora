@@ -65,9 +65,13 @@ def json_body(response: Any):
         return MISSING, 'response has no body'
     if isinstance(_content, bytes):
         try:
-            _content = _content.decode('utf-8')
+            # utf-8-sig: a body starting with a byte-order mark is still JSON
+            # (RFC 8259 lets a parser ignore it); json.loads rejects it
+            _content = _content.decode('utf-8-sig')
         except UnicodeDecodeError as exc:
             return MISSING, 'body is not utf-8 ({})'.format(exc)
+    elif isinstance(_content, str) and _content.startswith('\ufeff'):
+        _content = _content[1:]
     try:
         return json.loads(_content), ''
     except (ValueError, TypeError) as exc:
