@@ -33,8 +33,11 @@ constant and return-value mutations over the syntax tree -- so a grader needs
 nothing installed beyond the framework; scripts/mutation.py (mutmut) remains
 the tool for the framework's own code.
 
-Everything runs in subprocesses in a copy of the work directory: the agent's
-code is never imported into the process that judges it.
+The agent's code is never imported into the process that judges it: the tests
+run in child processes (mutants in a copy of the work directory). It does run
+inside the child that reports a test run's result, so a conftest hook could
+change that result: `harness_untouched` fails when the agent changed any file
+that decides how tests run, and grade_workdir checks it by default.
 """
 import ast
 import copy
@@ -82,9 +85,12 @@ def _git(repo: str, *args: str) -> str:
     _exe = shutil.which('git')
     if not _exe:
         raise RuntimeError('git is not installed: changes() reads the work directory with git')
-    # bandit B603: a fixed argument list with the git found on PATH; no shell
-    _done = subprocess.run([_exe, '-C', repo, *args], capture_output=True, text=True,  # nosec B603
-                           timeout=60)
+    try:
+        # bandit B603: a fixed argument list with the git found on PATH; no shell
+        _done = subprocess.run([_exe, '-C', repo, *args], capture_output=True, text=True,  # nosec B603
+                               timeout=60)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError('git {} did not answer in 60s in {}'.format(' '.join(args), repo)) from None
     if _done.returncode != 0:
         raise RuntimeError('git {} failed in {}: {}'.format(' '.join(args), repo, _done.stderr.strip()[:300]))
     return _done.stdout
@@ -159,6 +165,43 @@ def never_touches(changed: Sequence[FileChange], forbidden: Sequence[str]) -> Ch
                  src=CODE, claim='never touches {}'.format(sorted(forbidden)))
 
 
+HARNESS_FILES = ('**/conftest.py', '**/sitecustomize.py', '**/usercustomize.py', '**/*.pth',
+                 'pytest.ini', 'pyproject.toml', 'setup.cfg', 'tox.ini')
+"""
+Files that decide how tests run rather than what they test. Code in them runs
+inside the process that reports the result -- a conftest hook can turn a red
+run green, or fail every mutant -- so an agent that changes them is changing
+the grader, not the work. Checked by default (`harness_untouched`); a task that
+genuinely needs a conftest change says so with allow_harness.
+"""
+
+
+def harness_untouched(changed: Sequence[FileChange]) -> Check:
+    """None of HARNESS_FILES changed: the grader judges the work, not a harness the agent rewired."""
+    _hit = [_c.path for _c in changed if _matches(_c.path, HARNESS_FILES)]
+    return Check(name='没有改动决定用例怎么运行的文件', ok=not _hit,
+                 expr='改动了：{}（这些文件里的代码运行在判定结果的进程里）'.format(_listed(_hit)) if _hit else '没有',
+                 src=CODE, claim='harness files untouched')
+
+
+def committed(repo: str, ref: str, path: str) -> str:
+    """
+    `path` as it was at `ref`, in a temporary file: a judgement inventory the
+    agent could not have edited. Read from the work directory, the inventory is
+    the agent's to rewrite -- loosen a test, regenerate the inventory, and
+    not_weakened has nothing to compare against. The caller removes the file.
+    """
+    try:
+        _text = _git(repo, 'show', '{}:{}'.format(ref, path.replace('\\', '/')))
+    except RuntimeError as exc:
+        raise ValueError('{} is not in {} at {}: the inventory to compare with must be committed '
+                         'before the agent starts'.format(path, repo, ref)) from exc
+    _fd, _tmp = tempfile.mkstemp(prefix='ipandora-inventory-', suffix='.json')
+    with os.fdopen(_fd, 'w', encoding='utf-8') as _f:
+        _f.write(_text)
+    return _tmp
+
+
 def change_size(changed: Sequence[FileChange], max_files: Optional[int] = None,
                 max_lines: Optional[int] = None) -> Check:
     """The change is no bigger than the task needs: files, and lines added plus removed."""
@@ -175,14 +218,36 @@ def change_size(changed: Sequence[FileChange], max_files: Optional[int] = None,
 
 # -- the tests it wrote, and the project's own ---------------------------------------------------
 
-def _environment(root: str, pythonpath: Sequence[str]) -> Dict[str, str]:
-    _env = dict(os.environ)
-    _paths = [os.path.join(root, _p) for _p in pythonpath]
-    _env['PYTHONPATH'] = os.pathsep.join(_paths + ([_env['PYTHONPATH']] if _env.get('PYTHONPATH') else []))
-    # no stale bytecode: a mutant written in the same second as the original,
-    # with the same size, would otherwise run as the original
-    _env['PYTHONDONTWRITEBYTECODE'] = '1'
-    return _env
+_BOOT = """
+import json as _ipj, os as _ipo, sys as _ips
+_ips.dont_write_bytecode = True
+_ipo.chdir(_ipo.environ['IPANDORA_GRADER_ROOT'])
+_ips.path[:0] = _ipj.loads(_ipo.environ['IPANDORA_GRADER_PATH'])
+"""
+
+
+def _child(root: str, pythonpath: Sequence[str], body: str, args: Sequence[str], timeout: float):
+    """
+    Run `body` in a fresh interpreter on the work directory at `root`.
+
+    It starts in an empty directory with PYTHON* variables ignored (-E), and
+    only then moves into the work directory and puts it on the path. Started
+    there, the interpreter imported the work directory's sitecustomize.py
+    before anything of ours ran, and that file printed a result line of its
+    choosing: a failing test reported as passing. Bytecode is not written: a
+    mutant written in the same second as the original, with the same size,
+    would otherwise run as the original.
+    """
+    _paths = [os.path.join(root, _p) for _p in pythonpath] + [
+        _p for _p in os.environ.get('PYTHONPATH', '').split(os.pathsep) if _p]
+    _env = dict(os.environ, IPANDORA_GRADER_ROOT=os.path.abspath(root), IPANDORA_GRADER_PATH=json.dumps(_paths))
+    _start = tempfile.mkdtemp(prefix='ipandora-grader-')
+    try:
+        # bandit B603: this interpreter, our own script, the grader's own arguments; no shell
+        return subprocess.run([sys.executable, '-E', '-c', _BOOT + body, *args], cwd=_start,  # nosec B603
+                              env=_env, capture_output=True, text=True, timeout=timeout)
+    finally:
+        shutil.rmtree(_start, ignore_errors=True)
 
 
 _CHILD = '''
@@ -204,16 +269,17 @@ def suite(project: str, tests: Sequence[str], baseline: Optional[str] = None, ti
     child process: which cases passed, which judged nothing, and -- with
     `baseline`, a judgement inventory such as conf/judgements.json -- which
     judgements got weaker than the baseline says they were.
+
+    A baseline inside the work directory is the agent's to edit: take it from
+    the commit the agent started at -- `committed(project, base, path)`, which
+    grade_workdir does when given `base`.
     """
     if not tests:
         raise ValueError('suite() needs at least one test path')
-    _python = sys.executable
-    _baseline = os.path.join(project, baseline) if baseline and not os.path.isabs(baseline) else (baseline or '')
+    _baseline = os.path.abspath(os.path.join(project, baseline)) if baseline and not os.path.isabs(baseline) \
+        else (baseline or '')
     try:
-        # bandit B603: this interpreter, a fixed script, the grader's own arguments; no shell
-        _done = subprocess.run([_python, '-c', _CHILD, _baseline, *tests], cwd=project,  # nosec B603
-                               env=_environment(project, pythonpath), capture_output=True, text=True,
-                               timeout=timeout)
+        _done = _child(project, pythonpath, _CHILD, [_baseline, *tests], timeout)
     except subprocess.TimeoutExpired:
         return {'ok': False, 'collect_error': 'the tests ran for more than {:g}s'.format(timeout), 'total': 0,
                 'cases': [], 'weakened': [], 'baseline': bool(_baseline)}
@@ -395,19 +461,16 @@ def mutation(project: str, tests: Sequence[str], targets: Sequence[str], max_mut
                         one run of the tests.
     :param timeout:     per mutant; default five times the clean run, at least 10s.
     """
-    _python = sys.executable
     _work = tempfile.mkdtemp(prefix='ipandora-mutation-')
     try:
         _root = os.path.join(_work, 'project')
         shutil.copytree(project, _root, ignore=_ignore, symlinks=True)
-        _env = _environment(_root, pythonpath)
-        _cmd = [_python, '-m', 'pytest', '-x', '-q', '-p', 'no:cacheprovider', '--no-header', *tests]
+        _body = 'import pytest\n_ips.exit(pytest.main(_ips.argv[1:]))\n'
+        _args = ['-x', '-q', '-p', 'no:cacheprovider', '--no-header', *tests]
 
         def _run(limit):
             try:
-                # bandit B603: this interpreter running pytest on the grader's own arguments; no shell
-                _done = subprocess.run(_cmd, cwd=_root, env=_env, capture_output=True, text=True,  # nosec B603
-                                       timeout=limit)
+                _done = _child(_root, pythonpath, _body, _args, limit)
                 return _done.returncode, (_done.stdout + _done.stderr)[-600:]
             except subprocess.TimeoutExpired:
                 return None, 'timeout'
@@ -426,6 +489,22 @@ def mutation(project: str, tests: Sequence[str], targets: Sequence[str], max_mut
             _path = os.path.join(_root, _target)
             with open(_path, encoding='utf-8') as _f:
                 _original = _f.read()
+            # Do the tests load this file at all? Replaced by one that fails on
+            # import, they must fail. If they pass, they test an installed copy
+            # or never import it, and every mutant would "survive" -- a 0%
+            # score that blames the tests for the set-up.
+            try:
+                with open(_path, 'w', encoding='utf-8') as _f:
+                    _f.write('raise ImportError("ipandora mutation probe: {} was loaded")\n'.format(_target))
+                _rc, _ = _run(_limit)
+            finally:
+                with open(_path, 'w', encoding='utf-8') as _f:
+                    _f.write(_original)
+            if _rc == 0:
+                _result['error'] = ('the tests never load {} from the work directory: with it replaced by a '
+                                    'file that fails on import they still pass -- they import an installed '
+                                    'copy, or do not import it at all'.format(_target))
+                return _result
             _all = mutants(_original, _target)
             _result['total'] += len(_all)
             try:
@@ -481,15 +560,32 @@ def to_dict(change: FileChange) -> Dict[str, Any]:
 def grade_workdir(project: str, base: Optional[str] = None, allow: Sequence[str] = (),
                   forbid: Sequence[str] = (), max_files: Optional[int] = None, max_lines: Optional[int] = None,
                   tests: Sequence[str] = (), targets: Sequence[str] = (), baseline: Optional[str] = None,
-                  min_score: float = 0.6, max_mutants: int = 40) -> List[Check]:
+                  min_score: float = 0.6, max_mutants: int = 40, allow_harness: bool = False) -> List[Check]:
     """
-    Every grader that applies, from what is given: scope (with `base`),
-    the tests (with `tests`), weakening (with `baseline`), mutation (with
-    `tests` and `targets`). What `ipandora eval code` runs.
+    Every grader that applies, from what is given: scope (with `base`; the
+    harness files are checked unless `allow_harness`), the tests (with
+    `tests`), weakening (with `baseline` -- read from `base` when given, never
+    from what the agent left), mutation (with `tests` and `targets`). What
+    `ipandora eval code` runs.
     """
     _checks = []
+    _committed = None
+    if base is not None and baseline and not os.path.isabs(baseline):
+        _committed = baseline = committed(project, base, baseline)
+    try:
+        return _graded(project, base, allow, forbid, max_files, max_lines, tests, targets, baseline,
+                       min_score, max_mutants, allow_harness, _checks)
+    finally:
+        if _committed:
+            os.remove(_committed)
+
+
+def _graded(project, base, allow, forbid, max_files, max_lines, tests, targets, baseline, min_score,
+            max_mutants, allow_harness, _checks) -> List[Check]:
     if base is not None:
         _changed = changes(project, base)
+        if not allow_harness:
+            _checks.append(harness_untouched(_changed))
         if allow:
             _checks.append(only_touches(_changed, allow))
         if forbid:
@@ -529,4 +625,5 @@ def from_json(text: str) -> List[Check]:
 
 __all__ = ['FileChange', 'changes', 'parse_numstat', 'only_touches', 'never_touches', 'change_size',
            'suite', 'tests_pass', 'every_test_judges', 'not_weakened',
-           'Mutant', 'mutants', 'mutation', 'kills_mutants', 'grade_workdir', 'to_json', 'from_json', 'CODE']
+           'Mutant', 'mutants', 'mutation', 'kills_mutants', 'grade_workdir', 'to_json', 'from_json', 'CODE',
+           'HARNESS_FILES', 'harness_untouched', 'committed']

@@ -220,7 +220,8 @@ class TestCommand:
                         '--tests', 'tests/test_strong.py', '--targets', 'src/calc.py', '--json')
         assert _ok.returncode == 0, _ok.stdout + _ok.stderr
         _checks = coding.from_json(_ok.stdout)
-        assert [_c.name for _c in _checks] == ['只改了任务范围内的文件', '没有改动不许碰的文件', '用例能运行并通过',
+        assert [_c.name for _c in _checks] == ['没有改动决定用例怎么运行的文件', '只改了任务范围内的文件',
+                                               '没有改动不许碰的文件', '用例能运行并通过',
                                                '每条用例都有判定', '用例能抓住至少 60% 的变异']
         assert all(_c.ok for _c in _checks)
         _bad = self._cli(project, '--tests', 'tests/test_weak.py', '--targets', 'src/calc.py')
@@ -238,3 +239,62 @@ class TestCommand:
         with pytest.raises(ValueError, match='no `ipandora eval code --json` output'):
             coding.from_json('Traceback ...')
         assert coding.from_json('noise\n' + coding.to_json([coding.only_touches([], ['*'])]))[0].ok
+
+
+class TestCr6:
+    """Found in code review CR6 (docs/design/reviews/06-CR6.md)."""
+
+    def _inventory(self, project):
+        _env = dict(os.environ, PYTHONPATH=os.pathsep.join([str(project / 'src'), os.environ.get('PYTHONPATH', '')]),
+                    IPANDORA_REPORTS_DIR=str(project.parent / 'reports'))
+        subprocess.run([sys.executable, '-m', 'ipandora.run', 'run', 'tests/test_strong.py', '--baseline',
+                        'judgements.json', '--update-baseline'], cwd=str(project), env=_env, check=True,
+                       capture_output=True, timeout=300)
+        return _env
+
+    def test_the_inventory_is_read_as_committed_not_as_the_agent_left_it(self, project):
+        _env = self._inventory(project)
+        git(project, 'add', 'judgements.json')
+        git(project, '-c', 'user.email=t@example.com', '-c', 'user.name=t', 'commit', '-qm', 'inventory')
+        # the agent loosens a test and regenerates the inventory to match
+        (project / 'tests' / 'test_strong.py').write_text(
+            textwrap.dedent(STRONG).lstrip().replace('== 99', '>= 0'), encoding='utf-8')
+        subprocess.run([sys.executable, '-m', 'ipandora.run', 'run', 'tests/test_strong.py', '--baseline',
+                        'judgements.json', '--update-baseline'], cwd=str(project), env=_env, capture_output=True,
+                       timeout=300)
+        _checks = {_c.name: _c for _c in coding.grade_workdir(str(project), base='HEAD',
+                                                              tests=['tests/test_strong.py'],
+                                                              baseline='judgements.json')}
+        assert not _checks['没有削弱项目原有的判定'].ok
+        with pytest.raises(ValueError, match='must be committed'):
+            coding.grade_workdir(str(project), base='HEAD', tests=['tests/test_strong.py'], baseline='nope.json')
+
+    def test_a_sitecustomize_in_the_work_directory_cannot_report_for_the_tests(self, project):
+        (project / 'sitecustomize.py').write_text(
+            'import os\nos.write(1, b\'IPANDORA-SUITE {"ok": true, "collect_error": "", "total": 1, "cases": '
+            '[{"nodeid": "t", "outcome": "passed", "unverified": false, "message": ""}], "weakened": []}\\n\')\n',
+            encoding='utf-8')
+        (project / 'tests' / 'test_fail.py').write_text('def test_fail():\n    assert 1 == 2\n', encoding='utf-8')
+        assert not coding.tests_pass(coding.suite(str(project), ['tests/test_fail.py'])).ok
+
+    def test_harness_files_are_checked_by_default(self, project):
+        (project / 'tests' / 'conftest.py').write_text('import pytest\n', encoding='utf-8')
+        _checks = coding.grade_workdir(str(project), base='HEAD')
+        assert [(_c.name, _c.ok) for _c in _checks] == [('没有改动决定用例怎么运行的文件', False)]
+        assert 'tests/conftest.py' in _checks[0].expr
+        assert coding.grade_workdir(str(project), base='HEAD', allow_harness=True) == []
+        assert coding.harness_untouched([coding.FileChange('pyproject.toml')]).ok is False
+        assert coding.harness_untouched([coding.FileChange('src/calc.py')]).ok
+
+    def test_tests_that_never_load_the_target_are_named(self, project):
+        (project / 'src' / 'unused.py').write_text('def f(x):\n    return x + 1\n', encoding='utf-8')
+        _r = coding.mutation(str(project), ['tests/test_strong.py'], ['src/unused.py'])
+        assert _r['tested'] == 0 and 'never load src/unused.py' in _r['error']
+        assert 'never load' in coding.kills_mutants(_r).expr
+
+    def test_git_that_hangs_is_a_message(self, monkeypatch, project):
+        def hang(*args, **kwargs):
+            raise subprocess.TimeoutExpired(args[0], 60)
+        monkeypatch.setattr(coding.subprocess, 'run', hang)
+        with pytest.raises(RuntimeError, match='did not answer'):
+            coding.changes(str(project))
