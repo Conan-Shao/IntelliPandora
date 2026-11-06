@@ -105,3 +105,14 @@ class TestEvalReport:
     def test_labelling_samples_are_masked(self):
         _rows = samples(_eval_run(), include_deterministic=True)
         assert 'hunter2' not in str(_rows)
+
+
+class TestRedactionStaysLinear:
+    def test_a_long_token_before_a_colon_is_fast(self):
+        # the first version of the colon rule backtracked: 16 KB took 17 s, and
+        # a CI job redacting real bodies hung
+        import time
+        _start = time.perf_counter()
+        for _text in ('a' * 200000 + ':', ('ab_' * 70000) + ': x', '"' + 'a' * 200000 + '":'):
+            redact_text(_text)
+        assert time.perf_counter() - _start < 2

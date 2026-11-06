@@ -60,11 +60,13 @@ _KEY_WORDS = (r'password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key|priv
 # fragment inside an error message, a YAML line in a log. Only key=value pairs
 # and whole JSON bodies were masked; a message quoting the request dict
 # published the password as written.
-COLON_PAIR = re.compile(
-    r'(?P<key>(?P<q>[\'"]?)[A-Za-z0-9_-]*(?:' + _KEY_WORDS + r')[A-Za-z0-9_-]*(?P=q))'
-    r'(?P<sep>[ \t]*:[ \t]*)'
-    r'(?P<val>"(?:[^"\\\n]|\\.)*"|\'(?:[^\'\\\n]|\\.)*\'|[^\s,;}\])\'"]+)',
-    re.IGNORECASE)
+COLON_KEY = re.compile(
+    r'(?<![A-Za-z0-9_\'"-])(?P<q>[\'"]?)(?P<name>[A-Za-z0-9_-]{1,64})(?P=q)[ \t]*:[ \t]*')
+COLON_VALUE = re.compile(r'"(?:[^"\\\n]|\\.)*"|\'(?:[^\'\\\n]|\\.)*\'|[^\s,;}\])\'"]+')
+# Two steps, not one pattern with the key words inside a [A-Za-z0-9_-]* run:
+# that backtracked quadratically, and a 16 KB token followed by a colon took
+# 17 seconds to redact. The key is a bounded token that must start at a word
+# boundary; whether it names a credential is decided afterwards.
 
 # `Cookie: sid=...; theme=dark` -- a header line quoted in text: the whole
 # rest of the line is the credential.
@@ -80,16 +82,31 @@ SECRET_KEYS = re.compile(r'(?i)(' + _KEY_WORDS + r')')
 
 
 def _redact_colon_pairs(text: str) -> str:
-    def _value(match):
-        _val = match.group('val')
+    def _header(match):
+        return match.group('key') + match.group('sep') + MASK
+
+    text = HEADER_LINE.sub(_header, text)
+    _out, _pos = [], 0
+    for _key in COLON_KEY.finditer(text):
+        if _key.start() < _pos or not SECRET_KEYS.search(_key.group('name')):
+            continue
+        _value = COLON_VALUE.match(text, _key.end())
+        if _value is None:
+            continue
+        _val = _value.group(0)
         if _val[:1] in ('"', "'"):
             if len(_val) <= 2:
-                return match.group(0)           # empty string: nothing to hide
+                continue                        # empty string: nothing to hide
             _masked = _val[0] + MASK + _val[0]
         else:
+            if _val == MASK:
+                continue
             _masked = MASK
-        return match.group('key') + match.group('sep') + _masked
-    return COLON_PAIR.sub(_value, HEADER_LINE.sub(_value, text))
+        _out.append(text[_pos:_value.start()])
+        _out.append(_masked)
+        _pos = _value.end()
+    _out.append(text[_pos:])
+    return ''.join(_out)
 
 
 # One key=value run of a form body, a query string or a cookie line:
