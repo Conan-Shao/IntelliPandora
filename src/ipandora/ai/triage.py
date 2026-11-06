@@ -66,6 +66,19 @@ class _Budget:
         self.used += 1
 
 
+def prompt_nodeid(nodeid: str) -> str:
+    """
+    The case id as the model provider sees it: parameters hidden.
+
+    A parametrised id can carry the credential itself --
+    `test_login[admin-P@ssw0rd!]` -- and a password has no shape redaction
+    could recognise. The values are rarely what a root cause turns on, and
+    the failure message (masked) still says what was sent.
+    """
+    _base, _sep, _rest = nodeid.partition('[')
+    return redact_text(_base) + ('[参数已隐藏]' if _sep else '')
+
+
 def build_prompt(report, result) -> str:
     _lines = ['Run: {}'.format(getattr(result, 'headline', lambda: '')() or 'unknown'),
               'Rule-based classification: {}'.format(report.headline()),
@@ -77,7 +90,7 @@ def build_prompt(report, result) -> str:
     for _case in getattr(result, 'failures', [])[:MAX_FAILURES_IN_PROMPT]:
         _finding = _by_node.get(_case.nodeid)
         _lines.append('- {} [{}]'.format(
-            _case.nodeid, _finding.category if _finding else 'unknown'))
+            prompt_nodeid(_case.nodeid), _finding.category if _finding else 'unknown'))
         if _case.message:
             # Redacted before it is cut, and before it leaves the machine: this
             # text goes to a model provider. Cutting first could split a token

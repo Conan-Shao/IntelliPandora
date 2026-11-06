@@ -12,6 +12,7 @@ deterministic ones, and the trajectory as the evidence.
 """
 import json
 import os
+from dataclasses import replace
 from datetime import datetime
 from typing import Any, Dict, Optional
 
@@ -86,14 +87,53 @@ def context(run: EvalRun, comparison: Optional[Dict[str, Any]] = None,
     }
 
 
+def _masked(value: Any) -> Any:
+    from ipandora.core.report.redact import redact, redact_text
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    if isinstance(value, (str, dict, list, tuple)):
+        return redact(value)
+    return redact_text(repr(value))
+
+
+def redacted(run: EvalRun) -> EvalRun:
+    """
+    The run with every text an agent, a grader or a judge produced masked.
+
+    The test report was redacted from the start; the evaluation report was
+    not, and it holds more of what an agent saw than any test report: its
+    output, every step of its trajectory -- tool results included -- and the
+    graders' and judges' messages. A credential an agent read from its
+    environment went into report.html as is.
+
+    Numbers are left alone: cost keys such as `tokens_in` name a credential
+    to the key-name rule, and masking them would break the totals.
+    """
+    from ipandora.core.report.redact import redact_text
+
+    def _check(check: Dict[str, Any]) -> Dict[str, Any]:
+        return dict(check, **{_k: redact_text(check[_k]) for _k in ('name', 'expr', 'claim')
+                              if isinstance(check.get(_k), str)})
+
+    _trials = [replace(_t, output=_masked(_t.output),
+                       trajectory=[_masked(_e) for _e in _t.trajectory or []],
+                       error=redact_text(_t.error or ''),
+                       checks=[_check(_c) for _c in _t.checks])
+               for _t in run.trials]
+    _selfcheck = [dict(_p, problem=redact_text(str(_p.get('problem') or '')),
+                       checks=[_check(_c) for _c in _p.get('checks') or []])
+                  for _p in run.selfcheck]
+    return replace(run, trials=_trials, selfcheck=_selfcheck)
+
+
 def to_html(run: EvalRun, comparison: Optional[Dict[str, Any]] = None, title: str = None) -> str:
     from ipandora.core.report.render import environment
-    return environment().get_template(TEMPLATE).render(**context(run, comparison, title))
+    return environment().get_template(TEMPLATE).render(**context(redacted(run), comparison, title))
 
 
 def to_dict(run: EvalRun, comparison: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """report.json for an evaluation: the run, plus the verdict and the comparison."""
-    _out = run.to_dict()
+    _out = redacted(run).to_dict()
     _out.update({'view': 'eval', 'verdict': verdict(run, comparison),
                  'comparison': comparison or {}})
     return _out

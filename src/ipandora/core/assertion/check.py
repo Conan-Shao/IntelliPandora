@@ -140,6 +140,17 @@ def brief(value, limit: int = MAX_VALUE_CHARS) -> str:
     if len(_text) <= limit:
         return _text
 
+    # Masked before it is cut. Backing off to a token boundary (below) keeps
+    # a hex key or a bare token whole, but not a credential whose shape spans
+    # separators: a PEM block cut before its END line, a JWT cut after a dot,
+    # a seed phrase cut after its eighth word -- each then matched no pattern
+    # and its first part was published. Short values are left as they are:
+    # nothing cuts them, and the report masks them whole.
+    from ipandora.core.report.redact import redact_text
+    _text = redact_text(_text)
+    if len(_text) <= limit:
+        return _text
+
     _head = _text[:limit]
     _next = _text[limit:limit + 1]
     if _next and _TRAILING_TOKEN.search(_next):

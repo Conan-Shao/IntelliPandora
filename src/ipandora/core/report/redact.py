@@ -28,11 +28,8 @@ SECRET_HEADERS = frozenset({
     'x-session-token', 'api-key', 'auth-token', 'private-token',
 })
 
-# Field names whose value is a credential wherever it appears.
-SECRET_KEYS = re.compile(
-    r'(?i)(password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key|'
-    r'private[_-]?key|privatekey|mnemonic|seed[_-]?phrase|credential|'
-    r'signature|signed[_-]?tx|session[_-]?id|refresh[_-]?token)')
+MAX_DEPTH = 20
+"""Deeper than this, a structure is masked whole rather than walked."""
 
 # Value shapes that are credentials regardless of what they are called.
 VALUE_PATTERNS = (
@@ -54,6 +51,46 @@ VALUE_PATTERNS = (
 
 # BIP-39 style seed phrases: 12 or 24 lowercase words in a row.
 MNEMONIC = re.compile(r'\b(?:[a-z]{3,8}\s+){11}[a-z]{3,8}\b')
+
+_KEY_WORDS = (r'password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|'
+              r'privatekey|mnemonic|seed[_-]?phrase|credential|signature|signed[_-]?tx|'
+              r'session[_-]?id|refresh[_-]?token')
+
+# `'password': 'x'`, `"token": "x"`, `password: x` -- a dict repr or a JSON
+# fragment inside an error message, a YAML line in a log. Only key=value pairs
+# and whole JSON bodies were masked; a message quoting the request dict
+# published the password as written.
+COLON_PAIR = re.compile(
+    r'(?P<key>(?P<q>[\'"]?)[A-Za-z0-9_-]*(?:' + _KEY_WORDS + r')[A-Za-z0-9_-]*(?P=q))'
+    r'(?P<sep>[ \t]*:[ \t]*)'
+    r'(?P<val>"(?:[^"\\\n]|\\.)*"|\'(?:[^\'\\\n]|\\.)*\'|[^\s,;}\])\'"]+)',
+    re.IGNORECASE)
+
+# `Cookie: sid=...; theme=dark` -- a header line quoted in text: the whole
+# rest of the line is the credential.
+HEADER_LINE = re.compile(
+    r'(?im)^(?P<key>[ \t>*-]*(?:' + '|'.join(sorted(re.escape(_h) for _h in (
+        'authorization', 'proxy-authorization', 'cookie', 'set-cookie', 'x-api-key',
+        'x-auth-token', 'x-access-token', 'x-csrf-token', 'x-session-token', 'api-key',
+        'auth-token', 'private-token'))) + r'))(?P<sep>[ \t]*:[ \t]*)(?P<val>\S[^\r\n]*)')
+
+
+# Field names whose value is a credential wherever it appears.
+SECRET_KEYS = re.compile(r'(?i)(' + _KEY_WORDS + r')')
+
+
+def _redact_colon_pairs(text: str) -> str:
+    def _value(match):
+        _val = match.group('val')
+        if _val[:1] in ('"', "'"):
+            if len(_val) <= 2:
+                return match.group(0)           # empty string: nothing to hide
+            _masked = _val[0] + MASK + _val[0]
+        else:
+            _masked = MASK
+        return match.group('key') + match.group('sep') + _masked
+    return COLON_PAIR.sub(_value, HEADER_LINE.sub(_value, text))
+
 
 # One key=value run of a form body, a query string or a cookie line:
 # `password=hunter2` in `username=alice&password=hunter2`.
@@ -96,6 +133,8 @@ def redact_text(value: str) -> str:
     _out = MNEMONIC.sub(MASK, _out)
     if '=' in _out:
         _out = _redact_pairs(_out)
+    if ':' in _out:
+        _out = _redact_colon_pairs(_out)
     return _out
 
 
@@ -148,10 +187,12 @@ def redact(value: Any, _depth: int = 0) -> Any:
     holding something innocuous still should not be published, and a private
     key pasted into a free-text error message has no field name at all.
     """
-    if _depth > 20:
-        # cycles are impossible in JSON data, but a hand-built structure could
-        # nest pathologically; stop rather than recurse forever
-        return value
+    if _depth > MAX_DEPTH:
+        # Cycles are impossible in JSON data, but a hand-built structure could
+        # nest pathologically; stop rather than recurse forever. Masked, not
+        # returned as it was: everything below this depth used to be published
+        # unredacted, and a deeply nested API response is not unusual.
+        return MASK if isinstance(value, (dict, list, tuple, str)) else value
 
     if isinstance(value, dict):
         return {_k: (MASK if _is_secret_key(_k) else redact(_v, _depth + 1))

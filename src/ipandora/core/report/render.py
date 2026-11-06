@@ -51,8 +51,14 @@ def highlight_json(text: str) -> Markup:
     the content is a response body from the system under test, so nothing may
     reach the page unescaped.
     """
-    if not text:
+    if text is None or text == '':
         return Markup('')
+    if not isinstance(text, str):
+        # a body the recorder could not turn into text -- a number, a dict
+        # handed over as-is -- used to raise TypeError and take the whole
+        # report with it
+        text = json.dumps(text, ensure_ascii=False, indent=2, default=str) \
+            if isinstance(text, (dict, list)) else str(text)
     _out, _pos = [], 0
     for _match in _JSON_TOKEN.finditer(text):
         _out.append(html.escape(text[_pos:_match.start()]))
@@ -87,7 +93,9 @@ def to_curl(exchange: dict) -> str:
         _parts += ['-H', shlex.quote('{}: {}'.format(_name, _value))]
     _body = exchange.get('request_body')
     if _body:
-        _parts += ['--data', shlex.quote(_body if isinstance(_body, str) else str(_body))]
+        # a dict body is sent as JSON; str() of it is a Python repr no server accepts
+        _parts += ['--data', shlex.quote(_body if isinstance(_body, str)
+                                         else json.dumps(_body, ensure_ascii=False, default=str))]
     _parts.append(shlex.quote(str(exchange.get('url') or '')))
     return ' '.join(_parts)
 

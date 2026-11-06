@@ -88,10 +88,12 @@ HTML 和 JSON 出自同一份数据。**脱敏在 `build()` 时完成，不在�
 
 会被掩码的东西，靠两个独立信号识别：
 
-- **字段名**：`password` `token` `api_key` `mnemonic` `signedTx` `Authorization` `Cookie` …。JSON 里的字段、请求头，以及 `key=value` 形式的文本都按名字认：表单请求体 `username=alice&password=…`、URL 查询串 `?access_token=…`、消息里的 `password=…`
+- **字段名**：`password` `token` `api_key` `mnemonic` `signedTx` `Authorization` `Cookie` …。JSON 里的字段、请求头，以及 `key=value` 形式的文本都按名字认：表单请求体 `username=alice&password=…`、URL 查询串 `?access_token=…`、消息里的 `password=…`；还有冒号形式：消息里引用的字典 `{'password': '…'}`、JSON 片段 `"token": "…"`、YAML 行 `password: …`，以及文本里整行的 `Cookie: …`、`Authorization: …`
 - **值的形状**：以太坊私钥 `0x[64位hex]`、JWT、`sk-` 前缀、AWS AKIA、PEM 私钥块、助记词
 
-宁可多掩码 —— 误掩码只是让人多跑一次，泄漏的凭据收不回来。
+宁可多掩码 —— 误掩码只是让人多跑一次，泄漏的凭据收不回来。嵌套超过 20 层的部分整块掩码。长值先掩码再截断，截断不会把 PEM、JWT、助记词切成认不出的片段。
+
+评测报告（`ipandora eval run`）和导出给人工标注的样本同样脱敏：agent 的输出、轨迹、评分器和评委的说明都会掩码，成本里的数字保留。交给模型做根因分析的提示里，用例 id 的参数部分整个隐藏（`test_login[参数已隐藏]`）：参数可能就是密码，而密码没有可识别的形状。
 
 同样的掩码也用在交给 agent 的内容上：MCP 的 `run_tests` 摘要和 `explain_failure` 的失败消息、traceback，以及开启 LLM 归因时发给模型的提示。这些内容通常会被发往模型服务商，所以和报告一样处理，并且先掩码再截断。框架自己的运行存档（`~/.ipandora/runs`）只在本机，保留原文。
 

@@ -43,13 +43,19 @@ def samples(run: EvalRun, limit: Optional[int] = None, seed: int = 0,
             _rows.append({'task_id': _t.task_id, 'trial': _t.index, 'check': _c.get('name'),
                           'source': _c.get('src'),
                           'judge': None if _c.get('uncertain') else bool(_c.get('ok')),
-                          'output': _t.output, 'trajectory_steps': len(_t.trajectory),
+                          'output': _masked(_t.output), 'trajectory_steps': len(_t.trajectory),
                           'human': None})
     if limit is not None and limit < len(_rows):
         # bandit B311: sampling rows for people to label, not secrecy
         _rows = random.Random(seed).sample(_rows, limit)  # nosec B311
         _rows.sort(key=lambda _r: (_r['task_id'], _r['trial'], str(_r['check'])))
     return _rows
+
+
+def _masked(value: Any) -> Any:
+    # rows go to people, and from there anywhere: masked like the report
+    from ipandora.core.eval.report import _masked as masked
+    return masked(value)
 
 
 def export(rows: List[Dict[str, Any]], path: str) -> str:
