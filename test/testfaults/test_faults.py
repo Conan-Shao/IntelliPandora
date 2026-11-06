@@ -11,6 +11,7 @@ fault from a real outage.
 With TOXIPROXY_URL set, the same API tests also run against a real Toxiproxy.
 """
 import os
+import re
 import textwrap
 import threading
 import time
@@ -420,4 +421,48 @@ class TestR1:
         monkeypatch.setenv('IPANDORA_RESOURCE_TIMEOUT', 'soon')            # unreadable: the default, not a crash
         with faults.injected(faults.latency('db', 1)):
             assert 'db' in faults._HELD
+        assert 'db' not in faults._HELD
+
+    def test_a_toxiproxy_that_never_answers_times_out(self):
+        import socket
+        _s = socket.socket()
+        _s.bind(('127.0.0.1', 0))
+        _s.listen(1)                                                     # accepts, never answers
+        _outcome = []
+
+        def _ask():
+            try:
+                faults.Toxiproxy('http://127.0.0.1:{}'.format(_s.getsockname()[1]), timeout=0.3).proxies()
+                _outcome.append('answered')
+            except faults.ToxiproxyError as exc:
+                _outcome.append(str(exc))
+        _thread = threading.Thread(target=_ask, daemon=True)
+        try:
+            _thread.start()
+            _thread.join(5)                                              # a hang fails here, it does not stall the suite
+            assert _outcome, 'the client waited for an answer with no time limit'
+            assert re.search(r'Toxiproxy at http://127\.0\.0\.1:\d+ is not reachable', _outcome[0]), _outcome
+        finally:
+            _s.close()
+
+    def test_the_client_never_goes_through_an_http_proxy(self, monkeypatch, allowed):
+        for _name in ('NO_PROXY', 'no_proxy'):
+            monkeypatch.setenv(_name, '')                                # nothing exempt: a proxy would be used
+        for _name in ('HTTP_PROXY', 'http_proxy', 'HTTPS_PROXY', 'https_proxy'):
+            monkeypatch.setenv(_name, 'http://127.0.0.1:9')
+        assert faults.Toxiproxy(allowed.url).proxies() == {}
+
+    def test_the_stream_and_toxicity_reach_toxiproxy(self, db, allowed):
+        with faults.injected(faults.latency('db', 5, stream='upstream', toxicity=0.5)):
+            _toxic = allowed.proxies['db'].toxics[0]
+            assert (_toxic['type'], _toxic['stream'], _toxic['toxicity'], _toxic['attributes']) == (
+                'latency', 'upstream', 0.5, {'latency': 5, 'jitter': 0})
+
+    def test_an_inner_block_does_not_let_go_of_the_outer_ones_lock(self, db, allowed):
+        with faults.injected(faults.latency('db', 1)):
+            with faults.injected(faults.reset_peer('db')):
+                with faults.injected(faults.timeout('db', 9)):
+                    assert faults._HELD['db'][1] == 3
+                assert faults._HELD['db'][1] == 2
+            assert 'db' in faults._HELD and faults._HELD['db'][1] == 1      # still ours: no other case may inject
         assert 'db' not in faults._HELD
