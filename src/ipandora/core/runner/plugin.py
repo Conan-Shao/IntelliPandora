@@ -430,8 +430,14 @@ def _keep_service_logs(item) -> None:
     story is usually where a 500 is explained.
     """
     from ipandora.core import stack
-    if stack.active():
+    if not stack.active():
+        return
+    try:
         stack.keep_logs(item.nodeid, item.stash.get(_STARTED, time.time()))
+    except Exception as exc:  # noqa: BLE001 -- evidence must never break the run
+        # inside pytest_runtest_makereport: an exception here is an INTERNALERROR
+        # that ends the whole session, not one case's missing logs
+        logger.warning('could not keep the service logs of %s: %s', item.nodeid, exc)
 
 
 def pytest_runtest_setup(item):

@@ -153,3 +153,37 @@ def test_every_image_the_tests_pull_is_pinned_and_registered():
     for _image in _images:
         assert '@sha256:' in _image, '{} is not pinned by digest'.format(_image)
         assert '`{}`'.format(_image.split('@', 1)[1]) in _registry, '{} is not registered'.format(_image)
+
+
+class TestCr11:
+    """Found in code review CR11 (docs/design/reviews/11-CR11.md)."""
+
+    def test_two_compose_files_of_the_same_name_are_two_projects(self, needs_docker, tmp_path):
+        _web = open(os.path.join(HERE, 'web.yaml'), encoding='utf-8').read()
+        for _dir, _greeting in (('shop', 'from-shop'), ('payment', 'from-payment')):
+            (tmp_path / _dir).mkdir()
+            (tmp_path / _dir / 'compose.yaml').write_text(_web.replace('GREETING:-hello', 'GREETING:-' + _greeting),
+                                                          encoding='utf-8')
+        with stack.compose(str(tmp_path / 'shop' / 'compose.yaml')) as _shop:
+            with stack.compose(str(tmp_path / 'payment' / 'compose.yaml')) as _payment:
+                assert _shop.project != _payment.project
+                assert _get(_payment.url('web', 8080)).text.strip() == 'from-payment'
+            # taking payment down left shop alone
+            assert _get(_shop.url('web', 8080)).text.strip() == 'from-shop'
+            with stack.compose(str(tmp_path / 'shop' / 'compose.yaml')) as _again:
+                assert _again.project != _shop.project          # the same file twice at once
+            assert _get(_shop.url('web', 8080)).text.strip() == 'from-shop'
+
+    def test_logs_that_cannot_be_kept_do_not_end_the_run(self, tmp_path, monkeypatch):
+        from ipandora.core.runner import run
+
+        def _broken(nodeid, since):
+            raise ValueError('docker printed something unexpected')
+        monkeypatch.setattr(stack, 'active', lambda: [object()])
+        monkeypatch.setattr(stack, 'keep_logs', _broken)
+        (tmp_path / 's').mkdir()
+        (tmp_path / 's' / 'test_x.py').write_text('def test_fails():\n    assert 1 == 2\n\n'
+                                                   'def test_after():\n    assert 1\n', encoding='utf-8')
+        _result = run(str(tmp_path / 's'), persist=False, quiet=True, baseline='')
+        assert {_c.nodeid.split('::')[-1]: _c.outcome for _c in _result.cases} == {
+            'test_fails': 'failed', 'test_after': 'passed'}
