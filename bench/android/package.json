@@ -1,0 +1,10 @@
+{
+  "name": "ipandora-android-bench",
+  "private": true,
+  "description": "Appium server and its UiAutomator2 driver for scripts/bench_android.py only; not part of the framework. Admitted in docs/security/components.md.",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "appium": "3.9.0",
+    "appium-uiautomator2-driver": "8.7.3"
+  }
+}

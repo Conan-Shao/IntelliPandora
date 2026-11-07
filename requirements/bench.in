@@ -1,0 +1,5 @@
+# The Appium side of the Android comparison (scripts/bench_android.py, M5c in
+# docs/design/decisions/14). Installed only by .github/workflows/android-bench.yml,
+# never by users, never by the test jobs. Admitted in docs/security/components.md.
+# 6.1.x was under 14 days old at admission.
+Appium-Python-Client==6.0.8

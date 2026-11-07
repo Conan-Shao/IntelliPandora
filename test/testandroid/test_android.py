@@ -54,6 +54,24 @@ class TestTheLog:
         assert android.relevant(_many, PACKAGE, ['4242']).splitlines()[-1].endswith('line 999')
         assert len(android.relevant(_many, PACKAGE, ['4242']).splitlines()) == android.LOG_LINES
 
+    def test_a_crash_is_kept_however_much_the_app_logs_after_it(self):
+        # CI: after `am crash` the restarted app and the system's notes about it
+        # filled the last 300 lines and the FATAL EXCEPTION was gone from the report
+        _before = ['11-07 12:00:00.{:03d}  4242  4242 I Shop: before {}'.format(_i % 1000, _i) for _i in range(50)]
+        _crash = [_l for _l in CRASH_LOG.splitlines() if 'AndroidRuntime' in _l]
+        _after = ['11-07 12:00:03.000  5000  5000 W Shop: after {}'.format(_i) for _i in range(1000)]
+        _kept = android.relevant('\n'.join(_before + _crash + _after), PACKAGE, ['4242', '5000']).splitlines()
+        assert len(_kept) == android.LOG_LINES
+        assert _kept[:len(_crash)] == _crash                         # in order: the crash before what followed
+        assert _kept[-1].endswith('after 999') and _kept[len(_crash)].endswith(
+            'after {}'.format(1000 - (android.LOG_LINES - len(_crash))))
+        assert not any('before' in _l for _l in _kept)
+
+    def test_crash_lines_beyond_the_limit_keep_the_first(self):
+        _crashes = ['11-07 12:00:02.000  4242  4242 E AndroidRuntime: frame {}'.format(_i) for _i in range(400)]
+        _kept = android.relevant('\n'.join(_crashes), PACKAGE, ['4242']).splitlines()
+        assert _kept == _crashes[:android.LOG_LINES]
+
 
 class TestTheWidgetTree:
 

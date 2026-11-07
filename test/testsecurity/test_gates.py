@@ -143,7 +143,7 @@ def test_an_action_not_pinned_to_a_sha_with_its_version_fails(tmp_path, monkeypa
 # -- security_report ---------------------------------------------------------
 
 def _scanners(monkeypatch, vulns=(), bandit_results=(), annotations=(), skipped=None,
-              licenses=None, exceptions=()):
+              licenses=None, exceptions=(), npm_projects=(), npm_vulns=(), npm_problems=()):
     def audit(lock):
         return [('requests', '2.32.0', list(vulns) if lock.endswith('ci.txt') else []),
                 ('urllib3', '2.5.0', [])]
@@ -159,6 +159,11 @@ def _scanners(monkeypatch, vulns=(), bandit_results=(), annotations=(), skipped=
     monkeypatch.setattr(sr.check_components, 'declared', lambda: {'requests': ('runtime', '')})
     monkeypatch.setattr(sr, 'tool_versions', lambda: {'pip-audit': '2.10.1', 'bandit': '1.9.4'})
     monkeypatch.setattr(sr, 'locked', lambda lock: set(_lic) - {'pip'})
+    # no npm project unless a test adds one: the real `npm audit` needs the network
+    monkeypatch.setattr(sr.check_components, 'npm_projects', lambda: list(npm_projects))
+    monkeypatch.setattr(sr, 'npm_audit', lambda project, npm='npm': [
+        ('glob', '13.0.6', list(npm_vulns)), ('appium', '3.9.0', [])])
+    monkeypatch.setattr(sr.check_components, 'check_npm_locks', lambda: (list(npm_problems), {}))
 
 
 VULN = {'id': 'PYSEC-2026-1', 'aliases': ['GHSA-xxxx', 'CVE-2026-1'], 'fix_versions': ['2.33.0']}
@@ -474,3 +479,158 @@ def test_the_packaging_check_leaves_the_checkout_alone(tmp_path):
         assert os.path.exists(_marker)
     finally:
         os.remove(_marker)
+
+
+# -- npm (M5c: the Appium side of the Android comparison) -------------------------
+
+NPM = 'https://registry.npmjs.org/'
+
+
+def _npm_project(repo, deps, packages):
+    """bench/x with a package.json declaring `deps` and a lock holding `packages`."""
+    import json
+    _dir = repo / 'bench' / 'x'
+    _dir.mkdir(parents=True, exist_ok=True)
+    (_dir / 'package.json').write_text(json.dumps({'dependencies': deps}), encoding='utf-8')
+    (_dir / 'package-lock.json').write_text(json.dumps({'lockfileVersion': 3, 'packages': dict(
+        {'': {'dependencies': deps}}, **packages)}), encoding='utf-8')
+    return _dir
+
+
+def _pkg(name, version='1.0.0', license='MIT', **extra):
+    _e = {'version': version, 'license': license, 'resolved': '{}{}/-/x.tgz'.format(NPM, name),
+          'integrity': 'sha512-abc'}
+    _e.update(extra)
+    return 'node_modules/' + name, _e
+
+
+def test_npm_lock_checks(tmp_path, monkeypatch):
+    monkeypatch.setattr(cc, 'REPO', str(tmp_path))
+    _npm_project(tmp_path, {'appium': '3.9.0'}, dict([
+        _pkg('appium', '3.9.0', 'Apache-2.0'),
+        _pkg('fine', license='(WTFPL OR MIT)'),
+        _pkg('isaacs', license='BlueOak-1.0.0'),                   # reviewed
+        _pkg('parse-listing', license=None),                       # override: MIT in package.json
+        _pkg('nohash', integrity='sha1-old'),
+        _pkg('elsewhere', resolved='https://evil.example/elsewhere.tgz'),
+        _pkg('gpl', license='GPL-3.0'),
+        _pkg('unstated', license=None),
+        _pkg('sharp-libvips', license='LGPL-3.0-or-later', optional=True),   # never installed
+        ('node_modules/appium/node_modules/bundled', {'version': '2.0.0', 'license': 'MIT',
+                                                      'inBundle': True}),
+    ]))
+    _problems, _seen = cc.check_npm_locks()
+    assert sorted(_p.split(': ', 1)[1] for _p in _problems) == sorted([
+        'nohash@1.0.0 has no sha512 integrity',
+        'elsewhere@1.0.0 is not from {} (https://evil.example/elsewhere.tgz)'.format(NPM),
+        'license not on the allowlist: gpl@1.0.0 (GPL-3.0)',
+        'no license stated: unstated@1.0.0',
+    ]), _problems
+    assert 'sharp-libvips@1.0.0' not in _seen
+    assert _seen['bundled@2.0.0'] == 'MIT' and _seen['parse-listing@1.0.0'] == 'MIT'
+
+
+def test_an_npm_lock_out_of_date_or_missing_fails(tmp_path, monkeypatch):
+    monkeypatch.setattr(cc, 'REPO', str(tmp_path))
+    _dir = _npm_project(tmp_path, {'appium': '3.9.0'}, dict([_pkg('appium', '3.9.0')]))
+    (_dir / 'package.json').write_text('{"dependencies": {"appium": "3.9.1"}}', encoding='utf-8')
+    assert any('out of date with package.json' in _p for _p in cc.check_npm_locks()[0])
+    (_dir / 'package-lock.json').unlink()
+    assert any('has no package-lock.json' in _p for _p in cc.check_npm_locks()[0])
+
+
+def test_npm_packages_are_declared_by_exact_version(tmp_path, monkeypatch):
+    monkeypatch.setattr(cc, 'REPO', str(_fake_repo(tmp_path, '')))
+    (tmp_path / 'requirements' / 'bench.in').write_text('Appium-Python-Client==6.0.8\n', encoding='utf-8')
+    _npm_project(tmp_path, {'appium': '3.9.0', 'appium-uiautomator2-driver': '^8.7.3'}, {})
+    _declared = cc.declared()
+    assert _declared['appium'] == ('npm', '3.9.0')
+    assert _declared['appium-uiautomator2-driver'] == ('npm', 'NOT AN EXACT VERSION: ^8.7.3')
+    assert _declared['appium-python-client'] == ('bench', '==6.0.8')
+    # node_modules of a project is never read as a project
+    (tmp_path / 'bench' / 'x' / 'node_modules' / 'appium').mkdir(parents=True)
+    (tmp_path / 'bench' / 'x' / 'node_modules' / 'appium' / 'package.json').write_text('{}', encoding='utf-8')
+    assert cc.npm_projects() == [os.path.join('bench', 'x')]
+
+
+def test_the_repository_npm_lock_passes():
+    assert cc.check_npm_locks()[0] == []
+
+
+def test_the_npm_security_cutoff_only_ever_moves_the_cutoff_later():
+    import update_locks
+    assert update_locks.NPM_SECURITY_CUTOFF['bench/android'] == '2026-10-29T00:00:00Z'
+    assert update_locks.npm_cutoff('bench/android', '2026-10-24T00:00:00Z') == '2026-10-29T00:00:00Z'
+    assert update_locks.npm_cutoff('bench/android', '2026-11-20T00:00:00Z') == '2026-11-20T00:00:00Z'
+    assert update_locks.npm_cutoff('elsewhere', '2026-10-24T00:00:00Z') == '2026-10-24T00:00:00Z'
+    assert update_locks.npm_command('npm', 'X')[-2:] == ['--before', 'X']
+    assert '--ignore-scripts' in update_locks.npm_command('npm', 'X')
+
+
+AUDIT = {
+    'auditReportVersion': 2,
+    'vulnerabilities': {
+        'glob': {'name': 'glob', 'severity': 'moderate', 'nodes': ['node_modules/glob'],
+                 'via': [{'source': 1, 'name': 'glob', 'title': 'traversal', 'range': '>=9.0.0 <=14.0.1',
+                          'url': 'https://github.com/advisories/GHSA-3g3m-2fjr-6pw4'}]},
+        'appium': {'name': 'appium', 'severity': 'moderate', 'nodes': ['node_modules/appium'],
+                   'via': ['glob']},                 # only a dependent: no advisory of its own
+    },
+    'metadata': {},
+}
+
+
+def test_npm_audit_reads_the_lock_and_names_advisories_by_ghsa(tmp_path, monkeypatch):
+    import json
+    import subprocess
+    monkeypatch.setattr(sr, 'REPO', str(tmp_path))
+    _npm_project(tmp_path, {'appium': '3.9.0'}, dict([
+        _pkg('appium', '3.9.0'), _pkg('glob', '13.0.6'), _pkg('opt', optional=True)]))
+    _calls = []
+
+    def _run(cmd):
+        _calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, 1, json.dumps(AUDIT), '')
+    monkeypatch.setattr(sr, '_run', _run)
+    _deps = sr.npm_audit(os.path.join('bench', 'x'))
+    assert _calls[0][:5] == ['npm', 'audit', '--package-lock-only', '--omit=optional', '--json']
+    assert [(_n, _v) for _n, _v, _ in _deps] == [('appium', '3.9.0'), ('glob', '13.0.6')]
+    assert [_x['id'] for _x in dict((_n, _l) for _n, _v, _l in _deps)['glob']] == ['GHSA-3g3m-2fjr-6pw4']
+    assert dict((_n, _l) for _n, _v, _l in _deps)['appium'] == []
+
+    monkeypatch.setattr(sr, '_run', lambda cmd: subprocess.CompletedProcess(cmd, 1, '', 'ENOLOCK'))
+    with pytest.raises(sr.ScanError, match='ENOLOCK'):
+        sr.npm_audit(os.path.join('bench', 'x'))
+
+
+NPM_VULN = {'id': 'GHSA-3g3m-2fjr-6pw4', 'aliases': [], 'fix_versions': ['不在 >=9.0.0 <=14.0.1 内的版本']}
+
+
+def test_an_npm_advisory_blocks_unless_excepted(monkeypatch):
+    _scanners(monkeypatch, npm_projects=['bench/android'], npm_vulns=[NPM_VULN])
+    _s = sr.assess('python', TODAY)
+    assert _s['blocking'] == ['glob 13.0.6 (bench/android/package-lock.json): GHSA-3g3m-2fjr-6pw4']
+    _md = sr.render(_s, TODAY.isoformat())
+    assert '| 依赖漏洞 | `bench/android/package-lock.json`：Android 对比作业专用' in _md
+    assert '2 个包，1 个已知漏洞' in _md
+
+    _scanners(monkeypatch, npm_projects=['bench/android'], npm_vulns=[NPM_VULN], exceptions=[
+        {'id': 'GHSA-3g3m-2fjr-6pw4', 'component': 'glob', 'reason': 'r', 'expires': '2026-12-07'}])
+    assert sr.assess('python', TODAY)['blocking'] == []
+
+
+def test_an_npm_lock_problem_blocks_and_is_shown(monkeypatch):
+    _scanners(monkeypatch, npm_problems=['bench/x/package-lock.json: gpl@1 (GPL-3.0)'])
+    _s = sr.assess('python', TODAY)
+    assert 'bench/x/package-lock.json: gpl@1 (GPL-3.0)' in _s['blocking']
+    assert '| npm 锁文件 |' in sr.render(_s, TODAY.isoformat()) and '1 处问题' in sr.render(_s, TODAY.isoformat())
+
+
+def test_the_bench_environment_is_license_checked_when_given(monkeypatch):
+    _scanners(monkeypatch, licenses={'selenium': {'version': '4.51.0', 'license': 'GPL-3.0',
+                                                  'allowed': False}})
+    _blocking = sr.assess('python', TODAY, bench_python='bench-python')['blocking']
+    assert any('(bench): selenium' in _b for _b in _blocking)
+    assert '<summary>Android 对比作业专用（Python）' in sr.render(
+        sr.assess('python', TODAY, bench_python='b'), TODAY.isoformat())
+    assert 'Android 对比作业专用（Python）' not in sr.render(sr.assess('python', TODAY), TODAY.isoformat())

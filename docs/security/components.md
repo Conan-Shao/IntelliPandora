@@ -65,6 +65,16 @@
 | Android 模拟器 + 系统镜像（`system-images;android-34;google_apis;x86_64`） | CI 的 `android` 作业里运行 Android 验收用例（`test/testandroid/test_on_emulator.py`） | 由 android-emulator-runner 按 API 34 取当时的最新修订 | Google 的 Android SDK 仓库（`dl.google.com`），经 sdkmanager | —（sdkmanager 按仓库清单里的校验和核对下载内容；修订号由 Google 发布，不钉哈希） | Android SDK License（只在 CI 里使用，不分发、不链接）。**不在白名单内，经单独评审接受**：这是使用 Android 模拟器的唯一途径 | 只在 CI 的 runner 上运行，跑完即销毁；被测的是镜像自带的"设置"App，不下载第三方 APK | 2026-11-07 |
 | Docker Engine + Docker Compose | 依赖环境编排（`core/stack.py`，决策 19 D5）：`up --wait`、`port`、`logs`、`down -v` | Compose ≥ 2.20（`--wait-timeout`），运行时检查 | 用户自己安装的系统工具；框架不下载、不分发 | —（系统工具，版本由用户环境决定，不钉哈希） | Apache-2.0 | 框架只用完整路径调用 `docker compose`，参数为列表、不经 shell，只操作自己创建的 `ipandora-<主机>-<进程>-` 项目；清理只删本机已不存在的进程留下的项目。容器里运行什么由用户的 compose 文件决定 | 2026-11-06 |
 
+## Android 对比作业专用
+
+只有 `.github/workflows/android-bench.yml`（M5c：uiautomator2 与 Appium 的实测对比，`scripts/bench_android.py`）安装，不随框架分发，测试作业也不装。Python 部分锁在 `requirements/bench.txt`（带哈希），npm 部分锁在 `bench/android/package-lock.json`（每个包带 sha512，来源限 npm 官方仓库，`npm ci --omit=optional --ignore-scripts` 安装，不执行安装脚本）。两者都进每日安全扫描。
+
+| 组件 | 类别 | 版本范围 | 用途 | 许可证 | 运行期行为 | 审查日期 |
+|---|---|---|---|---|---|---|
+| Appium-Python-Client | bench | ==6.0.8 | 对比脚本里 Appium 一侧的客户端（`webdriver.Remote`） | Apache-2.0 | 经 W3C WebDriver 协议连本机 `127.0.0.1:4723` 上的 Appium 服务。带来 selenium 4.51.0（Apache-2.0）及其 trio、trio-websocket、wsproto、websocket-client、PySocks 等，许可证均在白名单内。6.1.x 发布未满 14 天，选 6.0.8 | 2026-11-07 |
+| appium | npm | 3.9.0 | Appium 服务端（Node.js），对比作业里只监听 `127.0.0.1` | Apache-2.0 | 接收 WebDriver 请求，转给驱动；不装插件，不开 `--allow-insecure`。**发布未满 14 天（2026-10-27），按安全修复例外采用**：满 14 天的 3.8.0 带着 shell-quote <1.11（GHSA-pqg4-j6r4-53mv，严重）、axios <1.20、body-parser <2.4、follow-redirects 1.16.0/1.16.1 等已公开漏洞，3.9.0 全部修掉。为此锁文件的截止时间放到 2026-10-29（`scripts/update_locks.py` 的 `NPM_SECURITY_CUTOFF`），因此进来的未满 14 天的包共 10 个：appium 3.9.0 及同批发布的 @appium/types、support、base-driver、base-plugin、docutils，驱动 8.7.3，follow-redirects 1.16.2、qs 6.17.1（两者本身就是漏洞修复），encodeurl 2.0.1。sharp 的预编译 libvips（LGPL-3.0）是可选依赖，`--omit=optional` 不装。许可证不在白名单内、经人工审查接受的见 `scripts/check_components.py` 的 `NPM_REVIEWED_LICENSES`。剩下两个中危漏洞（glob、minimatch，在驱动包内打包，覆盖不到）登记在[例外](exceptions.md) | 2026-11-07 |
+| appium-uiautomator2-driver | npm | 8.7.3 | Appium 的 Android 驱动 | Apache-2.0 | **往被测设备上装东西**：包里带 `appium-uiautomator2-server` 的两个 APK（设备端的 UiAutomator2 服务及其测试包）和 `io.appium.settings`，建会话时经 adb 装到设备上；之后经 adb 转发的本机端口和它们通信。发布未满 14 天（2026-10-28），理由同上：满 14 天的 8.7.0 打包了 proxy-addr <2.0.8（GHSA-jqcg-44mw-7w3h，严重）、axios <1.20、brace-expansion、morgan、qs 等的旧版本。9.x 要 Appium 4（测试版），不用 | 2026-11-07 |
+
 ## 测试用容器镜像
 
 只在本仓库的测试和 CI 里拉取（`test/teststack/compose/`），不随包分发。按摘要（digest）钉住，标签被改指向也拉不到别的内容；测试核对这里登记的摘要与 compose 文件一致。
