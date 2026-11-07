@@ -114,6 +114,15 @@ read Inspect logs as an evaluation run: report, baseline, gate (needs the inspec
 | `--fail-on-regression` `FAIL_ON_REGRESSION` | `overall` | what fails the run: overall -- the overall verdict is worse; tag -- also any tag value worse (corrected for the number of groups); task -- also any task that always succeeded and now always fails. Not comparable always fails |
 | `--partial` |  | compare each task's partial score (the weighted share of its checks that held) instead of whether it succeeded |
 
+### `ipandora eval noise`
+
+measure the infrastructure noise: runs of one configuration on the same tasks, and how far apart they are -- the --noise to use
+
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `runs` |  | report.json of each run of the same configuration (two or more) |
+| `--json` |  | print the numbers as JSON |
+
 ### `ipandora eval records`
 
 one JSON line per run (tokens, cost, how it ended, failure reason)

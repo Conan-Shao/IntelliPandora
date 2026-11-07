@@ -40,6 +40,8 @@ class Command(CommandBase):
                 sys.exit(self._f2p(options))
             if _action == 'compare':
                 sys.exit(self._compare(options))
+            if _action == 'noise':
+                sys.exit(self._noise(options))
             if _action == 'to-inspect':
                 sys.exit(self._to_inspect(options))
             if _action == 'selfcheck':
@@ -250,6 +252,38 @@ class Command(CommandBase):
         return 1 if _problems else 0
 
     @staticmethod
+    def _noise(options) -> int:
+        import json
+        from ipandora.core.eval import EvalRun, report, stats
+        _runs = [EvalRun.load(_p) for _p in options.runs]
+        _first = _runs[0].manifest
+        # noise is one configuration run again; anything else is a difference being measured
+        _problems = sorted({_p for _r in _runs[1:] for _p in _first.comparable_with(_r.manifest)} | {
+            '{}不同（{} ≠ {}）'.format(_label, getattr(_first, _key) or '—', getattr(_r.manifest, _key) or '—')
+            for _r in _runs[1:] for _key, _label in (('harness', '外壳'), ('model', '模型'), ('config', '配置'))
+            if getattr(_first, _key) != getattr(_r.manifest, _key)})
+        if _problems:
+            for _p in _problems:
+                print('  不是同一配置  {}'.format(_p))
+            print('  噪声要用同一配置在同一组题上重跑来测')
+            return 1
+        _n = stats.measure_noise([_r.outcomes() for _r in _runs])
+        if options.as_json:
+            print(json.dumps(dict(_n, infra_rate=[_r.summary()['infra_rate'] for _r in _runs]), ensure_ascii=False))
+            return 0
+        for _path, _r, _rate in zip(options.runs, _runs, _n['rates']):
+            _s = _r.summary()
+            print('  {}  成功率 {}（共同的 {} 道题）· 基础设施错误率 {}'.format(
+                _path, report._pct(_rate), _n['tasks'], report._pct(_s['infra_rate'])))
+        print('')
+        print('  {} 次重跑之间成功率最多相差 {:.1f} 个点（标准差 {:.1f}）'.format(
+            _n['runs'], 100 * _n['noise'], 100 * _n['sd']))
+        print('  和基线比较时用：--noise {:.3f}'.format(_n['noise']))
+        if _n['runs'] < 3:
+            print('  只有两次运行，这个差值本身也不稳；重跑三次以上更可靠')
+        return 0
+
+    @staticmethod
     def _to_inspect(options) -> int:
         import json
         import sys
@@ -403,6 +437,11 @@ class Command(CommandBase):
                                                'paired difference and interval; exit 1 if not comparable')
         _cmp.add_argument('runs', nargs='+', help='report.json of each run (two or more)')
         _cmp.add_argument('--name', action='append', help='a name per run, in order (default: its harness)')
+
+        _noise = _sub.add_parser('noise', help='measure the infrastructure noise: runs of one configuration on '
+                                                'the same tasks, and how far apart they are -- the --noise to use')
+        _noise.add_argument('runs', nargs='+', help='report.json of each run of the same configuration (two or more)')
+        _noise.add_argument('--json', dest='as_json', action='store_true', help='print the numbers as JSON')
 
         _convert = _sub.add_parser('to-inspect', help='a dataset as Inspect samples (JSONL for json_dataset())')
         _convert.add_argument('dataset', help='dataset.yaml or .jsonl')
