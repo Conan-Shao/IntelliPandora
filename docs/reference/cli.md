@@ -82,6 +82,19 @@ judge an agent's reproduction tests by fail-to-pass, in place: exit 0 when F→P
 | `--timeout` `TIMEOUT` | `600` | seconds per pytest run |
 | `--json` |  | print the record and the checks as one JSON line |
 
+### `ipandora eval f2p-selfcheck`
+
+the F→P grader on known answers in a workspace at the base commit: oracle x3, noop, bad answers; exit 1 if any is misjudged
+
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `workdir` |  | the workspace at the base commit (reset after each case) |
+| `--task` `TASK` |  | the task directory (task.yaml, fix.patch, reference_test.patch) |
+| `--base` `BASE` | `HEAD` |  |
+| `--runs` `RUNS` | `3` | runs with the fix, per case |
+| `--oracle-runs` `ORACLE_RUNS` | `3` | times the reference tests are graded |
+| `--timeout` `TIMEOUT` | `600` |  |
+
 ### `ipandora eval inspect`
 
 read Inspect logs as an evaluation run: report, baseline, gate (needs the inspect extra)
@@ -99,6 +112,16 @@ read Inspect logs as an evaluation run: report, baseline, gate (needs the inspec
 | `--noise` `RATE` |  | infrastructure noise as a rate (0.021 for ±2.1 points): a difference smaller than this is never called better or worse |
 | `--fail-on-regression` `FAIL_ON_REGRESSION` | `overall` | what fails the run: overall -- the overall verdict is worse; tag -- also any tag value worse (corrected for the number of groups); task -- also any task that always succeeded and now always fails. Not comparable always fails |
 | `--partial` |  | compare each task's partial score (the weighted share of its checks that held) instead of whether it succeeded |
+
+### `ipandora eval records`
+
+one JSON line per run (tokens, cost, how it ended, failure reason)
+
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `runs` |  | report.json of one or more runs |
+| `-o`, `--out` `OUT` |  | file to write; default stdout |
+| `--tasks` `TASKS` |  | task directories (task.yaml): their budgets flag over_budget |
 
 ### `ipandora eval run`
 

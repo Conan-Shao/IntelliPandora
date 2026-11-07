@@ -120,6 +120,12 @@ class Trial:
     """Why an infrastructure trial ended, or why grading itself failed."""
     category: str = ''
     """Failure attribution: agent, infra, task, grader -- or '' when not decided by rule."""
+    ended: str = ''
+    """
+    How the run stopped: completed, error, or limit:<type> (Inspect's time,
+    token, message... limits); a conversation's own ending (user, agent,
+    max_turns) when the agent was talked to.
+    """
 
     @staticmethod
     def check_dict(graded: Graded) -> Dict[str, Any]:
@@ -172,7 +178,7 @@ class Trial:
                 'checks': [dict(_c) for _c in self.checks], 'output': _plain(self.output),
                 'trajectory': [_plain(_e) for _e in self.trajectory],
                 'cost': _plain(self.cost), 'seconds': self.seconds, 'error': self.error,
-                'category': self.category, 'success': self.success, 'score': self.score}
+                'category': self.category, 'ended': self.ended, 'success': self.success, 'score': self.score}
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'Trial':
