@@ -69,7 +69,8 @@ class Task:
     def files(self) -> List[str]:
         """
         The data files the task names for the framework to read: its
-        initial_state.fixture and the JSON Schemas of its output checks.
+        initial_state.fixture, the JSON Schemas of its output checks, and a
+        test-generation task's official fix.
         """
         _out = []
         if isinstance(self.initial_state, dict) and isinstance(self.initial_state.get('fixture'), str):
@@ -78,6 +79,9 @@ class Task:
         for _c in _checks if isinstance(_checks, list) else ():
             if isinstance(_c, dict) and isinstance(_c.get('schema'), str):
                 _out.append(_c['schema'])
+        _f2p = self.expected.get('f2p') if isinstance(self.expected, dict) else None
+        if isinstance(_f2p, dict) and isinstance(_f2p.get('fix'), str):
+            _out.append(_f2p['fix'])                 # the official fix decides every verdict
         return _out
 
 

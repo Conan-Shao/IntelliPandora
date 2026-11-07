@@ -290,6 +290,45 @@ def coding():
 - 评分器抛异常，算评分器的问题，不算 agent 的。
 - 用 inspect_swe 在沙箱里跑 Claude Code、Codex CLI 时，把它的 agent 作为 `solver`，评分器照样用这一个。
 
+## 测试生成任务（F→P）
+
+agent 读一个 issue，写出能复现这个 bug 的测试（SWT-bench 一类的评测）。判定是 **F→P**：agent 新增或改动的测试在修复前失败，打上官方修复后通过。`core/eval/testgen.py`。
+
+```shell
+ipandora eval f2p /work --task tasks/calc-12      # 用题目的 fix.patch 和 test_cmd；F→P 成立退出码为 0
+ipandora eval f2p /work --fix fix.patch --test-cmd "pytest -q {test_files}" --runs 3 --json
+```
+
+**工作目录会被就地修改**（被测仓库以 editable 方式装在那里，拷到别处测的是安装的那份）：给它一份工作区的副本，在判分容器里跑。步骤：
+
+1. **拆改动**：测试文件（`tests/`、`test/` 下，或文件名是 `test_*.py`、`*_test.py`、`conftest.py`）算 agent 的测试；其余算**越界**，记一次，然后恢复成基线的样子，不参与判定。
+2. **找 agent 的测试**：对比改动前后 `pytest --collect-only` 的结果，新增的测试，以及函数源码变了的已有测试；只跑这些。
+3. **修复前**：至少一个在执行阶段（`call`）失败。收集失败、`ImportError`、`SyntaxError`、`NameError`、找不到 fixture 算**弱复现**：坏的是测试本身。被测代码抛出的其他异常算有效复现。
+4. **修复后**：`git apply fix.patch`，同一批测试跑 `--runs` 次（默认 3），每次都全过；有一次不过就是 flaky。
+5. 3 和 4 都满足才算 F→P。另外单独报告、不影响 F→P：每个测试有没有断言（从源码读：`assert`、`pytest.raises` / `warns`、`self.assert*`）；F→P 成立时的变异分数：只变异 fix.patch 改到的函数，至多 `--max-mutants` 个（默认 20），算子是比较符、算术符、and/or、去掉 not、布尔取反、整数加减一、`return` 改 `None`。
+6. `--json` 输出一行：用到的测试、越界文件、修复前每个测试的结论（`reproduced` / `weak` / `passed`）和异常类型、修复后每次的结果、断言、变异、耗时，以及各条判定。
+
+题目目录（`tasks/<id>/task.yaml`，加上 `issue.md`、`fix.patch`、`reference_test.patch`）用 `testgen.load(tasks_dir)` 读成数据集，字段一个不能少，类型和取值逐项校验，错一个就报出来：
+
+```yaml
+id: calc-12                     # 必须和目录名相同
+repo: owner/calc
+issue: 11
+base_commit: 1a2b3c4
+fix_commit: 5d6e7f8
+merged_at: 2026-09-14
+image: fresh-repro/calc-12:v1
+test_cmd: pytest -q {test_files}
+reference_tests: [tests/test_add.py::test_add]
+labels: {difficulty: easy, bug_type: logic}
+split: test
+budget: {max_usd: 0.5, max_minutes: 20}
+```
+
+- issue 正文是任务的 `input`，`reference_test.patch` 是参考解，`labels` 成为分组出分的标签。
+- `fix.patch` 和参考解的内容都算进数据集哈希。
+- `budget` 放在 `meta` 里，不作为失败条件：按计划，超时由运行侧强制，费用超了只标记，不判失败。
+
 ## 人工标注
 
 ```shell

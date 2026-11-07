@@ -32,6 +32,8 @@ class Command(CommandBase):
                 sys.exit(self._inspect(options))
             if _action == 'code':
                 sys.exit(self._code(options))
+            if _action == 'f2p':
+                sys.exit(self._f2p(options))
             if _action == 'compare':
                 sys.exit(self._compare(options))
             if _action == 'to-inspect':
@@ -155,6 +157,30 @@ class Command(CommandBase):
         if options.update_baseline:
             return 0
         return 1 if _reasons else 0
+
+    @staticmethod
+    def _f2p(options) -> int:
+        import json
+        import os
+        from ipandora.core.eval import testgen
+        _fix, _cmd = options.fix, options.test_cmd
+        if options.task:
+            _t = testgen.load_task(options.task)
+            _fix = _fix or os.path.join(_t.root, _t.expected['f2p']['fix'])
+            _cmd = _cmd or _t.expected['f2p']['test_cmd']
+        if not _fix:
+            raise ValueError('give --fix, or --task with a fix.patch')
+        _r = testgen.grade(options.workdir, _fix, base=options.base, test_cmd=_cmd or testgen.DEFAULT_CMD,
+                           runs=options.runs, max_mutants=options.max_mutants, timeout=options.timeout)
+        _checks = _r.checks()
+        if options.json:
+            print(json.dumps(dict(_r.record(), checks=[{'name': _c.name, 'ok': _c.ok, 'expr': _c.expr,
+                                                        'claim': _c.claim} for _c in _checks]),
+                             ensure_ascii=False, default=str))
+        else:
+            for _c in _checks:
+                print('  {}  {}：{}'.format('PASS' if _c.ok else 'FAIL', _c.name, _c.expr))
+        return 0 if _r.f2p else 1
 
     @staticmethod
     def _compare(options) -> int:
@@ -299,6 +325,20 @@ class Command(CommandBase):
         _check = _sub.add_parser('selfcheck', help='grade every reference solution; exit 1 if any fails')
         _check.add_argument('spec')
         _check.add_argument('--split', choices=['dev', 'test'], default=None)
+
+        _f2p = _sub.add_parser('f2p', help='judge an agent\'s reproduction tests by fail-to-pass, in place: '
+                                           'exit 0 when F→P holds (give it a disposable copy of the workspace)')
+        _f2p.add_argument('workdir', help='the agent\'s workspace: a git repository at the base commit')
+        _f2p.add_argument('--fix', default=None, help='the official fix, a unified diff')
+        _f2p.add_argument('--task', default=None, help='a task directory (task.yaml): its fix.patch and test_cmd')
+        _f2p.add_argument('--base', default='HEAD', help='the commit the agent started from')
+        _f2p.add_argument('--test-cmd', default=None,
+                          help='how to run tests, with {test_files}; default: python -m pytest -q {test_files}')
+        _f2p.add_argument('--runs', type=int, default=3, help='runs with the fix; a test failing in any is flaky')
+        _f2p.add_argument('--max-mutants', type=int, default=20,
+                          help='mutants of the functions the fix touched, when F→P holds (0: none)')
+        _f2p.add_argument('--timeout', type=float, default=600, help='seconds per pytest run')
+        _f2p.add_argument('--json', action='store_true', help='print the record and the checks as one JSON line')
 
         _cmp = _sub.add_parser('compare', help='compare configurations run on the same tasks, every pair: '
                                                'paired difference and interval; exit 1 if not comparable')
