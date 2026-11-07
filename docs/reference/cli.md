@@ -81,6 +81,8 @@ judge an agent's reproduction tests by fail-to-pass, in place: exit 0 when F→P
 | `--runs` `RUNS` | `3` | runs with the fix; a test failing in any is flaky |
 | `--max-mutants` `MAX_MUTANTS` | `20` | mutants of the functions the fix touched, when F→P holds (0: none) |
 | `--timeout` `TIMEOUT` | `600` | seconds per pytest run |
+| `--keep-out-of-scope` |  | keep what the agent changed outside its tests, as SWT-bench applies the whole patch (still reported). Default: put it back before judging |
+| `--no-weak-rule` |  | count any failure before the fix, an import or collection error too, as SWT-bench does. Both flags: SWT-bench's plain F→P, to compare with its harness |
 | `--json` |  | print the record and the checks as one JSON line |
 
 ### `ipandora eval f2p-selfcheck`

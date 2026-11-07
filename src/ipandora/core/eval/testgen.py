@@ -424,15 +424,18 @@ def asserting(workdir: str, nodeids: Sequence[str]) -> Dict[str, bool]:
     return _out
 
 
-def classify(row: Dict[str, Any], workdir: str = '') -> str:
+def classify(row: Dict[str, Any], workdir: str = '', weak_rule: bool = True) -> str:
     """
     'reproduced', 'weak' or 'passed' for one test's decisive row before the
     fix. A failure while running the test reproduces -- unless it is an
     import, syntax or name error *of the test*: the same error raised from
     the code under test (the bug is a misspelt name) is a reproduction.
+    Without the weak rule (SWT-bench's own F→P), any failure reproduces.
     """
     if row['outcome'] in ('passed', 'skipped'):
         return 'passed'
+    if not weak_rule:
+        return 'reproduced'
     if row['when'] != 'call' or row['exc'] in ('FixtureLookupError', 'CollectError'):
         return 'weak'
     if row['exc'] not in WEAK_EXCEPTIONS:
@@ -460,6 +463,12 @@ class Result:
     error: str = ''
     """Why grading could not finish: the fix does not apply, the tests cannot be collected..."""
     seconds: float = 0.0
+    rules: Dict[str, bool] = field(default_factory=lambda: dict(RULES))
+    """Which of the grading rules were on: discard_out_of_scope, weak_rule. Off is SWT-bench's plain F→P."""
+
+    @property
+    def plain(self) -> bool:
+        return not all(self.rules.get(_k, True) for _k in RULES)
 
     @property
     def reproduced(self) -> bool:
@@ -499,7 +508,9 @@ class Result:
             '修复前没有一个测试在执行阶段失败（{}）'.format(_before_text(self.before)) if not self.reproduced else
             '修复后不是每次都全部通过（{}）'.format(_after_text(self.after)) if not self.fixed_passes else
             '{} 个测试：修复前失败、修复后 {} 次全过'.format(len(self.tests), len(self.after)))
-        _out = [Check(name='F→P：修复前失败、修复后通过', ok=self.f2p, expr=_why, src=TESTGEN, claim='fail to pass')]
+        _off = [RULE_NAMES[_k] for _k in RULES if not self.rules.get(_k, True)]
+        _name = 'F→P：修复前失败、修复后通过' + ('（关掉了：{}）'.format('、'.join(_off)) if _off else '')
+        _out = [Check(name=_name, ok=self.f2p, expr=_why, src=TESTGEN, claim='fail to pass')]
         _out.append(Check(name='没有改测试以外的文件', ok=not self.out_of_scope,
                           expr='越界改动（已丢弃）：{}'.format('、'.join(self.out_of_scope[:5]))
                           if self.out_of_scope else '只改了测试', src=TESTGEN, claim='only test files changed'))
@@ -535,6 +546,11 @@ class Result:
         _out.update(f2p=self.f2p, reproduced=self.reproduced, weak=self.weak, fixed_passes=self.fixed_passes,
                     flaky=self.flaky, zero_assertion=self.zero_assertion)
         return _out
+
+
+RULES = {'discard_out_of_scope': True, 'weak_rule': True}
+"""The grading rules beyond SWT-bench's F→P, all on by default (see the module)."""
+RULE_NAMES = {'discard_out_of_scope': '越界丢弃', 'weak_rule': '弱复现规则'}
 
 
 def _before_text(before: Dict[str, str]) -> str:
@@ -598,15 +614,26 @@ def _selected(workdir: str, base: str, test_files: List[str], test_cmd: str, tim
 
 
 def grade(workdir: str, fix: str, base: str = 'HEAD', test_cmd: str = DEFAULT_CMD, runs: int = 3,
-          max_mutants: int = 20, min_score: float = 0.0, timeout: float = 600) -> Result:
+          max_mutants: int = 20, min_score: float = 0.0, timeout: float = 600,
+          discard_out_of_scope: bool = True, weak_rule: bool = True) -> Result:
     """
     Judge the agent's tests in `workdir` (changed in place: give it a copy) by
     F→P against `fix`, a unified diff of the official fix. See the module.
+
+    :param discard_out_of_scope: put back what the agent changed outside its
+                    tests before judging (step 1). Off, those changes stay --
+                    as SWT-bench's harness applies the whole patch -- and are
+                    still reported; a fix that no longer applies is an error.
+    :param weak_rule: a failure only in collecting or importing the test is a
+                    weak reproduction (step 3). Off, any failure before the
+                    fix reproduces: a file that does not collect before the
+                    fix has its tests collected with the fix, and they count
+                    as failing before. Both off is SWT-bench's plain F→P.
     """
     if runs < 1:
         raise ValueError('runs must be at least 1')
     _start = time.monotonic()
-    _r = Result()
+    _r = Result(rules={'discard_out_of_scope': discard_out_of_scope, 'weak_rule': weak_rule})
     try:
         with open(fix, encoding='utf-8') as _f:
             _patch = _f.read()
@@ -614,7 +641,8 @@ def grade(workdir: str, fix: str, base: str = 'HEAD', test_cmd: str = DEFAULT_CM
         raise ValueError('cannot read the fix {}: {}'.format(fix, exc))
     _tests, _r.out_of_scope = split_changes(workdir, base)
     # out of scope: counted, then put back -- the code under test is the original
-    restore(workdir, base, _r.out_of_scope)
+    if discard_out_of_scope:
+        restore(workdir, base, _r.out_of_scope)
     _hooks = hooks_in(workdir, _tests)
     if _hooks:
         _r.tests = []
@@ -622,6 +650,8 @@ def grade(workdir: str, fix: str, base: str = 'HEAD', test_cmd: str = DEFAULT_CM
         _r.seconds = round(time.monotonic() - _start, 3)
         return _r
     _r.tests, _r.error = _selected(workdir, base, _tests, test_cmd, timeout)
+    if _r.error.startswith(COLLECT_ERROR) and not weak_rule:
+        return _uncollected(workdir, _r, _patch, fix, test_cmd, runs, max_mutants, min_score, timeout, _start)
     if _r.error.startswith(COLLECT_ERROR):
         # a test that cannot even be collected is a weak reproduction, not a grading failure
         _r.before = {_f: 'weak' for _f in _r.tests}
@@ -646,25 +676,68 @@ def grade(workdir: str, fix: str, base: str = 'HEAD', test_cmd: str = DEFAULT_CM
         return _r
     for _t in _r.tests:
         _row = _pre.outcome(_t)
-        _r.before[_t] = classify(_row, workdir)
+        _r.before[_t] = classify(_row, workdir, weak_rule)
         _r.before_detail[_t] = {_k: _row.get(_k, '') for _k in ('when', 'outcome', 'exc', 'message')}
-    _fix_file = os.path.abspath(fix)
-    try:
-        coding._git(workdir, 'apply', '--whitespace=nowarn', _fix_file)
-    except RuntimeError as exc:
-        _r.error = 'the fix does not apply: {}'.format(str(exc)[-200:])
+    if not _apply(workdir, fix, _r):
         _r.seconds = round(time.monotonic() - _start, 3)
         return _r
+    return _with_fix(workdir, _r, _patch, test_cmd, runs, max_mutants, min_score, timeout, _start)
+
+
+def _apply(workdir: str, fix: str, result: Result) -> bool:
+    try:
+        coding._git(workdir, 'apply', '--whitespace=nowarn', os.path.abspath(fix))
+        return True
+    except RuntimeError as exc:
+        result.error = 'the fix does not apply: {}'.format(str(exc)[-200:])
+        return False
+
+
+def _with_fix(workdir: str, r: Result, patch: str, test_cmd: str, runs: int, max_mutants: int, min_score: float,
+              timeout: float, start: float) -> Result:
+    """Step 4 and the mutants: the tests, `runs` times, with the fix applied."""
     for _ in range(runs):
-        _post = pytest_run(workdir, _r.tests, test_cmd, timeout=timeout)
+        _post = pytest_run(workdir, r.tests, test_cmd, timeout=timeout)
         if not _post.timed_out and not _post.consistent:
-            _r.error = INCONSISTENT
+            r.error = INCONSISTENT
             break
-        _r.after.append({_t: ('timeout' if _post.timed_out else _post.outcome(_t)['outcome']) for _t in _r.tests})
-    if _r.f2p and max_mutants > 0:
-        _r.mutation = dict(_mutate(workdir, _patch, _r.tests, test_cmd, max_mutants, timeout), min_score=min_score)
-    _r.seconds = round(time.monotonic() - _start, 3)
-    return _r
+        r.after.append({_t: ('timeout' if _post.timed_out else _post.outcome(_t)['outcome']) for _t in r.tests})
+    if r.f2p and max_mutants > 0:
+        r.mutation = dict(_mutate(workdir, patch, r.tests, test_cmd, max_mutants, timeout), min_score=min_score)
+    r.seconds = round(time.monotonic() - start, 3)
+    return r
+
+
+def _uncollected(workdir: str, r: Result, patch: str, fix: str, test_cmd: str, runs: int, max_mutants: int,
+                 min_score: float, timeout: float, start: float) -> Result:
+    """
+    Without the weak rule: the agent's files do not collect before the fix --
+    typically a test importing what the fix adds. Each test collected with
+    the fix failed before it (it could not even be collected), as SWT-bench
+    counts it.
+    """
+    _files, _why = r.tests, r.error[len(COLLECT_ERROR):]
+    r.error = ''
+    if not _apply(workdir, fix, r):
+        r.seconds = round(time.monotonic() - start, 3)
+        return r
+    _collected = pytest_run(workdir, _files, test_cmd, collect_only=True, timeout=timeout)
+    _ids = [_r['nodeid'] for _r in _collected.rows if _r['when'] == 'collected']
+    if _collected.timed_out or _collected.collect_errors or not _ids:
+        # not even the fix makes them collect: they fail before and after
+        r.before = {_f: 'reproduced' for _f in _files}
+        r.before_detail = {_f: {'when': 'collect', 'outcome': 'failed', 'exc': 'CollectError', 'message': _why}
+                           for _f in _files}
+        r.after = [{_f: 'error' for _f in _files}]
+        r.asserting = {_f: False for _f in _files}
+        r.seconds = round(time.monotonic() - start, 3)
+        return r
+    r.tests = _ids
+    r.before = {_t: 'reproduced' for _t in _ids}
+    r.before_detail = {_t: {'when': 'collect', 'outcome': 'failed', 'exc': 'CollectError', 'message': _why}
+                       for _t in _ids}
+    r.asserting = asserting(workdir, _ids)
+    return _with_fix(workdir, r, patch, test_cmd, runs, max_mutants, min_score, timeout, start)
 
 
 def _mutate(workdir: str, patch: str, tests: List[str], test_cmd: str, max_mutants: int,
