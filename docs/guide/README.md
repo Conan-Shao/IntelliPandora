@@ -12,6 +12,7 @@
 | 写判定；理解零判定、判定清单和基线 | [判定、零判定与基线](judgements.md) |
 | 并行执行；在一条用例里测并发 | [并行与并发](parallel.md) |
 | Web 自动化（Playwright） | [Web 自动化](web.md) |
+| Android App 自动化（uiautomator2） | [Android 自动化](android.md) |
 | 截图和基准图比对 | [图像判定](visual.md) |
 | `conf/` 目录、按环境叠加、测试数据 | [配置、环境与测试数据](config.md) |
 | 看报告、失败归因、在 Python 里直接调用 | [报告、归因与以库方式调用](reports.md) |

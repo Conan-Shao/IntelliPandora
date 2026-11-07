@@ -91,11 +91,14 @@ def failed_check_sources(message: str) -> List[str]:
     return _seen
 
 
-def classify(nodeid: str, outcome: str, message: str, locator_failures=None, faults=None) -> Finding:
+def classify(nodeid: str, outcome: str, message: str, locator_failures=None, faults=None,
+             app_events=None) -> Finding:
     """
     Classify one case. Pure function of its outcome, its message and, for web
-    cases, what core/web.py found out about selectors that matched nothing;
-    `faults` are the faults the case injected itself (core/faults.py).
+    and Android cases, what core/web.py and core/android.py found out about
+    selectors that matched nothing; `faults` are the faults the case injected
+    itself (core/faults.py); `app_events` the crashes and ANRs of the Android
+    app under test while it ran (core/android.py).
     """
     _message = message or ''
 
@@ -129,6 +132,15 @@ def classify(nodeid: str, outcome: str, message: str, locator_failures=None, fau
                             '用例超时，而它自己注入了故障（{}）：被测系统在这个故障下没有按时返回'.format(_injected))
         return _finding(Category.ENVIRONMENT, Confidence.MEDIUM,
                         '用例超过了时间上限。通常是某个依赖不再响应；如果是被测系统自己卡住，那是缺陷')
+
+    if app_events and outcome != 'skipped':
+        # the app under test died, or stopped responding, during the case: whatever else
+        # failed after it -- a widget not found, a timeout -- followed from that (core/android.py)
+        _e = app_events[0]
+        _what = 'App 崩溃' if _e.get('kind') == 'crash' else 'App 无响应（ANR）'
+        return _finding(Category.DEFECT, Confidence.HIGH,
+                        '{}：{}{}。用例执行期间被测 App 自己出了问题，是产品缺陷'.format(
+                            _what, _e.get('package', ''), '（{}）'.format(_e['detail'][:160]) if _e.get('detail') else ''))
 
     _failed_checks = list(CHECK_LINE.finditer(_message))
     _asserted = bool(_failed_checks) or 'AssertionError' in _message \
@@ -221,6 +233,15 @@ def _locator_finding(failures, message: str = '', asserted: bool = False):
     _selector = _f.get('selector', '?')
     _identity = _f.get('identity') or {}
     _what = '{} "{}"'.format(_identity.get('role', '?'), _identity.get('name', '?'))
+    if _f.get('platform') == 'android':
+        # core/android.py: looked for by name in the widget tree at the moment of failure
+        if _f.get('verdict') == 'stale_selector':
+            return (Category.HARNESS, Confidence.MEDIUM,
+                    '选择器 {} 什么也没找到，但当时界面的控件树里有同名控件 {}：多半是选择器写错或过时'
+                    '（属性、层级或序号不对），App 没有问题。请看控件树'.format(_selector, _what))
+        return (Category.UNKNOWN, Confidence.LOW,
+                '待确认：选择器 {} 什么也没找到，当时界面的控件树里也没有同名控件。可能控件被删掉或改了名，'
+                '也可能界面还没走到这一步。请看截图和控件树'.format(_selector))
     if _f.get('verdict') == 'stale_selector':
         return (Category.HARNESS, Confidence.HIGH,
                 '选择器 {!r} 失效：它什么也没找到，但页面上仍有 {}，就是它上次通过时指向的元素。'
@@ -289,5 +310,6 @@ def triage(result, include_skipped: bool = False) -> TriageReport:
     return TriageReport(findings=[
         classify(_c.nodeid, _c.outcome, _c.message,
                  locator_failures=getattr(_c, 'locator_failures', None),
-                 faults=getattr(_c, 'faults', None))
+                 faults=getattr(_c, 'faults', None),
+                 app_events=getattr(_c, 'app_events', None))
         for _c in _cases])

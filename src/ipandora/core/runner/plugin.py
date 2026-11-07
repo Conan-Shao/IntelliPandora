@@ -239,6 +239,11 @@ def pytest_configure(config):
     from ipandora.core import web
     if web.install() and config.pluginmanager.hasplugin('playwright'):
         config.pluginmanager.register(web.ContextDefaults(), 'ipandora-web-context')
+    # uiautomator2, when installed: the `device` fixture, and every selector
+    # that finds nothing looked for by name in the widget tree. See core/android.py.
+    from ipandora.core import android
+    if android.install() and config.pluginmanager.get_plugin('ipandora-android') is None:
+        config.pluginmanager.register(android.Fixtures(), 'ipandora-android')
 
 
 def _apply_worker_env():
@@ -321,8 +326,9 @@ def pytest_unconfigure(config):
     _SESSIONS['depth'] = max(_SESSIONS['depth'] - 1, 0)
     if _SESSIONS['depth']:
         return      # an outer session is still running and still needs them
-    from ipandora.core import auth, web
+    from ipandora.core import android, auth, web
     web.uninstall()
+    android.uninstall()
     # credentials and identity sessions are this run's (core/auth.py); the
     # MCP server lives across runs and must not carry a token over
     auth.reset()
@@ -412,6 +418,7 @@ def pytest_runtest_makereport(item, call):
     if call.when in ('setup', 'call') and _excinfo is not None \
             and not _excinfo.errisinstance(pytest.skip.Exception):
         _keep_service_logs(item)
+        _keep_device_evidence(item)
     if call.when != 'call' or _excinfo is None \
             or not _excinfo.errisinstance(AssertionError):
         return None
@@ -438,6 +445,21 @@ def _keep_service_logs(item) -> None:
         # inside pytest_runtest_makereport: an exception here is an INTERNALERROR
         # that ends the whole session, not one case's missing logs
         logger.warning('could not keep the service logs of %s: %s', item.nodeid, exc)
+
+
+def _keep_device_evidence(item) -> None:
+    """
+    A case failed on an Android device (core/android.py): its screen, widget
+    tree and log now, before the fixture stops the app -- and whether the app
+    crashed, which decides the verdict.
+    """
+    from ipandora.core import android
+    if not android.active():
+        return
+    try:
+        android.keep_evidence(item.nodeid)
+    except Exception as exc:  # noqa: BLE001 -- evidence must never break the run
+        logger.warning('could not keep the device evidence of %s: %s', item.nodeid, exc)
 
 
 def pytest_runtest_setup(item):
@@ -550,6 +572,8 @@ def _pack(item):
             _payload['locator_failures'] = list(_evidence.locator_failures)
         if _evidence.faults:
             _payload['faults'] = [dict(_f) for _f in _evidence.faults]
+        if _evidence.app_events:
+            _payload['app_events'] = [dict(_e) for _e in _evidence.app_events]
         if _evidence.artifacts:
             _payload['artifacts'] = list(_evidence.artifacts)
         if _evidence.trace_shown and _evidence.trace_id:

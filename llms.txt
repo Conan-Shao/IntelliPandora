@@ -18,6 +18,7 @@ Documentation is Markdown in the repository and is the single source. The refere
 - [Login state](docs/guide/auth.md): auth.identity('buyer'), auth.provider(...), Bearer / ApiKey / Cookies, early refresh, one replay after a 401, anonymous
 - [Parallel and concurrent](docs/guide/parallel.md): --workers, @pytest.mark.resource, --timeout, concurrently()
 - [Web](docs/guide/web.md): Playwright as is; expect() as judgements; stale selector vs missing element
+- [Android](docs/guide/android.md): uiautomator2 as is; the `android` fixture, one case per device, screenshot / widget tree / logcat on failure, an app crash is a defect, a selector that finds nothing looked for by name in the widget tree
 - [Images](docs/guide/visual.md): matches_golden(), what pixel comparison can and cannot see
 - [Configuration](docs/guide/config.md): conf/, per-environment overlays, Runtime
 - [Reports and triage](docs/guide/reports.md): HTML/JSON/JUnit, failure categories, calling run() from Python

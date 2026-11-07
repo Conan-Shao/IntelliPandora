@@ -54,6 +54,8 @@ class CaseResult:
     """Web: selectors that found nothing -- stale, missing, or unknown. Read by triage."""
     faults: List[Dict[str, Any]] = field(default_factory=list)
     """Faults the case injected (core/faults.py). Read by triage."""
+    app_events: List[Dict[str, Any]] = field(default_factory=list)
+    """Android: the app's crashes and ANRs while the case ran (core/android.py). Read by triage."""
     trace_id: str = ''
     """The case's trace, when it went out on requests the exchanges do not list -- a browser's (core/tracing.py)."""
 

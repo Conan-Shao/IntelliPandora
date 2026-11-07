@@ -165,6 +165,7 @@ class ResultCollector:
             case.locators.update(_payload.get('locators') or {})
             case.locator_failures.extend(_payload.get('locator_failures') or [])
             case.faults.extend(_payload.get('faults') or [])
+            case.app_events.extend(_payload.get('app_events') or [])
             if _payload.get('trace_id'):
                 case.trace_id = _payload['trace_id']
             for _artifact in _payload.get('artifacts') or []:
