@@ -87,6 +87,27 @@ def run_trial(task: Task, index: int, agent: Callable, grade: Callable,
     return _trial
 
 
+def run_with_retries(task: Task, index: int, agent: Callable, grade: Callable, broken_tasks=frozenset(),
+                     retries: int = 0, wait: float = 0.0, sleep: Callable = time.sleep) -> Trial:
+    """
+    run_trial(), tried again while the infrastructure fails -- the agent
+    raised: a container that did not start, an API 5xx, a rate limit -- at
+    most `retries` more times, `wait` seconds before the first retry and
+    twice as long before each next. An answer, right or wrong, is never
+    retried: retrying the agent's own failures until one passes would
+    measure luck. Every retried error stays in trial.infra_errors.
+    """
+    _errors: List[str] = []
+    while True:
+        _trial = run_trial(task, index, agent, grade, broken_tasks)
+        if _trial.status != INFRA or len(_errors) >= retries:
+            _trial.infra_errors = _errors
+            return _trial
+        _errors.append(_trial.error)
+        if wait > 0:
+            sleep(wait * 2 ** (len(_errors) - 1))
+
+
 def _masked(trial: Trial, result: AgentResult) -> Trial:
     """
     The trial without what its setup planted (standard.prepare): a canary is
@@ -253,6 +274,13 @@ class EvalRun:
             'tasks': len(_by_task),
             'mean_score': _mean(_scores),
             'infra': sum(1 for _t in _trials if _t.status == INFRA),
+            # every attempt, the retried ones too: the infrastructure error
+            # rate, which a retry that succeeded would otherwise hide
+            'attempts': sum(_t.attempts for _t in _trials),
+            'infra_attempts': sum(_t.infra_attempts for _t in _trials),
+            'infra_rate': (sum(_t.infra_attempts for _t in _trials) / sum(_t.attempts for _t in _trials))
+            if _trials else None,
+            'retried': sum(1 for _t in _trials if _t.infra_errors),
             'no_verdict': sum(1 for _t in _trials if _t.status == NO_VERDICT),
             'deterministic_checks': sum(1 for _t in _trials for _c in _t.checks
                                         if _c.get('src') != 'llm_judge' and _c.get('kind') != 'gap'),
@@ -328,7 +356,7 @@ def new_run_id() -> str:
 
 def evaluate(dataset: Dataset, agent: Callable, grade: Callable, trials: int = 1,
              split: Optional[str] = None, workers: int = 1, manifest: Dict[str, Any] = None,
-             check_references: bool = True) -> EvalRun:
+             check_references: bool = True, infra_retries: int = 0, retry_wait: float = 0.0) -> EvalRun:
     """
     Run every task of `dataset` (or one split of it) `trials` times.
 
@@ -340,9 +368,18 @@ def evaluate(dataset: Dataset, agent: Callable, grade: Callable, trials: int = 1
                     recorded with the run. Dataset identity is filled in here.
     :param check_references: grade every reference solution first; a task whose
                     reference fails attributes its failures to the task.
+    :param infra_retries: try a trial again, this many times at most, while
+                    its infrastructure fails (the agent raised). Answers are
+                    never retried. Every attempt counts in summary()'s
+                    infra_rate.
+    :param retry_wait: seconds before the first retry, doubling after each.
     """
     if trials < 1:
         raise ValueError('trials must be at least 1')
+    if isinstance(infra_retries, bool) or not isinstance(infra_retries, int) or infra_retries < 0:
+        raise ValueError('infra_retries is a whole number, 0 or more')
+    if isinstance(retry_wait, bool) or not isinstance(retry_wait, (int, float)) or retry_wait < 0:
+        raise ValueError('retry_wait is a number of seconds, 0 or more')
     _data = dataset.split(split)
     if not _data.tasks:
         raise ValueError('no tasks to run{}'.format(' in split {!r}'.format(split) if split else ''))
@@ -351,6 +388,7 @@ def evaluate(dataset: Dataset, agent: Callable, grade: Callable, trials: int = 1
     _manifest.dataset_description, _manifest.dataset_meta = dataset.description, dict(dataset.meta or {})
     _manifest.dataset_hash = _data.fingerprint
     _manifest.split, _manifest.trials = split or '', trials
+    _manifest.infra_retries = infra_retries
     _manifest.framework = _manifest.framework or framework_version()
 
     _problems = selfcheck(_data, grade) if check_references else []
@@ -361,9 +399,10 @@ def evaluate(dataset: Dataset, agent: Callable, grade: Callable, trials: int = 1
     _start = time.perf_counter()
     if workers and workers > 1:
         with ThreadPoolExecutor(max_workers=workers) as _pool:
-            _done = list(_pool.map(lambda _j: run_trial(_j[0], _j[1], agent, grade, _broken), _jobs))
+            _done = list(_pool.map(lambda _j: run_with_retries(_j[0], _j[1], agent, grade, _broken,
+                                                               infra_retries, retry_wait), _jobs))
     else:
-        _done = [run_trial(_t, _i, agent, grade, _broken) for _t, _i in _jobs]
+        _done = [run_with_retries(_t, _i, agent, grade, _broken, infra_retries, retry_wait) for _t, _i in _jobs]
     return EvalRun(run_id=new_run_id(), manifest=_manifest,
                    tasks=[{'id': _t.id, 'tags': dict(_t.tags), 'polarity': _t.polarity,
                            'split': _t.split} for _t in _data.tasks],

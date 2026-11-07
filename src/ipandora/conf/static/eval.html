@@ -57,6 +57,7 @@
       {%- if saturation_sentence %}<li>{{ saturation_sentence }}。</li>{% endif %}
       {%- if s.judge_checks %}<li>模型评委的 {{ s.judge_checks }} 条判定只展示，不参与成功率和结论{% if s.judge_uncertain %}；其中 {{ s.judge_uncertain }} 条"不确定"{% endif %}。</li>{% endif %}
       {%- if s.infra %}<li>{{ s.infra }} 次试验因基础设施问题没有结果，不计入成功率。</li>{% endif %}
+      {%- if s.infra_attempts %}<li>基础设施错误率 {{ '%.1f' % (100 * s.infra_rate) }}%（{{ s.attempts }} 次尝试里 {{ s.infra_attempts }} 次{% if s.retried %}，{{ s.retried }} 次试验重试过{% endif %}）。重试只针对基础设施错误，agent 自己的失败不重试。</li>{% endif %}
       {%- set sc_fails = selfcheck|selectattr('kind', 'equalto', 'fails')|list %}
       {%- set sc_grader = selfcheck|selectattr('kind', 'equalto', 'grader')|list %}
       {%- set sc_missing = selfcheck|selectattr('kind', 'equalto', 'missing')|list %}

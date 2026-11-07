@@ -128,6 +128,22 @@ class Trial:
     token, message... limits); a conversation's own ending (user, agent,
     max_turns) when the agent was talked to.
     """
+    infra_errors: List[str] = field(default_factory=list)
+    """
+    The error of each earlier attempt that was retried because the
+    infrastructure failed (evaluate(infra_retries=...), or Inspect's
+    --retry-on-error). The trial is the last attempt; these are what the
+    infrastructure error rate counts.
+    """
+
+    @property
+    def attempts(self) -> int:
+        return 1 + len(self.infra_errors)
+
+    @property
+    def infra_attempts(self) -> int:
+        """Attempts that ended in an infrastructure failure, the retried ones included."""
+        return len(self.infra_errors) + (1 if self.status == INFRA else 0)
 
     @staticmethod
     def check_dict(graded: Graded) -> Dict[str, Any]:
@@ -183,7 +199,8 @@ class Trial:
                 'checks': [dict(_c) for _c in self.checks], 'output': _plain(self.output),
                 'trajectory': [_plain(_e) for _e in self.trajectory],
                 'cost': _plain(self.cost), 'seconds': self.seconds, 'error': self.error,
-                'category': self.category, 'ended': self.ended, 'success': self.success, 'score': self.score}
+                'category': self.category, 'ended': self.ended, 'infra_errors': list(self.infra_errors),
+                'success': self.success, 'score': self.score}
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'Trial':
@@ -217,6 +234,8 @@ class Manifest:
     user_simulator: str = ''
     seed: Optional[int] = None
     trials: int = 1
+    infra_retries: int = 0
+    """How many times a trial whose infrastructure failed was tried again. Agent failures are never retried."""
     framework: str = ''
     python: str = field(default_factory=platform.python_version)
     started: str = field(default_factory=lambda: datetime.now().strftime('%Y-%m-%d %H:%M:%S'))

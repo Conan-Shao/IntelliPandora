@@ -134,6 +134,8 @@ run every task k times, grade, compare with the baseline
 | `-k`, `--trials` `TRIALS` | `1` | trials per task |
 | `--split` `SPLIT` |  | run one split only. Tune on dev; conclude on test |
 | `-w`, `--workers` `WORKERS` | `1` | trials run at once (threads) |
+| `--infra-retries` `N` |  | try a trial again, at most N times, while its infrastructure fails (the agent raised: a container, an API 5xx, a rate limit). Answers are never retried; every attempt counts in the infrastructure error rate |
+| `--retry-wait` `SECONDS` |  | seconds before the first retry, doubling after each |
 | `-o`, `--out` `OUT` |  | where report.html and report.json go. Default: the report archive |
 | `--title` `TITLE` |  | report title |
 | `--baseline` `PATH` |  | evaluation baseline. Default: conf/eval_baseline.json when it exists |

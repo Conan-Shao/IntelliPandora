@@ -127,6 +127,7 @@ def redacted(run: EvalRun) -> EvalRun:
     _trials = [replace(_t, output=_masked(_t.output),
                        trajectory=[_masked(_e) for _e in _t.trajectory or []],
                        error=redact_text(_t.error or ''),
+                       infra_errors=[redact_text(_e or '') for _e in _t.infra_errors or []],
                        checks=[_check(_c) for _c in _t.checks])
                for _t in run.trials]
     _selfcheck = [dict(_p, problem=redact_text(str(_p.get('problem') or '')),
