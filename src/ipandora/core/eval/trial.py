@@ -69,6 +69,18 @@ class AgentResult:
     """Events in order: {'t': seconds, 'kind': 'message'|'tool'|'result', 'role', 'name', 'text', 'error'}."""
     cost: Dict[str, float] = field(default_factory=dict)
     """usd, tokens_in, tokens_out, turns, tool_calls -- whatever the harness knows."""
+    is_reference: bool = False
+    """
+    A task's reference solution, handed to the grader by selfcheck. A grader
+    may replay one written as tool calls; an agent's output is never replayed.
+    """
+
+
+class TaskError(ValueError):
+    """
+    The task, not the agent or the grader: an `expected` or `initial_state`
+    that cannot be read. A trial that raises it is attributed to the task.
+    """
 
 
 def _plain(value: Any, _depth: int = 0) -> Any:

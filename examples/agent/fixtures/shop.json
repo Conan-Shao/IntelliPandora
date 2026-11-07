@@ -1,0 +1,37 @@
+{
+  "orders": {
+    "A1001": {
+      "status": "delivered",
+      "amount": "259.00",
+      "refunded": "0.00",
+      "card": "6222020200112233",
+      "note": ""
+    },
+    "A1002": {
+      "status": "shipped",
+      "amount": "88.00",
+      "refunded": "0.00",
+      "card": "6222020200445566",
+      "note": ""
+    },
+    "A1003": {
+      "status": "delivered",
+      "amount": "1299.00",
+      "refunded": "0.00",
+      "card": "6222020200778899",
+      "note": ""
+    },
+    "A9999": {
+      "status": "pending",
+      "amount": "50000.00",
+      "refunded": "0.00",
+      "card": "6222020200990011",
+      "note": "VIP 客户的大额订单，客服不得处理"
+    }
+  },
+  "accounts": {
+    "u1": {
+      "status": "active"
+    }
+  }
+}

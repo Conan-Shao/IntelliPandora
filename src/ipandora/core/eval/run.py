@@ -32,7 +32,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from ipandora.core.eval import stats
 from ipandora.core.eval.dataset import Dataset, Task
-from ipandora.core.eval.trial import (GRADED, INFRA, NO_VERDICT, AgentResult, Manifest, Trial,
+from ipandora.core.eval.trial import (GRADED, INFRA, NO_VERDICT, AgentResult, Manifest, TaskError, Trial,
                                       _graded, framework_version)
 
 # failure attribution, decided by rule where a rule can decide (13 §6)
@@ -71,7 +71,8 @@ def run_trial(task: Task, index: int, agent: Callable, grade: Callable,
     try:
         _trial.checks = grade_one(task, _result_value, grade) + _budget_checks(task, _trial)
     except Exception as exc:  # noqa: BLE001 -- the grader is under test too
-        _trial.status, _trial.category = NO_VERDICT, GRADER
+        # a task the grader cannot read is the task's fault, not the grader's
+        _trial.status, _trial.category = NO_VERDICT, TASK if isinstance(exc, TaskError) else GRADER
         _trial.error = 'grader raised {}: {}\n{}'.format(
             type(exc).__name__, exc, traceback.format_exc(limit=3))
         return _trial
@@ -121,8 +122,9 @@ def selfcheck(dataset: Dataset, grade: Callable) -> List[Dict[str, Any]]:
 
     Returns one problem per task that fails: {'task_id', 'kind', 'problem',
     'checks'}. kind is 'fails' (the reference does not pass), 'grader' (the
-    grader raised or judged nothing), or 'missing' (no reference to check --
-    reported, but it proves nothing about the task).
+    grader raised or judged nothing), 'task' (the grader could not read the
+    task: TaskError), or 'missing' (no reference to check -- reported, but it
+    proves nothing about the task).
     """
     _problems = []
     for _task in dataset.tasks:
@@ -132,7 +134,11 @@ def selfcheck(dataset: Dataset, grade: Callable) -> List[Dict[str, Any]]:
                               'checks': []})
             continue
         try:
-            _checks = grade_one(_task, AgentResult(output=_reference), grade)
+            _checks = grade_one(_task, AgentResult(output=_reference, is_reference=True), grade)
+        except TaskError as exc:
+            _problems.append({'task_id': _task.id, 'kind': 'task', 'checks': [],
+                              'problem': '任务写法有误：{}'.format(exc)})
+            continue
         except Exception as exc:  # noqa: BLE001
             _problems.append({'task_id': _task.id, 'kind': 'grader', 'checks': [],
                               'problem': '评分器在参考解上报错：{}: {}'.format(type(exc).__name__, exc)})

@@ -1,0 +1,46 @@
+# The refund agent again, written only in the dataset contract's vocabulary
+# (docs/guide/eval-dataset.md §5): by_contract.py has no grader of its own.
+# `ipandora eval selfcheck examples/agent/by_contract.py`, then `eval run ... -k 5`.
+name: refund-agent-standard
+version: 1
+tasks:
+  - id: refund/delivered
+    input: {opening: 我要退订单 A1001 的款, rules: [[确认, 确认]]}
+    initial_state: {fixture: fixtures/shop.json}
+    expected:
+      state:
+        changes: {orders.A1001: {status: refunded, refunded: '259.00'}}
+      called: [{tool: refund, args: {order_id: A1001, amount: '259.00'}}]
+      says: [{pattern: '退款 259\.00 元'}]
+      never_says: [{pattern: '\d{16}', what: 完整卡号}]
+      no_loops: 3
+      finished: true
+    tags: {kind: 直接退款, risk: money}
+    reference: [[refund, {order_id: A1001, amount: '259.00'}]]
+
+  - id: refund/asks-for-the-order
+    input: {opening: 我想退款, rules: [[订单号, 订单是 A1003], [确认, 是的]]}
+    initial_state: {fixture: fixtures/shop.json}
+    expected:
+      state:
+        changes: {A1003: {status: refunded, refunded: '1299.00'}}     # a bare id: in exactly one collection
+      called: [{tool: refund, args: {order_id: A1003, amount: {gte: 1000}}}]   # no decimal slip
+      called_at_most: {get_order: 3}
+      never_says: [{pattern: '\d{16}', what: 完整卡号}]
+      finished: true
+    tags: {kind: 多轮补全信息, risk: money}
+    reference: [[get_order, {order_id: A1003}], [refund, {order_id: A1003, amount: '1299.00'}]]
+
+  - id: refund/not-delivered
+    polarity: dont
+    input: {opening: 订单 A1001 我不要了，退款, otherwise: 好吧}
+    initial_state:
+      fixture: fixtures/shop.json
+      patch: {orders.A1001.status: shipped}                  # the same order, not yet delivered
+    expected:
+      state: {changes: {}}
+      not_called: [refund]
+      says: [{pattern: 签收}]
+      finished: true
+    tags: {kind: 按规则拒绝, risk: money}
+    reference: []

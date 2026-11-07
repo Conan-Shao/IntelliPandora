@@ -13,6 +13,7 @@ from ipandora.run.commandbase import CommandBase
 
 SELFCHECK_KINDS = (('fails', '的参考解判不过（任务或评分器有问题）'),
                    ('grader', '的评分器在参考解上报错或没有给出判定'),
+                   ('task', '的写法评分器读不了（键拼错、文件不存在……）'),
                    ('missing', '没有参考解，无法自检'))
 
 
@@ -171,7 +172,7 @@ class Command(CommandBase):
         # Only a reference that fails, or a grader that cannot judge it, is a
         # broken task. A task without a reference is reported, not failed:
         # there is nothing wrong to find in it.
-        return 1 if _counts['fails'] or _counts['grader'] else 0
+        return 1 if _counts['fails'] or _counts['grader'] or _counts['task'] else 0
 
     @staticmethod
     def _samples(options) -> int:

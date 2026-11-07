@@ -57,8 +57,28 @@ class Task:
     """The reference solution: inline, or a path relative to the dataset file."""
     meta: Dict[str, Any] = field(default_factory=dict)
 
+    root = ''
+    """
+    The dataset's directory, which the task's files are relative to. Not a
+    field: a dataset cannot set it, and it is not part of the task's content.
+    """
+
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
+
+    def files(self) -> List[str]:
+        """
+        The data files the task names for the framework to read: its
+        initial_state.fixture and the JSON Schemas of its output checks.
+        """
+        _out = []
+        if isinstance(self.initial_state, dict) and isinstance(self.initial_state.get('fixture'), str):
+            _out.append(self.initial_state['fixture'])
+        _checks = self.expected.get('checks') if isinstance(self.expected, dict) else None
+        for _c in _checks if isinstance(_checks, list) else ():
+            if isinstance(_c, dict) and isinstance(_c.get('schema'), str):
+                _out.append(_c['schema'])
+        return _out
 
 
 @dataclass
@@ -81,16 +101,19 @@ class Dataset:
         return Dataset(self.name, self.version, [_t for _t in self.tasks if _t.split == name],
                        self.path)
 
-    def reference_path(self, task: Task) -> Optional[str]:
-        """The file a task's reference names, if it names one that exists."""
-        if not isinstance(task.reference, str) or not self.path:
+    def file_path(self, relative: Any) -> Optional[str]:
+        """A file next to the dataset, if `relative` names one that exists -- never outside its directory."""
+        if not isinstance(relative, str) or not relative or not self.path:
             return None
         _base = os.path.dirname(os.path.abspath(self.path))
-        _file = os.path.normpath(os.path.join(_base, task.reference))
-        # a reference must not reach outside the dataset's directory
+        _file = os.path.normpath(os.path.join(_base, relative))
         if os.path.commonpath([_base, _file]) != _base or not os.path.isfile(_file):
             return None
         return _file
+
+    def reference_path(self, task: Task) -> Optional[str]:
+        """The file a task's reference names, if it names one that exists."""
+        return self.file_path(task.reference)
 
     def reference(self, task: Task) -> Any:
         """The reference solution itself: a file's text, or the inline value."""
@@ -103,7 +126,9 @@ class Dataset:
     @property
     def fingerprint(self) -> str:
         """
-        sha256 of the tasks and the bytes of every reference file.
+        sha256 of the tasks, the bytes of every reference file, and of the
+        files the framework reads for a task (fixtures, schemas): a changed
+        fixture is a changed question.
 
         Order-independent over tasks, so reordering the file does not count as
         a new dataset; any change to a task or a reference does.
@@ -116,6 +141,11 @@ class Dataset:
             if _file:
                 with open(_file, 'rb') as fh:
                     _hash.update(hashlib.sha256(fh.read()).digest())
+            for _name in _task.files():
+                _data = self.file_path(_name)
+                if _data:
+                    with open(_data, 'rb') as fh:
+                        _hash.update(b'file:' + _name.encode('utf-8') + hashlib.sha256(fh.read()).digest())
         return _hash.hexdigest()
 
 
@@ -165,6 +195,12 @@ def _check_references(dataset: Dataset) -> None:
             raise ValueError('{}: task {}: reference file {!r} not found next to the dataset '
                              '(or it points outside its directory)'.format(
                                  dataset.path, _task.id, _ref))
+        for _name in _task.files():
+            # a fixture that is not there would be found missing only when a
+            # trial starts, and not in the hash before that
+            if dataset.file_path(_name) is None:
+                raise ValueError('{}: task {}: file {!r} not found next to the dataset '
+                                 '(or it points outside its directory)'.format(dataset.path, _task.id, _name))
 
 
 def from_records(records: List[Dict[str, Any]], name: str, version: str = '',
@@ -175,6 +211,9 @@ def from_records(records: List[Dict[str, Any]], name: str, version: str = '',
     if _twice:
         raise ValueError('{}: duplicate task id(s): {}'.format(name, ', '.join(_twice)))
     _data = Dataset(name=name, version=str(version or ''), tasks=_tasks, path=path)
+    if path:
+        for _t in _tasks:
+            _t.root = os.path.dirname(os.path.abspath(path))
     _check_references(_data)
     return _data
 

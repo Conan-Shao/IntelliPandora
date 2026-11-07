@@ -18,6 +18,11 @@ An evaluation spec: one Python file that says what to run.
 
 `ipandora eval run evals/coding.py` loads it. Agents and graders are code,
 the tasks are data (docs/design/decisions/13 §4).
+
+A spec without grade() is judged by the standard grader: the `expected`
+vocabulary of docs/guide/eval-dataset.md §5, with the spec's `world(task)`
+-- a fresh business system -- for end states and reference replays, and
+`SKIP`, the `expected` keys a spec judges some other way.
 """
 import importlib.util
 import os
@@ -66,9 +71,18 @@ def load(path: str) -> Spec:
         if sys.path and sys.path[0] == _dir:
             sys.path.pop(0)
 
-    _missing = [_n for _n in ('DATASET', 'agent', 'grade') if not hasattr(_module, _n)]
+    _missing = [_n for _n in ('DATASET', 'agent') if not hasattr(_module, _n)]
     if _missing:
         raise ValueError('{} must define {}'.format(path, ', '.join(_missing)))
+    if not hasattr(_module, 'grade'):
+        from ipandora.core.eval import standard
+        _world = getattr(_module, 'world', None)
+        if _world is not None and not callable(_world):
+            raise ValueError('{}: world must be callable: task -> a fresh world'.format(path))
+        _skip = getattr(_module, 'SKIP', ())
+        if isinstance(_skip, str) or not all(isinstance(_k, str) for _k in _skip):
+            raise ValueError("{}: SKIP is a list of expected keys, e.g. ['rubric']".format(path))
+        _module.grade = standard.grader(_world, skip=_skip)
     _data = _module.DATASET
     if isinstance(_data, str):
         _data = datasets.load(_data if os.path.isabs(_data) else os.path.join(_dir, _data))
