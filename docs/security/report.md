@@ -17,7 +17,7 @@
 | 依赖漏洞 | `requirements/bench.txt`：Android 对比作业专用：框架的 android 组 + Appium 客户端（不安装到用户环境） | 通过：43 个包，0 个已知漏洞 |
 | 依赖漏洞 | `bench/android/package-lock.json`：Android 对比作业专用：Appium 服务端与 UiAutomator2 驱动（npm，不安装到用户环境） | 通过：286 个包，2 个已知漏洞（均已登记例外） |
 | 自身代码 | `src/`，bandit 静态扫描 | 通过：0 个未处理问题，32 处经评估标注（理由见下） |
-| 许可证 | 运行环境 121 个分发包、工具链与对比作业 116 个（含间接依赖） | 通过：其余在白名单内，text-unidecode 经人工审查（见下） |
+| 许可证 | 运行环境 120 个分发包、工具链与对比作业 113 个（含间接依赖） | 通过：其余在白名单内，text-unidecode 经人工审查（见下） |
 | npm 锁文件 | 286 个包（含间接依赖）：哈希、来源、许可证 | 通过：全部来自 npm 官方仓库、带 sha512；许可证在白名单内，BlueOak-1.0.0、CC-BY-3.0、MIT or GPL-2.0、WTFPL 经人工审查（见下） |
 | 组件登记 | 37 个直接依赖与 CI 动作 | 通过：与代码声明一致 |
 | 漏洞例外 | 例外登记表 | 通过：2 条 |
@@ -72,7 +72,7 @@ bandit 报出、经评估不构成问题的地方，在源码里标注 `# nosec`
 
 白名单为宽松许可证（MIT、BSD、Apache、ISC、MPL-2.0、PSF 等），不接受 GPL 系、SSPL、BUSL 等，理由见 [`docs/design/decisions/15`](../design/decisions/15-第三方组件安全准入与漏洞扫描.md) §3。
 
-<details><summary>运行环境（框架 + 全部可选组，即用户可能装上的全部）：121 个</summary>
+<details><summary>运行环境（框架 + 全部可选组，即用户可能装上的全部）：120 个</summary>
 
 | 分发包 | 版本 | 许可证 | 结果 |
 |---|---|---|---|
@@ -137,7 +137,7 @@ bandit 报出、经评估不构成问题的地方，在源码里标注 `# nosec`
 | mmh3 | 5.3.1 | MIT License | 通过 |
 | multidict | 6.9.1 | Apache License 2.0 | 通过 |
 | nest-asyncio2 | 1.7.4 | BSD License | 通过 |
-| numpy | 2.4.6 | BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0 | 通过 |
+| numpy | 2.5.4 | BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0 | 通过 |
 | opentelemetry-api | 1.45.1 | Apache-2.0 | 通过 |
 | packaging | 26.3 | Apache-2.0 OR BSD-2-Clause | 通过 |
 | pathlib-abc | 0.5.2 | Python Software Foundation License | 通过 |
@@ -151,7 +151,7 @@ bandit 报出、经评估不构成问题的地方，在源码里标注 `# nosec`
 | pycparser | 3.11 | BSD-3-Clause | 通过 |
 | pydantic | 2.14.1 | MIT | 通过 |
 | pydantic-core | 2.50.1 | MIT | 通过 |
-| pyee | 13.0.1 | MIT License | 通过 |
+| pyee | 14.0.0 | MIT License | 通过 |
 | pygments | 2.21.0 | BSD-2-Clause | 通过 |
 | pyjwt | 2.15.1 | MIT | 通过 |
 | pytest | 9.1.1 | MIT | 通过 |
@@ -183,7 +183,6 @@ bandit 报出、经评估不构成问题的地方，在源码里标注 `# nosec`
 | text-unidecode | 1.3 | Artistic-1.0 OR GPL-2.0-or-later (used under Artistic-1.0) | 通过（人工审查：only with the optional [web] group, via pytest-playwright -&gt; python-slugify, which uses it to transliterate test ids into artifact folder names. Dual licensed; we take the Artistic License, not the GPL. Reviewed 2026-11-05） |
 | textual | 8.2.8 | MIT License | 通过 |
 | tiktoken | 0.14.0 | MIT License | 通过 |
-| tomli | 2.5.0 | MIT | 通过 |
 | truststore | 0.10.5 | MIT | 通过 |
 | typing-extensions | 4.16.0 | PSF-2.0 | 通过 |
 | typing-inspection | 0.4.4 | MIT | 通过 |
@@ -200,7 +199,7 @@ bandit 报出、经评估不构成问题的地方，在源码里标注 `# nosec`
 
 </details>
 
-<details><summary>构建与工具链：72 个</summary>
+<details><summary>构建与工具链：69 个</summary>
 
 | 分发包 | 版本 | 许可证 | 结果 |
 |---|---|---|---|
@@ -221,9 +220,7 @@ bandit 报出、经评估不构成问题的地方，在源码里标注 `# nosec`
 | filelock | 4.2.4 | MIT | 通过 |
 | fqdn | 1.6.0 | MPL-2.0 | 通过 |
 | idna | 3.20 | BSD-3-Clause | 通过 |
-| importlib-metadata | 10.1.0 | Apache-2.0 | 通过 |
 | iniconfig | 2.3.1 | MIT | 通过 |
-| intellipandora | 1.11.0 | Apache-2.0 | 通过 |
 | isoduration | 20.11.0 | ISC License (ISCL) | 通过 |
 | jsonpointer | 3.4 | BSD License | 通过 |
 | jsonschema | 4.26.0 | MIT | 通过 |
@@ -251,7 +248,7 @@ bandit 报出、经评估不构成问题的地方，在源码里标注 `# nosec`
 | pyparsing | 3.3.3 | MIT | 通过 |
 | pyproject-hooks | 1.3.3 | MIT | 通过 |
 | pytest | 9.1.1 | MIT | 通过 |
-| python-dateutil | 2.9.0.post0 | BSD License / Apache Software License | 通过 |
+| python-dateutil | 3.0.0 | BSD License / Apache Software License | 通过 |
 | pyyaml | 6.0.3 | MIT License | 通过 |
 | referencing | 0.37.0 | MIT | 通过 |
 | requests | 2.34.2 | Apache Software License | 通过 |
@@ -275,7 +272,6 @@ bandit 报出、经评估不构成问题的地方，在源码里标注 `# nosec`
 | uv | 0.13.4 | MIT OR Apache-2.0 | 通过 |
 | webcolors | 25.10.0 | BSD License | 通过 |
 | wheel | 0.48.0 | MIT | 通过 |
-| zipp | 4.1.2 | MIT | 通过 |
 
 </details>
 
