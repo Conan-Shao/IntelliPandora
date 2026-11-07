@@ -2,7 +2,7 @@
 
 依赖变慢、断开、连接被重置的时候，被测系统还守得住不变量吗？在一条用例里注入故障，用完一定撤销，注入了什么写进证据，失败归因能分清"用例自己注入的故障"和"环境真的出了问题"。设计依据见 [决策记录 18](../design/decisions/18-一致性检查与故障注入.md)。
 
-故障经 [Toxiproxy](https://github.com/Shopify/toxiproxy) 注入：被测服务通过 Toxiproxy 的代理端口访问它的依赖，框架通过 Toxiproxy 的 HTTP 接口在代理上加、删故障。Python 侧不需要装任何东西，Toxiproxy 本身是环境里单独运行的服务（容器或二进制）。
+内置的后端是 [Toxiproxy](https://github.com/Shopify/toxiproxy)（别的平台怎么接，见[接入别的故障注入平台](#接入别的故障注入平台)）：被测服务通过 Toxiproxy 的代理端口访问它的依赖，框架通过 Toxiproxy 的 HTTP 接口在代理上加、删故障。Python 侧不需要装任何东西，Toxiproxy 本身是环境里单独运行的服务（容器或二进制）。
 
 ## 打开
 
@@ -51,6 +51,52 @@ def test_payment_degrades_cleanly_when_the_db_resets_connections():
 ## 归因
 
 故障生效期间出现的传输失败（连接被重置、超时）归为**注入的故障**，不归为"环境"。判断依据是时间：故障生效期间抛出的传输错误，消息里会写明当时生效的故障，`concurrently()` 的线程里发出的请求也一样：依赖是用例自己弄坏的，要看的是被测系统（或用例的客户端）该不该扛住它——重试、超时、降级。判定不成立（比如重复扣款）仍然是产品缺陷。故障撤销之后、或者没有注入故障的用例遇到连接失败，照旧归为环境问题。
+
+## 接入别的故障注入平台
+
+Toxiproxy 是内置的后端。公司自己的故障平台、云厂商的故障服务、K8s 上的 Chaos Mesh，都可以作为另一个后端接进来：写一个 `faults.Backend` 的子类，注册一个名字，故障写明用哪个后端。
+
+```python
+from ipandora.core import faults
+
+
+class ChaosPlatform(faults.Backend):
+    """接一个故障平台：每个方法调一次平台的接口（这里用一个字典代替）。"""
+
+    name = 'chaos-platform'
+
+    def __init__(self):
+        self.experiments = {}
+
+    def where(self):
+        return 'https://chaos.example.test'          # 写进证据：故障是经哪里注入的
+
+    def apply(self, fault):                          # 返回时故障已经生效；做不到就抛 faults.BackendError
+        self.experiments[fault.name] = (fault.target, fault.kind, dict(fault.attributes))
+
+    def undo(self, fault):                           # 只撤销这一个；已经不在了也不能报错
+        self.experiments.pop(fault.name, None)
+
+    def clean(self):                                 # 删掉所有以 faults.PREFIX 开头的：被杀掉的运行留下的
+        ours = [n for n in self.experiments if n.startswith(faults.PREFIX)]
+        for n in ours:
+            del self.experiments[n]
+        return ours
+
+
+faults.register('chaos-platform', ChaosPlatform)
+kill_orders = faults.Fault('orders', 'pod-kill', backend='chaos-platform')
+```
+
+用的时候和内置的一样：`with faults.injected(kill_orders): ...`。环境配置里写上它，运行开始和结束时才会清理它的残留：
+
+```yaml
+faults:
+  allowed: true
+  backends: [toxiproxy, chaos-platform]
+```
+
+后端只负责加和撤。其余的不论哪个后端都由框架做，接入方不用、也不能改：没打开就不许注入（`prod` 永远不许）；同一个目标同时只有一个注入者（资源锁 `fault:<目标>`）；每个故障写进证据，带起止时间和 `backend`、`via`；生效期间的传输错误带标记，归因为"注入的故障"；离开 `with` 块一定撤销。后端要保证的只有三条：`apply` 返回时故障已经生效，失败就抛 `BackendError`、什么都不留；`undo` 只撤这一个，重复调用不报错；它创建的东西都用 `fault.name` 命名（以 `ipandora-` 开头），`clean()` 才找得到。
 
 ## 和一致性检查一起用
 

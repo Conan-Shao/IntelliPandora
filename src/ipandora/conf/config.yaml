@@ -23,10 +23,11 @@ web:
   viewport:             # e.g. {width: 1280, height: 720}; default Playwright's
   trace: retain-on-failure   # on | off. A trace holds request headers and bodies -- tokens and cookies -- unmasked
 
-# Fault injection through Toxiproxy (core/faults.py). Off unless an environment
-# turns it on in its conf/<env>.yaml -- local and CI only; never in prod.
+# Fault injection (core/faults.py). Off unless an environment turns it on in
+# its conf/<env>.yaml -- local and CI only; never in prod.
 faults:
   allowed: false
+  backends: [toxiproxy] # the backends this environment injects through; cleaned up when a run starts and ends
   toxiproxy:            # default http://127.0.0.1:8474, or $TOXIPROXY_URL
 
 # Cross-service traces (core/tracing.py): each request carries a W3C traceparent,

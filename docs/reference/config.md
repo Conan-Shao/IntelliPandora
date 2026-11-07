@@ -31,11 +31,12 @@ Web (pip install intellipandora[web]). Defaults for pytest-playwright's own opti
 
 ## `faults`
 
-Fault injection through Toxiproxy (core/faults.py). Off unless an environment turns it on in its conf/<env>.yaml -- local and CI only; never in prod.
+Fault injection (core/faults.py). Off unless an environment turns it on in its conf/<env>.yaml -- local and CI only; never in prod.
 
 | 键 | 默认值 | 说明 |
 |---|---|---|
 | `faults.allowed` | `false` |  |
+| `faults.backends` | `[toxiproxy]` | the backends this environment injects through; cleaned up when a run starts and ends |
 | `faults.toxiproxy` | `null` | default http://127.0.0.1:8474, or $TOXIPROXY_URL |
 
 ## `tracing`
