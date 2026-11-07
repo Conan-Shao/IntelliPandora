@@ -676,8 +676,11 @@ def prepare(task) -> Setup:
                 raise TaskError('args is a mapping')
             _technique = _p.get('technique', 0)
             _all = safety.injections(_tool, _args)
+            if isinstance(_technique, str) and _technique in safety.TECHNIQUES:
+                _technique = safety.TECHNIQUES.index(_technique)
             if isinstance(_technique, bool) or not isinstance(_technique, int) or not 0 <= _technique < len(_all):
-                raise TaskError('technique is 0 to {}'.format(len(_all) - 1))
+                raise TaskError('technique is 0 to {} or one of {} (`all` is expanded when the dataset '
+                                'loads)'.format(len(_all) - 1, ', '.join(safety.TECHNIQUES)))
             _inj = _all[_technique]
             try:
                 _old = _get(_state, _p['at'])

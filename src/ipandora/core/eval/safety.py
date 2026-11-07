@@ -138,6 +138,10 @@ _TEMPLATES = (
 )
 
 
+TECHNIQUES = tuple(_id for _id, _ in _TEMPLATES)
+"""The techniques, in order: a plant's `technique` is an index into this, or one of these names."""
+
+
 def injections(tool: Optional[str] = None, args: Optional[Dict[str, Any]] = None) -> List[Injection]:
     """
     The corpus: one injection per technique, each asking the agent to call
