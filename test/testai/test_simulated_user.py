@@ -58,3 +58,44 @@ def test_the_call_budget_ends_the_conversation():
 
 def test_an_empty_answer_ends_it_too():
     assert ModelUser('hi', persona='p', goal='g', provider=Fake('  ')).reply([]) is None
+
+
+class TestFromTask:
+    """E6: a model user straight from a task's input (docs/guide/eval-dataset.md §4)."""
+
+    def test_the_task_describes_the_user(self):
+        from ipandora.core.eval.dataset import Task
+        _t = Task(id='refund/vague', input={'opening': '东西有问题', 'persona': '老年用户', 'goal': '退掉 A1003'})
+        _user = ModelUser.from_task(_t, provider=Fake('订单 A1003'), label='fake')
+        assert (_user.opening(), _user.persona, _user.goal, _user.name) == (
+            '东西有问题', '老年用户', '退掉 A1003', 'model-user v1 (fake)')
+        assert _user.reply([{'role': 'assistant', 'content': '哪个订单？'}]) == '订单 A1003'
+
+    @pytest.mark.parametrize('input_, error', [
+        ('just text', 'needs input'),
+        ({'opening': 'hi', 'persona': 'p'}, 'needs goal'),
+        ({'opening': ' ', 'persona': 'p', 'goal': 'g'}, 'needs opening'),
+        ({'opening': 'hi', 'persona': 'p', 'goal': 'g', 'rules': [['a', 'b']]}, 'rules is not for a model user'),
+    ])
+    def test_an_input_it_cannot_play(self, input_, error):
+        from ipandora.core.eval.dataset import Task
+        with pytest.raises(ValueError, match=error):
+            ModelUser.from_task(Task(id='t', input=input_))
+
+    def test_the_standard_converse_takes_it_and_refuses_to_guess(self):
+        from ipandora.core.eval import standard
+        from ipandora.core.eval.dataset import Task
+        from ipandora.core.eval.trial import TaskError
+
+        class World:
+            def snapshot(self):
+                return {}
+
+            def call(self, name, **args):
+                return None
+        _t = Task(id='t', input={'opening': 'hi', 'persona': 'p', 'goal': 'g'}, expected={'finished': True})
+        with pytest.raises(TaskError, match='ModelUser.from_task'):
+            standard.converse(_t, lambda t: World(), lambda w: (lambda m: 'ok'))
+        _r = standard.converse(_t, lambda t: World(), lambda w: (lambda m: 'ok'),
+                               user=ModelUser.from_task(_t, provider=Fake()))
+        assert _r.output['ended'] == 'user' and [_g.check.ok for _g in standard.grade(_t, _r)] == [True]

@@ -53,12 +53,16 @@ def task_of(state, target) -> Task:
     _meta = dict(getattr(state, 'metadata', None) or {})
     _targets = list(getattr(target, 'target', None) or [])
     _expected = _targets[0] if len(_targets) == 1 else (_targets or None)
+    if isinstance(_meta.get('expected'), dict):
+        # a sample from `ipandora eval to-inspect`: the dataset's own `expected`
+        # (the target is the reference solution there)
+        _expected = _meta['expected']
     _fields = {}
     for _key, _allowed in (('polarity', ('do', 'dont')), ('split', ('dev', 'test'))):
         if _meta.get(_key) in _allowed:
             _fields[_key] = _meta[_key]
-    return Task(id=str(getattr(state, 'sample_id', '')), input=getattr(state, 'input_text', None),
-                expected=_expected,
+    return Task(id=str(getattr(state, 'sample_id', '')), input=_meta.get('input', getattr(state, 'input_text', None)),
+                expected=_expected, initial_state=_meta.get('initial_state'),
                 tags=dict(_meta.get('tags') or {}) if isinstance(_meta.get('tags'), dict) else {},
                 meta=_meta, **_fields)
 

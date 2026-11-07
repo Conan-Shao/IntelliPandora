@@ -32,6 +32,8 @@ class Command(CommandBase):
                 sys.exit(self._inspect(options))
             if _action == 'code':
                 sys.exit(self._code(options))
+            if _action == 'to-inspect':
+                sys.exit(self._to_inspect(options))
             if _action == 'selfcheck':
                 sys.exit(self._selfcheck(options))
             if _action == 'samples':
@@ -153,6 +155,22 @@ class Command(CommandBase):
         return 1 if _reasons else 0
 
     @staticmethod
+    def _to_inspect(options) -> int:
+        import json
+        import sys
+        from ipandora.core.eval import dataset
+        _data = dataset.load(options.dataset).split(options.split)
+        _lines = ''.join(json.dumps(_s, ensure_ascii=False, default=str) + '\n'
+                         for _s in dataset.to_inspect(_data))
+        if options.out:
+            with open(options.out, 'w', encoding='utf-8') as fh:
+                fh.write(_lines)
+            print('  {} 道题  ->  {}'.format(len(_data.tasks), options.out))
+        else:
+            sys.stdout.write(_lines)
+        return 0
+
+    @staticmethod
     def _selfcheck(options) -> int:
         from ipandora.core.eval import selfcheck, spec
         _spec = spec.load(options.spec)
@@ -250,6 +268,11 @@ class Command(CommandBase):
         _check = _sub.add_parser('selfcheck', help='grade every reference solution; exit 1 if any fails')
         _check.add_argument('spec')
         _check.add_argument('--split', choices=['dev', 'test'], default=None)
+
+        _convert = _sub.add_parser('to-inspect', help='a dataset as Inspect samples (JSONL for json_dataset())')
+        _convert.add_argument('dataset', help='dataset.yaml or .jsonl')
+        _convert.add_argument('-o', '--out', default=None, help='file to write; default stdout')
+        _convert.add_argument('--split', choices=['dev', 'test'], default=None)
 
         _samples = _sub.add_parser('samples', help='export judge verdicts for people to label (JSONL)')
         _samples.add_argument('run', help='report.json of an evaluation run')

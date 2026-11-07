@@ -60,14 +60,18 @@
       {%- set sc_fails = selfcheck|selectattr('kind', 'equalto', 'fails')|list %}
       {%- set sc_grader = selfcheck|selectattr('kind', 'equalto', 'grader')|list %}
       {%- set sc_missing = selfcheck|selectattr('kind', 'equalto', 'missing')|list %}
+      {%- set sc_task = selfcheck|selectattr('kind', 'equalto', 'task')|list %}
       {%- if sc_fails %}<li><b>{{ sc_fails|length }} 道题的参考解判不过</b>，这些题上的失败归为"任务有问题"。</li>{% endif %}
       {%- if sc_grader %}<li><b>{{ sc_grader|length }} 道题的评分器在参考解上报错或没有给出判定</b>，先修评分器。</li>{% endif %}
+      {%- if sc_task %}<li><b>{{ sc_task|length }} 道题的写法评分器读不了</b>（键拼错、文件不存在……），这些题没有结论，先修题目。</li>{% endif %}
       {%- if sc_missing %}<li>{{ sc_missing|length }} 道题没有参考解，无法自检；这些题上的失败仍算 agent 的。</li>{% endif %}
     </ul>
   </div>
   <dl>
     <dt>对比基线</dt><dd>{% if cmp %}<code>{{ cmp.baseline_run or '—' }}</code>{% else %}无<span class="sub">用 <code>--update-baseline</code> 写入</span>{% endif %}</dd>
-    <dt>评测集</dt><dd><code>{{ manifest.dataset_hash[:12] or '—' }}</code><span class="sub">内容哈希；划分 {{ manifest.split or '全部' }}</span></dd>
+    <dt>评测集</dt><dd><code>{{ manifest.dataset_hash[:12] or '—' }}</code><span class="sub">内容哈希；划分 {{ manifest.split or '全部' }}</span>
+      {%- if manifest.dataset_description %}<span class="sub">{{ manifest.dataset_description }}</span>{% endif %}
+      {%- if manifest.dataset_meta %}<span class="sub">{% for k, v in manifest.dataset_meta|dictsort %}{{ k }}：{{ v }}{% if not loop.last %} · {% endif %}{% endfor %}</span>{% endif %}</dd>
     <dt>环境</dt><dd>{% if manifest.resources %}{% for k, v in manifest.resources|dictsort %}{{ k }}={{ v }}{% if not loop.last %} · {% endif %}{% endfor %}{% else %}未记录资源配置{% endif %}</dd>
   </dl>
 </section>

@@ -335,3 +335,10 @@ E0 已经有按任务的基线、配对检验、噪声阈值和"变差即退出�
 - **外联白名单**仍是 `EgressGuard`（进程级），`prepare()` 按 `egress_allow` 打开；参考解不判外联。
 - **与规范的差异**：规范原写"`technique` 不写则每种手法都生成一道变体"。按手法展开会改变题目数量和 id，属于数据集的展开，不是评分；这一版不写时用手法 0，展开留作计划项。
 
+## 追加（2026-11-07）：E6 数据集规范的其余计划项
+
+- 模型扮演的用户从数据构造：`ModelUser.from_task(task)`（在 `ai/`，`core` 不调用模型）。`standard.converse()` 遇到描述了模型用户的题而没给 `user`，报错，不退回脚本用户：两种用户是两种测量。
+- 数据集顶层的 `description` / `meta` 写进版本清单（`dataset_description`、`dataset_meta`）和报告，不进内容哈希。
+- `ipandora eval to-inspect`：数据集转成 Inspect 的样本。`expected`、`initial_state` 放在 `metadata` 里，`inspect_scorer.task_of()` 读回来，标准评分器在 Inspect 路径上照样能用；参考解作为 `target`。
+- 规范里剩下的计划项：注入按手法自动展开、`rubric` 模型评委。
+

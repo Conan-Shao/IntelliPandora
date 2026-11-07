@@ -192,6 +192,9 @@ class Manifest:
     dataset: str = ''
     dataset_version: str = ''
     dataset_hash: str = ''
+    dataset_description: str = ''
+    dataset_meta: Dict[str, Any] = field(default_factory=dict)
+    """The dataset's own description and meta (source, licence...): what was measured, in its words."""
     split: str = ''
     """'dev', 'test', or '' for both."""
     harness: str = ''

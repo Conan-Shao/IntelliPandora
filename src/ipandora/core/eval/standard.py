@@ -704,6 +704,10 @@ def converse(task, world: Callable, agent: Callable, max_turns: int = 10, user=N
         def agent(task):
             return standard.converse(task, world, lambda shop: Bot(shop).respond, max_turns=8)
     """
+    if user is None and isinstance(task.input, dict) and ('persona' in task.input or 'goal' in task.input):
+        # a model plays this user: that is the ai layer's, never core's to start
+        raise TaskError('task {}: its input describes a model-played user (persona, goal); pass '
+                        'user=ModelUser.from_task(task) from ipandora.ai.simulated_user'.format(task.id))
     with prepare(task) as _setup:
         _w = world(task)
         _setup.initial = copy.deepcopy(_w.snapshot())
