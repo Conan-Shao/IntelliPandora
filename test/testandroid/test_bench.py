@@ -176,3 +176,21 @@ def test_markdown_with_one_tool_has_no_ratio_column():
     assert '| 操作 | uiautomator2 |\n' in _md
     assert '| hierarchy | 5.0 (5.0) |' in _md
     assert '| 会话（热） | — |' in _md
+
+
+def test_u2_lookups_ask_the_device_inside_the_timed_call():
+    # uiautomator2's `exists` is an object that asks the device only when made a
+    # bool: returned as is, the timing measured nothing (and `is False` failed on CI)
+    pytest.importorskip('uiautomator2')
+    from test.testandroid.fake_device import FakeDevice
+    _device = FakeDevice()
+    _asked = []
+    _exist = _device.jsonrpc.exist
+    _device.jsonrpc.exist = lambda selector: _asked.append(selector) or _exist(selector)
+    _client = bench.U2('emulator-5554', 'com.example.shop', '.Main')
+    _client.d = _device
+    _ops = _client.ops('Welcome')
+    _present, _absent = _ops['find (present)'](), _ops['find (absent)']()
+    assert (_present, _absent) == (True, False) and len(_asked) == 2
+    _c = bench.checks('Welcome')
+    assert _c['find (present)'](_present) and _c['find (absent)'](_absent)

@@ -197,7 +197,14 @@ def _message(line: str) -> str:
 
 
 def relevant(log: str, package: str, pids: List[str]) -> str:
-    """The app's own lines, and every crash and ANR line, of a threadtime log -- the last LOG_LINES."""
+    """
+    The app's own lines, and every crash and ANR line, of a threadtime log:
+    at most LOG_LINES, in their order. Crash and ANR lines are kept first (the
+    earliest, if there are more: the first crash is the cause); the room left
+    goes to the latest of the others. Keeping just the last LOG_LINES lost
+    the FATAL EXCEPTION on CI: after `am crash` the restarted app and the
+    system's notes about it filled the window.
+    """
     _keep = []
     for _line in (log or '').splitlines():
         _parts = _line.split()
@@ -205,7 +212,12 @@ def relevant(log: str, package: str, pids: List[str]) -> str:
         if (_pid and _pid in pids) or 'AndroidRuntime' in _line or (package and package in _line) \
                 or 'ANR in' in _line:
             _keep.append(_line)
-    return '\n'.join(_keep[-LOG_LINES:])
+    _crash = [_i for _i, _l in enumerate(_keep) if 'AndroidRuntime' in _l or 'ANR in' in _l][:LOG_LINES]
+    _room = LOG_LINES - len(_crash)
+    _crash_set = set(_crash)
+    _others = [_i for _i in range(len(_keep)) if _i not in _crash_set]
+    _chosen = _crash_set | set(_others[len(_others) - _room:] if _room > 0 else [])
+    return '\n'.join(_keep[_i] for _i in sorted(_chosen))
 
 
 # -- the widget tree -----------------------------------------------------------------------------

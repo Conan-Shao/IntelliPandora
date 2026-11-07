@@ -232,8 +232,9 @@ class U2:
     def ops(self, name):
         _d = self.d
         return {
-            'find (present)': lambda: _d(text=name).exists,
-            'find (absent)': lambda: _d(text=ABSENT).exists,
+            # `exists` is lazy: the device is asked when it becomes a bool, so that is inside the timing
+            'find (present)': lambda: bool(_d(text=name).exists),
+            'find (absent)': lambda: bool(_d(text=ABSENT).exists),
             'read text': lambda: _d(text=name).get_text(),
             'hierarchy': lambda: _d.dump_hierarchy(),
             'screenshot': lambda: _d.screenshot(),
