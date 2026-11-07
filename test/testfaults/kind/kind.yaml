@@ -1,0 +1,10 @@
+# One node; the target service's NodePort reachable from the runner at 127.0.0.1:30080.
+# The node image is the one kind v0.33.0 pins by digest (kindest/node:v1.37.0@sha256:a1ed56cf...).
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - containerPort: 30080
+        hostPort: 30080
+        listenAddress: 127.0.0.1

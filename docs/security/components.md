@@ -63,6 +63,9 @@
 |---|---|---|---|---|---|---|---|
 | elle-cli | 一致性检查（`core/consistency.py`，决策 18 D3）：Knossos 判线性一致，Elle 判事务隔离异常，Jepsen 的 counter / set / bank 检查器 | 0.1.11（2026-09-01 构建） | GitHub release `elle-cli-bin-0.1.11.zip`（zip 的 SHA-256 `9d3c72eaf3ccc4d0c7dc1da710264dee01f03af58c9fa177fec3f78ff5af1779`） | jar：`85c39a6247509075bf21762d4c8ed3a2cb3d2c9b2c169cb2c80dde25fa760388` | EPL-1.0 或更新版本（Elle、Knossos、Jepsen 同为 EPL-1.0）。**不在白名单内，经单独评审接受**（决策 18 §7）：作为外部工具调用，不分发、不链接，框架代码与它之间只有命令行和文件 | 需要 Java 21+。读一个历史文件，向标准输出写结论，不联网；`--directory` 未使用，不写图。发布流程带 `overwrite: true`，同名文件可能被替换，所以核对哈希而不是只看版本号 | 2026-11-06 |
 | Android 模拟器 + 系统镜像（`system-images;android-34;google_apis;x86_64`） | CI 的 `android` 作业里运行 Android 验收用例（`test/testandroid/test_on_emulator.py`） | 由 android-emulator-runner 按 API 34 取当时的最新修订 | Google 的 Android SDK 仓库（`dl.google.com`），经 sdkmanager | —（sdkmanager 按仓库清单里的校验和核对下载内容；修订号由 Google 发布，不钉哈希） | Android SDK License（只在 CI 里使用，不分发、不链接）。**不在白名单内，经单独评审接受**：这是使用 Android 模拟器的唯一途径 | 只在 CI 的 runner 上运行，跑完即销毁；被测的是镜像自带的"设置"App，不下载第三方 APK | 2026-11-07 |
+| kind | CI 的 `chaos-mesh` 作业里起一个单节点 K8s 集群（Chaos Mesh 后端的验收，`test/testfaults/kind/setup.sh`） | v0.33.0（2026-08-26） | 从源码构建：`go install sigs.k8s.io/kind@v0.33.0`，经 Go 模块代理下载，`go` 按公共校验和数据库（sum.golang.org）核对模块及其依赖；装好后再核对二进制里记的模块哈希 | 模块哈希 `h1:AjvDv3vOygb/VKLVQW87lfktIBzkxR8Ump9DjxC8+Lk=`（`go version -m` 核对，不一致就停） | Apache-2.0 | 在 runner 上用 Docker 起一个容器当 K8s 节点（镜像见"测试用容器镜像"），只在这个作业里，作业结束随 runner 销毁 | 2026-11-07 |
+| Chaos Mesh（Helm chart） | Chaos Mesh 后端（`core/chaosmesh.py`，决策 18 D4b）的验收集群里装 Chaos Mesh；框架本身只调用 `kubectl`，不装它 | chart 2.8.6（2026-10-21；2.8.7、2.8.8 未满 14 天） | `https://charts.chaos-mesh.org/chaos-mesh-2.8.6.tgz`，PingCAP / CNCF 项目 | `1a3947427e1fab911372f869a70badc495a88b4d7a86f19a16b4c957b13859b1`（与 chart 索引公布的一致，`sha256sum -c` 核对） | Apache-2.0 | 只装控制器和 chaos-daemon（不装 dashboard、DNS 服务），镜像按摘要钉住。**chaos-daemon 以特权容器运行，用宿主机的 PID 命名空间**，要进入被注入 Pod 的网络命名空间改 tc / iptables——所以只装在作业自己的一次性 kind 集群里。用户在自己的集群里用这个后端时，Chaos Mesh 由他们自己装 | 2026-11-07 |
+| kubectl | Chaos Mesh 后端经它创建、查询、删除 Chaos 对象 | 用户环境里的（CI 用 runner 镜像自带的） | 用户自己安装的系统工具；框架不下载、不分发 | —（系统工具，不钉哈希） | Apache-2.0 | 框架每次调用都带上配置里写明的 `--context`；没写 context 就拒绝注入，**从不使用 kubectl 当前的 context**，免得指着生产集群的 kubectl 被误用。只建、查、删带 `app.kubernetes.io/managed-by=ipandora` 标签、名字以 `ipandora-` 开头的 Chaos 对象 | 2026-11-07 |
 | Docker Engine + Docker Compose | 依赖环境编排（`core/stack.py`，决策 19 D5）：`up --wait`、`port`、`logs`、`down -v` | Compose ≥ 2.20（`--wait-timeout`），运行时检查 | 用户自己安装的系统工具；框架不下载、不分发 | —（系统工具，版本由用户环境决定，不钉哈希） | Apache-2.0 | 框架只用完整路径调用 `docker compose`，参数为列表、不经 shell，只操作自己创建的 `ipandora-<主机>-<进程>-` 项目；清理只删本机已不存在的进程留下的项目。容器里运行什么由用户的 compose 文件决定 | 2026-11-06 |
 
 ## Android 对比作业专用
@@ -77,11 +80,14 @@
 
 ## 测试用容器镜像
 
-只在本仓库的测试和 CI 里拉取（`test/teststack/compose/`），不随包分发。按摘要（digest）钉住，标签被改指向也拉不到别的内容；测试核对这里登记的摘要与 compose 文件一致。
+只在本仓库的测试和 CI 里拉取（`test/teststack/compose/`、`test/testfaults/kind/`），不随包分发。按摘要（digest）钉住，标签被改指向也拉不到别的内容；测试核对这里登记的摘要与 compose 文件一致。
 
 | 镜像 | 用途 | 版本 | 来源 | 摘要 | 许可证 | 运行期行为 | 审查日期 |
 |---|---|---|---|---|---|---|---|
 | busybox | 依赖环境测试里的 HTTP 服务（`httpd`）、健康检查（`wget`） | 1.37.0（2024-09-26 构建） | Docker 官方镜像，经 `mirror.gcr.io/library/busybox` 拉取（Docker Hub 匿名拉取限流） | `sha256:a7dbc319b1438115a207e11930dc4bb3e643dcb3ec0bdd694bb36cd8fad289ec` | GPL-2.0。**不在白名单内，经单独评审接受**：只在本仓库的测试里作为容器运行，不链接、不随包分发；几乎所有基础镜像都带 GPL 的用户态工具 | 容器内运行测试自己的命令，只监听容器端口，由 Docker 随机映射到本机 | 2026-11-06 |
+| kindest/node | `chaos-mesh` 作业的 kind 集群节点 | v1.37.0（kind v0.33.0 默认用的那个） | `kindest/node`，kind 官方（kubernetes-sigs） | `sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5`（写在 kind v0.33.0 的源码里，随上面核对过的 kind 一起钉住） | Apache-2.0（Kubernetes、containerd 等）；基础镜像里的系统工具有 GPL 的，**不在白名单内，经单独评审接受**：只在一次性的 CI 集群里运行，不分发、不链接 | K8s 控制面和 containerd，跑在 runner 的 Docker 里 | 2026-11-07 |
+| chaos-mesh/chaos-mesh | Chaos Mesh 控制器 | v2.8.6 | `ghcr.io/chaos-mesh/chaos-mesh`，官方 | `sha256:ccdb92ca6d8e0f477cc87f86925442b65956be21a5118fadbd28e19836e8ce04`（多架构索引） | Apache-2.0；基础镜像同上，经单独评审接受 | 监听 Chaos 对象，调度 chaos-daemon 注入、恢复 | 2026-11-07 |
+| chaos-mesh/chaos-daemon | Chaos Mesh 在每个节点上的执行者 | v2.8.6 | `ghcr.io/chaos-mesh/chaos-daemon`，官方 | `sha256:5e735d875fe7cdfbb7366d7826ab67d39a36c4ba26632cc928207abab7e5257d`（多架构索引） | Apache-2.0；基础镜像带 iptables、iproute2（GPL），经单独评审接受 | **特权容器、宿主机 PID 命名空间**：进入目标 Pod 的网络命名空间设 tc netem、iptables，暂停或替换容器 | 2026-11-07 |
 | toxiproxy | 依赖环境测试里的真实 Toxiproxy（D4 故障注入经它作用于服务） | 2.12.0（2025-03-18 构建） | `ghcr.io/shopify/toxiproxy`，Shopify 官方 | `sha256:9378ed52a28bc50edc1350f936f518f31fa95f0d15917d6eb40b8e376d1a214e` | MIT | 转发 TCP；HTTP 管理接口只映射到本机随机端口 | 2026-11-06 |
 
 ## CI 动作
