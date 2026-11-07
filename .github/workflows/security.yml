@@ -35,22 +35,29 @@ jobs:
           cache: pip
           cache-dependency-path: requirements/*.txt
 
-      # Two environments: the scanners, and what a user gets (the framework
-      # with every optional group). Licenses are read from the second.
-      - name: Install scanners and the runtime environment
+      # Three environments: the scanners, what a user gets (the framework
+      # with every optional group), and the Android comparison job's. Licenses
+      # are read from the last two. npm (preinstalled on the runner) audits
+      # bench/android/package-lock.json; nothing from it is installed here.
+      - name: Install scanners and the environments to check
         run: |
           python -m venv "$RUNNER_TEMP/tools"
           "$RUNNER_TEMP/tools/bin/pip" install --require-hashes -r requirements/tools.txt
           python -m venv "$RUNNER_TEMP/runtime"
           "$RUNNER_TEMP/runtime/bin/pip" install --require-hashes -r requirements/ci.txt
           "$RUNNER_TEMP/runtime/bin/pip" install --no-deps --no-build-isolation -e .
+          python -m venv "$RUNNER_TEMP/bench"
+          "$RUNNER_TEMP/bench/bin/pip" install --require-hashes -r requirements/bench.txt
+          "$RUNNER_TEMP/bench/bin/pip" install --no-deps --no-build-isolation -e .
+          npm --version
 
       # Exit 1: something was found -- the report is still written and shown.
       # Exit 2: a scan could not run -- nothing is written, nothing published.
       - name: Scan
         run: |
           "$RUNNER_TEMP/tools/bin/python" scripts/security_report.py \
-            --runtime-python "$RUNNER_TEMP/runtime/bin/python"
+            --runtime-python "$RUNNER_TEMP/runtime/bin/python" \
+            --bench-python "$RUNNER_TEMP/bench/bin/python"
 
       - name: Keep the report
         if: always()

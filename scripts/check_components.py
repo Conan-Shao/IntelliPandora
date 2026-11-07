@@ -9,11 +9,11 @@ Usage: check_components.py                 # registry vs declarations, exception
        check_components.py --licenses-json # licenses of the installed env, as JSON
                                            # (read by scripts/security_report.py)
 
-Three checks, all offline:
+Four checks, all offline:
 
 1. **Registry matches reality.** Everything declared -- setup.cfg
-   install_requires, setup.py extras, requirements/*.in, and every `uses:` in
-   .github/workflows -- must appear in docs/security/components.md with the
+   install_requires, setup.py extras, requirements/*.in, every `uses:` in
+   .github/workflows, and every package.json under bench/ -- must appear in docs/security/components.md with the
    same version spec. An entry the code no longer uses fails too: a registry
    that drifts from the code is a registry nobody can trust. This is what
    makes "admitted before it is introduced" enforceable rather than a
@@ -23,12 +23,16 @@ Three checks, all offline:
 3. **Vulnerability exceptions have not expired.** docs/security/exceptions.md
    lets a known, unfixable advisory through with a reason and a date. Past the
    date it fails, or an exception quietly becomes a permanent waiver.
+4. **npm locks are whole and allowed** (check_npm_locks): every package
+   `npm ci` installs is hashed, from the public registry, and licensed on the
+   allowlist or under a written review.
 """
 import argparse
 import ast
 import configparser
 import datetime
 import glob
+import json
 import os
 import re
 import sys
@@ -102,7 +106,11 @@ def declared():
                     if _r:
                         _out[_r[0]] = ('extra:' + _key.value, _r[1])
 
-    for _path, _category in (('requirements/build.in', 'build'), ('requirements/tools.in', 'tool')):
+    for _path, _category in (('requirements/build.in', 'build'), ('requirements/tools.in', 'tool'),
+                             ('requirements/bench.in', 'bench')):
+        # a missing file declares nothing; what the registry still lists for it fails as unused
+        if not os.path.exists(os.path.join(REPO, _path)):
+            continue
         for _line in open(os.path.join(REPO, _path), encoding='utf-8'):
             _r = split_req(_line)
             if _r and _r[0] not in _out:
@@ -130,7 +138,100 @@ def declared():
                     _out[_name] = _spec
             elif re.match(r'^\s*-?\s*uses:\s*\S+@', _line) and 'uses: ./' not in _line:
                 _out['!unpinned:' + _line.strip()] = ('action', 'NOT PINNED TO A SHA')
+
+    # npm packages, by exact version: a range would let `npm install` move
+    # without the registry noticing. The lock pins the rest, see check_npm_locks().
+    for _project in npm_projects():
+        _pkg = json.load(open(os.path.join(REPO, _project, 'package.json'), encoding='utf-8'))
+        for _section in ('dependencies', 'devDependencies', 'optionalDependencies'):
+            for _name, _version in sorted((_pkg.get(_section) or {}).items()):
+                _spec = ('npm', _version if re.fullmatch(r'\d+\.\d+\.\d+', _version)
+                         else 'NOT AN EXACT VERSION: ' + _version)
+                _out[norm(_name)] = _spec
     return _out
+
+
+# -- npm -----------------------------------------------------------------------
+
+def npm_projects():
+    """Directories holding a package.json, relative to the repo, outside node_modules."""
+    return sorted(os.path.relpath(os.path.dirname(_p), REPO)
+                  for _p in glob.glob(os.path.join(REPO, 'bench', '**', 'package.json'), recursive=True)
+                  if 'node_modules' not in _p)
+
+
+NPM_REGISTRY = 'https://registry.npmjs.org/'
+
+# npm packages whose lock entry states no license: their package.json uses the
+# old `licenses: [{type: ...}]` form, which npm does not copy into the lock.
+# Checked by hand in the published package.json.
+NPM_LICENSE_OVERRIDES = {
+    # via appium -> @appium/support -> ftp; sergi/ftp-response-parser, reviewed 2026-11-07
+    'ftp-response-parser': 'MIT',
+    # via appium -> @appium/support -> ftp; sergi/parse-listing, reviewed 2026-11-07
+    'parse-listing': 'MIT',
+}
+
+# npm license texts outside the allowlist, each accepted after a review. Keyed
+# by the license text, not the package: a package that changes to one of these
+# is accepted, one that changes to anything else is not.
+NPM_REVIEWED_LICENSES = {
+    'BlueOak-1.0.0': 'permissive, OSI approved; no copyleft, no attribution beyond the notice '
+                     '(isaacs: glob, minimatch, lru-cache, minipass, path-scurry, isexe). '
+                     'Reviewed 2026-11-07',
+    'CC-BY-3.0': 'spdx-exceptions: a JSON list of SPDX exception identifiers, data and not code; '
+                 'attribution only. Reviewed 2026-11-07',
+    'WTFPL': 'truncate-utf8-bytes: permissive, no conditions. Reviewed 2026-11-07',
+    'MIT or GPL-2.0': 'unorm: dual licensed; we take MIT, not the GPL. Reviewed 2026-11-07',
+}
+
+
+def check_npm_locks():
+    """
+    (problems, {name@version: license}) for every npm project's lock.
+
+    What `npm ci --omit=optional` installs is what is checked: optional
+    packages (sharp's prebuilt libvips, LGPL-3.0) are never installed by the
+    workflow and are skipped here. Each installed tarball must come from the
+    public registry with an sha512 integrity, or ship inside one that does
+    (`inBundle`); its license must pass the allowlist or a review above.
+    """
+    _problems, _seen = [], {}
+    for _project in npm_projects():
+        _path = os.path.join(_project, 'package-lock.json')
+        if not os.path.exists(os.path.join(REPO, _path)):
+            _problems.append('{} has no package-lock.json: run scripts/update_locks.py --only {}'.format(
+                _project, _project))
+            continue
+        _lock = json.load(open(os.path.join(REPO, _path), encoding='utf-8'))
+        _pkg = json.load(open(os.path.join(REPO, _project, 'package.json'), encoding='utf-8'))
+        _root = _lock.get('packages', {}).get('', {})
+        for _section in ('dependencies', 'devDependencies', 'optionalDependencies'):
+            if (_root.get(_section) or {}) != (_pkg.get(_section) or {}):
+                _problems.append('{} is out of date with package.json ({}): run '
+                                 'scripts/update_locks.py --only {}'.format(_path, _section, _project))
+        for _key, _entry in sorted(_lock.get('packages', {}).items()):
+            if not _key or _entry.get('optional') or _entry.get('link'):
+                continue
+            _name = _key.rsplit('node_modules/', 1)[-1]
+            _id = '{}@{}'.format(_name, _entry.get('version', '?'))
+            if not _entry.get('inBundle'):
+                if not str(_entry.get('integrity', '')).startswith('sha512-'):
+                    _problems.append('{}: {} has no sha512 integrity'.format(_path, _id))
+                if not str(_entry.get('resolved', '')).startswith(NPM_REGISTRY):
+                    _problems.append('{}: {} is not from {} ({})'.format(
+                        _path, _id, NPM_REGISTRY, _entry.get('resolved')))
+            _text = NPM_LICENSE_OVERRIDES.get(_name) or _entry.get('license') or ''
+            if not isinstance(_text, str):
+                _text = ''
+            _seen[_id] = _text
+            if _text in NPM_REVIEWED_LICENSES:
+                continue
+            if not _text:
+                _problems.append('{}: no license stated: {}'.format(_path, _id))
+            elif not license_ok(_text):
+                _problems.append('{}: license not on the allowlist: {} ({})'.format(_path, _id, _text))
+    return _problems, _seen
 
 
 def registry():
@@ -289,7 +390,7 @@ def main(argv) -> int:
                           for _n, (_v, _t) in sorted(_seen.items())}, ensure_ascii=False))
         return 0
 
-    _problems = check_registry() + check_exceptions()
+    _problems = check_registry() + check_exceptions() + check_npm_locks()[0]
     if _opts.licenses:
         _license_problems, _seen = check_licenses()
         _problems += _license_problems

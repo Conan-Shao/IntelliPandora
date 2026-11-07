@@ -165,3 +165,4 @@ reports/
 # mutmut works in a copy of the project
 mutants/
 .mutmut-cache
+bench/android/node_modules/

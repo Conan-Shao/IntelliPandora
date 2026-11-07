@@ -48,7 +48,40 @@ LOCKS = {
     'ci-noai.txt': (['setup.py', 'requirements/build.in'],
                     ['android', 'mcp', 'parallel', 'test', 'visual', 'web']),
     'tools.txt': (['requirements/tools.in'], []),
+    # The Android comparison job only (M5c): the framework's android extra and
+    # the Appium client, resolved together so the two cannot disagree on a
+    # shared dependency.
+    'bench.txt': (['setup.py', 'requirements/build.in', 'requirements/bench.in'], ['android']),
 }
+
+# npm projects whose package-lock.json is regenerated the same way: hashed
+# (npm writes an sha512 `integrity` per tarball), and nothing published inside
+# the cooldown -- `npm --before` applies it to every transitive package, not
+# only the ones package.json names. No install scripts run while resolving.
+NPM_PROJECTS = ('bench/android',)
+
+# A later cutoff for one npm project, taken for a security fix newer than the
+# cooldown (docs/design/decisions/15: taken, and written down). Used only while
+# it is later than the default; once the default passes it, it does nothing.
+NPM_SECURITY_CUTOFF = {
+    # appium 3.8.0 / driver 8.7.0 (the newest past the cooldown) pulled in
+    # shell-quote <1.11 (GHSA-pqg4-j6r4-53mv, critical), proxy-addr <2.0.8
+    # (GHSA-jqcg-44mw-7w3h, critical), axios <1.20, body-parser <2.4 and
+    # follow-redirects 1.16.0/1.16.1. appium 3.9.0 (2026-10-27) and driver
+    # 8.7.3 (2026-10-28) fix all of them. What this lets in younger than 14
+    # days is listed in docs/security/components.md.
+    'bench/android': '2026-10-29T00:00:00Z',
+}
+
+
+def npm_cutoff(project: str, default: str) -> str:
+    """The later of the default cutoff and the project's security cutoff (both UTC ISO strings)."""
+    return max(default, NPM_SECURITY_CUTOFF.get(project, default))
+
+
+def npm_command(npm: str, until: str):
+    return [npm, 'install', '--package-lock-only', '--ignore-scripts', '--no-audit', '--no-fund',
+            '--before', until]
 
 
 def cutoff(today: datetime.date = None) -> str:
@@ -93,12 +126,24 @@ def main(argv) -> int:
                             'UTC at its start) or a full timestamp (default: today - {} days)'.format(
                            COOLDOWN_DAYS))
     _args.add_argument('--uv', default=shutil.which('uv') or 'uv')
+    _args.add_argument('--npm', default=shutil.which('npm') or 'npm')
+    _args.add_argument('--only', action='append', default=None,
+                       choices=sorted(LOCKS) + list(NPM_PROJECTS),
+                       help='regenerate just this lock (repeatable); default: all of them')
     _opts = _args.parse_args(argv)
     _until = normalised_cutoff(_opts.cutoff) if _opts.cutoff else cutoff()
     for _output, (_inputs, _extras) in LOCKS.items():
+        if _opts.only and _output not in _opts.only:
+            continue
         _cmd = command(_opts.uv, _inputs, _extras, _output, _until)
         print('$', ' '.join(_cmd))
         subprocess.run(_cmd, cwd=REPO, check=True)
+    for _project in NPM_PROJECTS:
+        if _opts.only and _project not in _opts.only:
+            continue
+        _cmd = npm_command(_opts.npm, npm_cutoff(_project, _until))
+        print('$ (cd {})'.format(_project), ' '.join(_cmd))
+        subprocess.run(_cmd, cwd=os.path.join(REPO, _project), check=True)
     print('locks resolved with nothing newer than', _until)
     return 0
 

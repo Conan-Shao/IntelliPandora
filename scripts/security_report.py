@@ -20,7 +20,10 @@ What it checks, and what blocks (exit 1):
   annotated `# nosec Bxxx` *and* carries a `# bandit Bxxx: <reason>` line
   directly above -- an annotation without a reason blocks too, because the
   report lists every one with its reason;
-- **licenses** of both environments, against the allowlist in
+- **npm dependencies**, per package-lock.json under bench/, with `npm audit`
+  (same exception rules), and each lock's hashes, sources and licenses;
+- **licenses** of the runtime and tool environments (and, with
+  --bench-python, the comparison job's), against the allowlist in
   check_components.py;
 - **the component registry** and **the exception list**, by
   check_components.py.
@@ -57,6 +60,8 @@ def _label(output: str) -> str:
     _extras = update_locks.LOCKS[output][1]
     if not _extras:
         return '构建与工具链（不安装到用户环境）'
+    if output == 'bench.txt':
+        return 'Android 对比作业专用：框架的 android 组 + Appium 客户端（不安装到用户环境）'
     _missing = [_e for _e in ('ai',) if _e not in _extras]
     return '框架 + 可选组 {}{}'.format('、'.join(_extras),
                                     '，不含 AI 组' if _missing else '')
@@ -64,7 +69,7 @@ def _label(output: str) -> str:
 
 # lock file -> what it is, in the report's words
 LOCKS = tuple(('requirements/' + _name, _label(_name))
-              for _name in ('ci.txt', 'ci-noai.txt', 'tools.txt'))
+              for _name in ('ci.txt', 'ci-noai.txt', 'tools.txt', 'bench.txt'))
 
 
 class ScanError(Exception):
@@ -97,6 +102,41 @@ def audit(lock: str):
         _out.append((check_components.norm(_dep['name']), _dep['version'],
                      sorted(_vulns, key=lambda v: v['id'])))
     return sorted(_out, key=lambda d: (d[0], d[1]))
+
+
+def npm_audit(project: str, npm: str = 'npm'):
+    """
+    [(name, versions, [vuln dicts])] for one npm project, from its lock alone
+    (`--package-lock-only`) and only what `npm ci --omit=optional` installs.
+    Vuln dicts carry the same keys as pip-audit's (id, aliases, fix_versions),
+    so exceptions and the report treat both alike.
+    """
+    _proc = _run([npm, 'audit', '--package-lock-only', '--omit=optional', '--json',
+                  '--prefix', project])
+    try:
+        _data = json.loads(_proc.stdout)
+        _vulns = _data['vulnerabilities']
+    except (ValueError, KeyError, TypeError):
+        raise ScanError('npm audit on {} did not produce a result (exit {}):\n{}'.format(
+            project, _proc.returncode, (_proc.stderr or _proc.stdout).strip()[-2000:]))
+    _lock = json.load(open(os.path.join(REPO, project, 'package-lock.json'), encoding='utf-8'))
+    # every installed package, vulnerable or not, as pip-audit lists them
+    _by_name = {(check_components.norm(_k.rsplit('node_modules/', 1)[-1]), _e.get('version', '?')): {}
+                for _k, _e in _lock.get('packages', {}).items()
+                if _k and not _e.get('optional') and not _e.get('link')}
+    for _entry in _vulns.values():
+        for _via in _entry.get('via') or []:
+            if not isinstance(_via, dict):
+                continue            # a dependent of a vulnerable package: its advisory is listed there
+            _id = str(_via.get('url', '')).rstrip('/').rsplit('/', 1)[-1] or str(_via.get('source'))
+            _versions = sorted({_lock['packages'].get(_n, {}).get('version', '?')
+                                for _n in _entry.get('nodes') or []})
+            _key = (check_components.norm(_via['name']), ', '.join(_versions))
+            _by_name.setdefault(_key, {})[_id] = {
+                'id': _id, 'aliases': [], 'title': _via.get('title', ''),
+                'fix_versions': ['不在 {} 内的版本'.format(_via['range'])] if _via.get('range') else []}
+    return sorted(((_n, _v, sorted(_d.values(), key=lambda v: v['id']))
+                   for (_n, _v), _d in _by_name.items()), key=lambda d: (d[0], d[1]))
 
 
 def bandit():
@@ -162,12 +202,21 @@ def tool_versions():
 
 # -- assessment --------------------------------------------------------------
 
-def assess(runtime_python: str, today: datetime.date):
+NPM_LABELS = {
+    'bench/android': 'Android 对比作业专用：Appium 服务端与 UiAutomator2 驱动（npm，不安装到用户环境）',
+}
+
+
+def assess(runtime_python: str, today: datetime.date, npm: str = 'npm', bench_python: str = None):
     _excepted = check_components.active_exceptions(today)
 
     _s = {'locks': [], 'vulns': [], 'blocking': []}
-    for _lock, _label in LOCKS:
-        _deps = audit(_lock)
+    _scans = [(_lock, _label, audit) for _lock, _label in LOCKS] + [
+        (os.path.join(_project, 'package-lock.json'), NPM_LABELS.get(_project, 'npm'),
+         lambda _l: npm_audit(os.path.dirname(_l), npm))
+        for _project in check_components.npm_projects()]
+    for _lock, _label, _scan in _scans:
+        _deps = _scan(_lock)
         _open = 0
         for _name, _version, _vulns in _deps:
             for _v in _vulns:
@@ -201,8 +250,11 @@ def assess(runtime_python: str, today: datetime.date):
     # Every distribution in either environment is checked; only the locked
     # ones (and the framework itself) are listed, see locked().
     _s['licenses'] = {}
-    for _env, _python, _lock in (('runtime', runtime_python, 'requirements/ci.txt'),
-                                 ('tools', sys.executable, 'requirements/tools.txt')):
+    _envs = [('runtime', runtime_python, 'requirements/ci.txt'),
+             ('tools', sys.executable, 'requirements/tools.txt')]
+    if bench_python:
+        _envs.append(('bench', bench_python, 'requirements/bench.txt'))
+    for _env, _python, _lock in _envs:
         _dists = licenses(_python)
         for _name, _d in _dists.items():
             if not _d['allowed']:
@@ -215,6 +267,11 @@ def assess(runtime_python: str, today: datetime.date):
         # because it only looked at the listed ones.
         _s['licenses'][_env] = {_n: _d for _n, _d in _dists.items()
                                 if _n in _keep or not _d['allowed']}
+
+    # npm: what `npm ci --omit=optional` installs, read from the lock (hashes,
+    # registry, licenses). Not from an installed tree: there is none in this job.
+    _s['npm_problems'], _s['npm_licenses'] = check_components.check_npm_locks()
+    _s['blocking'] += _s['npm_problems']
 
     _s['registry'] = check_components.check_registry()
     _s['components'] = len(check_components.declared())
@@ -272,8 +329,17 @@ def render(s, date: str) -> str:
     _lic_text = ('：{} 个不在白名单'.format(len(_bad_lic)) if _bad_lic
                  else '：全部在白名单内' if not _reviewed
                  else '：其余在白名单内，{} 经人工审查（见下）'.format('、'.join(_reviewed)))
-    _out.append('| 许可证 | 运行环境 {} 个分发包、工具链 {} 个（含间接依赖） | {} |'.format(
-        len(_lic['runtime']), len(_lic['tools']), _verdict(not _bad_lic) + _lic_text))
+    _out.append('| 许可证 | 运行环境 {} 个分发包、工具链与对比作业 {} 个（含间接依赖） | {} |'.format(
+        len(_lic['runtime']), len(_lic['tools']) + len(_lic.get('bench', {})),
+        _verdict(not _bad_lic) + _lic_text))
+    if s['npm_licenses'] or s['npm_problems']:
+        _npm_reviewed = sorted({_t for _t in s['npm_licenses'].values()
+                                if _t in check_components.NPM_REVIEWED_LICENSES})
+        _out.append('| npm 锁文件 | {} 个包（含间接依赖）：哈希、来源、许可证 | {} |'.format(
+            len(s['npm_licenses']), _verdict(not s['npm_problems']) + (
+                '：{} 处问题'.format(len(s['npm_problems'])) if s['npm_problems']
+                else '：全部来自 npm 官方仓库、带 sha512；许可证在白名单内{}'.format(
+                    '，{} 经人工审查（见下）'.format('、'.join(_npm_reviewed)) if _npm_reviewed else ''))))
     _out.append('| 组件登记 | {} 个直接依赖与 CI 动作 | {} |'.format(
         s['components'], _verdict(not s['registry']) + (
             '：与代码声明一致' if not s['registry'] else '：{} 处不一致'.format(len(s['registry'])))))
@@ -311,7 +377,10 @@ def render(s, date: str) -> str:
              '白名单为宽松许可证（MIT、BSD、Apache、ISC、MPL-2.0、PSF 等），不接受 GPL 系、SSPL、'
              'BUSL 等，理由见 [`docs/design/decisions/15`](../design/decisions/15-第三方组件安全准入与漏洞扫描.md) §3。', '']
     for _env, _title in (('runtime', '运行环境（框架 + 全部可选组，即用户可能装上的全部）'),
-                         ('tools', '构建与工具链')):
+                         ('tools', '构建与工具链'),
+                         ('bench', 'Android 对比作业专用（Python）')):
+        if _env not in _lic:
+            continue
         _out += ['<details><summary>{}：{} 个</summary>'.format(_title, len(_lic[_env])), '',
                  '| 分发包 | 版本 | 许可证 | 结果 |', '|---|---|---|---|']
         for _name, _d in sorted(_lic[_env].items()):
@@ -320,6 +389,17 @@ def render(s, date: str) -> str:
                 ('通过（人工审查：{}）'.format(_cell(_d['reviewed'])) if _d.get('reviewed')
                  else '通过' if _d['allowed'] else '**未通过**')))
         _out += ['', '</details>', '']
+    if s['npm_licenses']:
+        _out += ['<details><summary>npm（Android 对比作业专用）：{} 个</summary>'.format(
+                     len(s['npm_licenses'])), '',
+                 '| 包 | 许可证 | 结果 |', '|---|---|---|']
+        for _id, _text in sorted(s['npm_licenses'].items()):
+            _review = check_components.NPM_REVIEWED_LICENSES.get(_text)
+            _out.append('| {} | {} | {} |'.format(
+                _cell(_id), _cell(_text) or '未声明',
+                '通过（人工审查：{}）'.format(_cell(_review)) if _review
+                else '通过' if _text and check_components.license_ok(_text) else '**未通过**'))
+        _out += ['', '</details>', '']
     _out += [
         '## 怎么扫的', '',
         '- **依赖漏洞**：pip-audit {}，对每个锁文件逐一扫描，查询 PyPI 漏洞库。'
@@ -327,6 +407,9 @@ def render(s, date: str) -> str:
         '而不是某台机器上碰巧装着的版本。'.format(s['tools'].get('pip-audit', '?')),
         '- **自身代码**：bandit {}，扫描 `src/` 下全部代码，任何级别的问题都会让扫描失败。'.format(
             s['tools'].get('bandit', '?')),
+        '- **npm 依赖**：`npm audit --package-lock-only --omit=optional`，对每个 npm 锁文件扫描，'
+        '查询 GitHub 漏洞库；只扫 `npm ci --omit=optional` 会装的包。锁文件里每个包的来源、'
+        'sha512 和许可证由 `check_components.py` 离线核对。',
         '- **许可证**：读取环境中每个分发包的元数据，包括间接依赖，因为它们同样会被装到用户环境。',
         '- **组件登记**：`setup.cfg`、`setup.py`、`requirements/*.in` 和工作流里引用的每个组件，'
         '都必须在登记表里出现且版本写法一致。',
@@ -351,13 +434,16 @@ def write(s, path: str, today: datetime.date) -> bool:
 def main(argv) -> int:
     _p = argparse.ArgumentParser(description=__doc__.splitlines()[1])
     _p.add_argument('--runtime-python', default=sys.executable)
+    _p.add_argument('--npm', default='npm', help='npm used for `npm audit` (default: npm on PATH)')
+    _p.add_argument('--bench-python', default=None,
+                    help='an interpreter installed from requirements/bench.txt: its licenses are checked too')
     _p.add_argument('--out', default=REPORT)
     _p.add_argument('--summary', default=os.environ.get('GITHUB_STEP_SUMMARY'),
                     help='also append the report here (default: $GITHUB_STEP_SUMMARY)')
     _opts = _p.parse_args(argv)
     _today = datetime.date.today()
     try:
-        _s = assess(_opts.runtime_python, _today)
+        _s = assess(_opts.runtime_python, _today, _opts.npm, _opts.bench_python)
     except ScanError as _e:
         print('scan could not run, report not written:\n' + str(_e), file=sys.stderr)
         return 2
