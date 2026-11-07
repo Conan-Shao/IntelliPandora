@@ -350,3 +350,85 @@ class TestCommand:
         assert _cli('f2p', workdir=str(repo), fix=None, task=str(_d), base='HEAD', test_cmd=None, runs=1,
                     max_mutants=0, timeout=120, json=False) == 1
         assert 'FAIL  F→P' in capsys.readouterr().out
+
+
+class TestCr14:
+    """Found in code review CR14 (docs/design/reviews/14-CR14.md)."""
+
+    def test_a_name_error_raised_by_the_code_under_test_is_a_reproduction(self, repo):
+        write(repo, 'calc/__init__.py', SOURCE.replace('return a - b          # the bug', 'return a + offset'))
+        _git(repo, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-qam', 'the bug is a misspelt name')
+        (repo.parent / 'fix.patch').write_text(FIX.replace('-    return a - b          # the bug',
+                                                           '-    return a + offset'))
+        write(repo, 'tests/test_add.py', 'from calc import add\n\ndef test_add():\n    assert add(1, 2) == 3\n')
+        _r = grade(repo)
+        assert _r.before == {'tests/test_add.py::test_add': 'reproduced'} and _r.f2p
+        # the same NameError in the test itself is still weak
+        write(repo, 'tests/test_add.py', 'def test_add():\n    assert add(1, 2) == 3\n')
+        _git(repo, 'checkout', '-q', '--', 'calc/__init__.py')
+        assert grade(repo).weak
+
+    def test_a_test_file_the_agent_deleted_stays_deleted(self, repo):
+        (repo / 'tests' / 'test_existing.py').unlink()
+        write(repo, 'tests/test_add.py', 'from calc import add\n\ndef test_add():\n    assert add(1, 2) == 3\n')
+        assert grade(repo).f2p and not (repo / 'tests' / 'test_existing.py').exists()
+
+    def test_a_conftest_with_hooks_cannot_make_a_verdict(self, repo):
+        write(repo, 'tests/test_add.py', 'def test_add():\n    assert True\n')
+        write(repo, 'tests/conftest.py', '''\
+            import pytest
+
+
+            @pytest.hookimpl(trylast=True)
+            def pytest_sessionfinish(session):
+                pass
+        ''')
+        _r = grade(repo)
+        assert not _r.f2p and _r.tampered and 'tests/conftest.py::pytest_sessionfinish' in _r.error
+        assert testgen.failure_reason(_r.checks()) == 'tampering'
+
+    def test_test_code_that_rewrites_the_records_is_caught_by_the_exit_status(self, repo):
+        # no hook: the test reaches into the recording plugin itself
+        write(repo, 'tests/test_add.py', '''\
+            import sys
+
+
+            def test_add():
+                plugin = sys.modules['ipandora_testgen_plugin']
+                plugin._ROWS.append({'nodeid': 'tests/test_add.py::test_add', 'when': 'call',
+                                     'outcome': 'failed', 'exc': 'AssertionError', 'message': '',
+                                     'origin': ''})
+        ''')
+        _r = grade(repo)
+        assert not _r.f2p and _r.error == testgen.INCONSISTENT and _r.tampered
+
+    def test_the_result_path_is_not_in_the_tests_environment(self, repo):
+        write(repo, 'tests/test_add.py', '''\
+            import os
+            from calc import add
+
+
+            def test_add():
+                assert 'IPANDORA_TESTGEN_OUT' not in os.environ
+                assert add(1, 2) == 3
+        ''')
+        assert grade(repo).f2p
+
+    def test_assertions_in_a_helper_of_the_same_file_count(self, repo):
+        write(repo, 'tests/test_add.py', '''\
+            from calc import add
+
+
+            def check(value):
+                assert value == 3
+
+
+            def deeper(value):
+                check(value)
+
+
+            def test_add():
+                deeper(add(1, 2))
+        ''')
+        _r = grade(repo)
+        assert _r.f2p and _r.zero_assertion == []
