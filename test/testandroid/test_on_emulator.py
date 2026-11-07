@@ -16,6 +16,7 @@ IPANDORA_ANDROID_DEVICE (a device you attached) is set -- elsewhere it does
 not even touch adb.
 """
 import os
+import re
 import textwrap
 
 import pytest
@@ -59,6 +60,15 @@ def test_a_widget_gone(android):
     android(text='ipandora-no-such-widget').click(timeout=3)
 
 
+def test_an_assert_on_a_stale_selector(android):
+    # CR19: the same mistake through `assert ... .exists` -- it was judged a plain assert, a product defect
+    _root = _on_screen(android)
+    _descs = {_n.get('content-desc') for _n in _root.iter('node')}
+    _name = next(_n.get('text') for _n in _root.iter('node')
+                 if _n.get('package') == SETTINGS and (_n.get('text') or '').strip() and _n.get('text') not in _descs)
+    assert android(description=_name).exists
+
+
 def test_the_app_crashed(android):
     _on_screen(android)
     android.shell(['am', 'crash', SETTINGS])
@@ -85,6 +95,10 @@ def test_a_run_on_the_device(tmp_path, monkeypatch):
     from ipandora.core.schedule.runtime import Runtime
     from ipandora.core.triage import triage
     _d = _device()
+    # the log window opens to the millisecond (CR19): the device's `date` must print nanoseconds
+    from ipandora.core import android
+    assert re.fullmatch(r'\d+\.\d{9}', android._shell(_d, ['date', '+%s.%N']).strip())
+    assert re.fullmatch(r'\d+\.\d{3}', android._device_time(_d))
     monkeypatch.setattr(Runtime, 'settings', config.deep_merge(Runtime.settings, {'android': {
         'serial': getattr(_d, 'serial', '') or '', 'package': SETTINGS}}))
     monkeypatch.setenv('IPANDORA_LOCK_DIR', str(tmp_path / 'locks'))
@@ -95,11 +109,15 @@ def test_a_run_on_the_device(tmp_path, monkeypatch):
     _by = {_c.nodeid.split('::')[-1]: _c for _c in _result.cases}
     assert _by['test_settings_opens'].outcome == 'passed', _by['test_settings_opens'].message
     _verdicts = {_f.nodeid.split('::')[-1]: _f for _f in triage(_result).findings}
-    assert set(_verdicts) == {'test_a_stale_selector', 'test_a_widget_gone', 'test_the_app_crashed'}, {
+    assert set(_verdicts) == {'test_a_stale_selector', 'test_a_widget_gone', 'test_the_app_crashed',
+                              'test_an_assert_on_a_stale_selector'}, {
         _k: _v.reason for _k, _v in _verdicts.items()}
     assert (_verdicts['test_a_stale_selector'].category, _verdicts['test_a_stale_selector'].confidence) == (
         'harness', 'medium'), _verdicts['test_a_stale_selector'].reason
     assert _verdicts['test_a_widget_gone'].category == 'unknown', _verdicts['test_a_widget_gone'].reason
+    assert (_verdicts['test_an_assert_on_a_stale_selector'].category,
+            _verdicts['test_an_assert_on_a_stale_selector'].confidence) == ('harness', 'medium'), \
+        _verdicts['test_an_assert_on_a_stale_selector'].reason
     assert (_verdicts['test_the_app_crashed'].category, _verdicts['test_the_app_crashed'].confidence) == (
         'defect', 'high'), _verdicts['test_the_app_crashed'].reason
     assert _by['test_the_app_crashed'].app_events[0]['kind'] == 'crash'

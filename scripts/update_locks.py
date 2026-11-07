@@ -74,9 +74,22 @@ NPM_SECURITY_CUTOFF = {
 }
 
 
+def _instant(value: str) -> datetime.datetime:
+    _v = value.strip().replace('Z', '+00:00')
+    _t = datetime.datetime.fromisoformat(_v)
+    return _t if _t.tzinfo else _t.replace(tzinfo=datetime.timezone.utc)
+
+
 def npm_cutoff(project: str, default: str) -> str:
-    """The later of the default cutoff and the project's security cutoff (both UTC ISO strings)."""
-    return max(default, NPM_SECURITY_CUTOFF.get(project, default))
+    """
+    The later of the default cutoff and the project's security cutoff,
+    compared as instants (CR19): as strings, a --cutoff written with an
+    offset (2026-10-29T06:00:00+08:00) was ordered by its characters.
+    """
+    _security = NPM_SECURITY_CUTOFF.get(project)
+    if not _security:
+        return default
+    return _security if _instant(_security) > _instant(default) else default
 
 
 def npm_command(npm: str, until: str):

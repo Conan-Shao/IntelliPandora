@@ -61,6 +61,7 @@ class FakeDevice:
         self.log = APP_LOG
         self.hierarchy = HIERARCHY
         self.fail_screenshot = False
+        self.date = '1762516800.123456789\n'     # `date +%s.%N` on Android 8+
 
     def __call__(self, **kwargs):
         return UiObject(self, Selector(**kwargs))
@@ -72,7 +73,7 @@ class FakeDevice:
         self.calls.append(('shell', tuple(args)))
         self.timeouts.append(timeout)
         if args[:1] == ['date']:
-            return SimpleNamespace(output='1762516800\n', exit_code=0)
+            return SimpleNamespace(output=self.date, exit_code=0)
         if args[:1] == ['pidof']:
             return SimpleNamespace(output='4242\n', exit_code=0)
         if args[:1] == ['logcat']:
