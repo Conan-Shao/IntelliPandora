@@ -31,6 +31,7 @@ What is sent is redacted first, as every prompt the framework builds.
 """
 import json
 import re
+import threading
 from typing import Any, Dict, List, Optional
 
 from ipandora.core.assertion.check import Check, brief
@@ -73,21 +74,29 @@ def levels_of(dimension: Dict[str, Any]) -> List[Dict[str, str]]:
             {'name': 'fail', 'means': str(dimension['fail']).strip()}]
 
 
+_TAGS = re.compile(r'<\s*(/?)\s*(question|answer)\s*>', re.IGNORECASE)
+
+
 def _cut(text: str) -> str:
-    _t = redact_text(str(text or ''))
+    # the material cannot close its own tag and go on as instructions (CR15)
+    _t = _TAGS.sub(lambda _m: '‹{}{}›'.format(_m.group(1), _m.group(2)), redact_text(str(text or '')))
     return _t if len(_t) <= TEXT_LIMIT else _t[:TEXT_LIMIT] + '\n[... cut: {} characters in all]'.format(len(_t))
 
 
 def parse(reply: str, names: List[str]) -> Dict[str, str]:
     """{'level', 'reason'} from the judge's reply; level is UNSURE for anything that is not one of `names`."""
     _text = reply or ''
-    _match = re.search(r'\{.*\}', _text, re.DOTALL)
+    # the first JSON object that has a level -- a brace in what comes before it is not the verdict (CR15)
     _data: Any = None
-    if _match:
+    _decoder = json.JSONDecoder()
+    for _m in re.finditer(r'\{', _text):
         try:
-            _data = json.loads(_match.group(0))
+            _candidate, _ = _decoder.raw_decode(_text, _m.start())
         except ValueError:
-            _data = None
+            continue
+        if isinstance(_candidate, dict) and 'level' in _candidate:
+            _data = _candidate
+            break
     if not isinstance(_data, dict):
         return {'level': UNSURE, 'reason': '评委没有给出可读的结论：{}'.format(brief(_text, 120))}
     _level = str(_data.get('level') or '').strip()
@@ -101,6 +110,7 @@ class Judge:
     def __init__(self, provider=None, label: str = '', max_calls: int = 500):
         self._provider = provider
         self.max_calls, self.calls = max_calls, 0
+        self._lock = threading.Lock()
         self.name = 'judge v{}{}'.format(PROMPT_VERSION, ' ({})'.format(label) if label else '')
 
     @property
@@ -130,10 +140,13 @@ class Judge:
         _version = dimension.get('version', 1)
         _dim = str(dimension['dimension']).strip()
         _claim = 'judge {} v{} by {}'.format(_dim, _version, self.name)
-        if self.calls >= self.max_calls:
+        with self._lock:                          # trials in parallel share one judge and one budget
+            _allowed = self.calls < self.max_calls
+            if _allowed:
+                self.calls += 1
+        if not _allowed:
             _verdict = {'level': UNSURE, 'reason': '评委的调用次数用完了（{}）'.format(self.max_calls)}
         else:
-            self.calls += 1
             try:
                 _reply = self.provider.chat(self.prompt(dimension, question, answer),
                                             system=SYSTEM.format(unsure=UNSURE))
