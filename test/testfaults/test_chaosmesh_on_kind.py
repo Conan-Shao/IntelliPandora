@@ -44,12 +44,11 @@ def cluster(monkeypatch, tmp_path):
     assert _ours() == [], 'a Chaos object was left on the cluster'
 
 
-def _get(timeout=10, resets=3):
+def _get(timeout=10, resets=0):
     """
-    One answer. A connection reset is tried again (at most `resets` times):
-    on a kind node, kube-proxy and Chaos Mesh rewriting iptables reset a new
-    connection now and then -- seen on CI right after the service came up,
-    and right after a fault was undone. Printed, to keep count.
+    One answer; `resets` connection resets tried again (none by default).
+    The resets seen on CI were the pod leaving its Service: under a 1 s delay
+    its readiness probe (1 s timeout) failed -- kind/web.yaml now gives it 5 s.
     """
     for _attempt in range(resets + 1):
         try:
@@ -98,9 +97,8 @@ def _answers():
 
 def _settled(seconds=15):
     """
-    Seconds until the service answers again. Right after a network fault is
-    undone, Chaos Mesh tearing its rules down can reset a connection (seen on
-    CI); the guide says so. How long it takes is printed, to keep track of it.
+    Seconds until the service answers again after an undo -- 0 unless the
+    fault took the pod out of its Service. Printed, to keep track of it.
     """
     _start = time.monotonic()
     assert _until(_answers, seconds), 'the service does not answer {}s after the undo'.format(seconds)
