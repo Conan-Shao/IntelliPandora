@@ -510,7 +510,9 @@ def test_npm_lock_checks(tmp_path, monkeypatch):
         _pkg('appium', '3.9.0', 'Apache-2.0'),
         _pkg('fine', license='(WTFPL OR MIT)'),
         _pkg('isaacs', license='BlueOak-1.0.0'),                   # reviewed
-        _pkg('parse-listing', license=None),                       # override: MIT in package.json
+        _pkg('parse-listing', '1.1.2', license=None),              # override: MIT in package.json
+        ('node_modules/x/node_modules/parse-listing', {             # CR19: a version nobody reviewed
+            'version': '9.9.9', 'resolved': NPM + 'parse-listing/-/x.tgz', 'integrity': 'sha512-abc'}),
         _pkg('nohash', integrity='sha1-old'),
         _pkg('elsewhere', resolved='https://evil.example/elsewhere.tgz'),
         _pkg('gpl', license='GPL-3.0'),
@@ -525,9 +527,10 @@ def test_npm_lock_checks(tmp_path, monkeypatch):
         'elsewhere@1.0.0 is not from {} (https://evil.example/elsewhere.tgz)'.format(NPM),
         'license not on the allowlist: gpl@1.0.0 (GPL-3.0)',
         'no license stated: unstated@1.0.0',
+        'no license stated: parse-listing@9.9.9',
     ]), _problems
     assert 'sharp-libvips@1.0.0' not in _seen
-    assert _seen['bundled@2.0.0'] == 'MIT' and _seen['parse-listing@1.0.0'] == 'MIT'
+    assert _seen['bundled@2.0.0'] == 'MIT' and _seen['parse-listing@1.1.2'] == 'MIT'
 
 
 def test_an_npm_lock_out_of_date_or_missing_fails(tmp_path, monkeypatch):
@@ -563,6 +566,9 @@ def test_the_npm_security_cutoff_only_ever_moves_the_cutoff_later():
     assert update_locks.npm_cutoff('bench/android', '2026-10-24T00:00:00Z') == '2026-10-29T00:00:00Z'
     assert update_locks.npm_cutoff('bench/android', '2026-11-20T00:00:00Z') == '2026-11-20T00:00:00Z'
     assert update_locks.npm_cutoff('elsewhere', '2026-10-24T00:00:00Z') == '2026-10-24T00:00:00Z'
+    # CR19: compared as instants -- as strings, '2026-10-29T06:00:00+08:00' sorts after 'T00:00:00Z'
+    assert update_locks.npm_cutoff('bench/android', '2026-10-29T06:00:00+08:00') == '2026-10-29T00:00:00Z'
+    assert update_locks.npm_cutoff('bench/android', '2026-10-29T09:00:00+08:00') == '2026-10-29T09:00:00+08:00'
     assert update_locks.npm_command('npm', 'X')[-2:] == ['--before', 'X']
     assert '--ignore-scripts' in update_locks.npm_command('npm', 'X')
 

@@ -165,11 +165,14 @@ NPM_REGISTRY = 'https://registry.npmjs.org/'
 # npm packages whose lock entry states no license: their package.json uses the
 # old `licenses: [{type: ...}]` form, which npm does not copy into the lock.
 # Checked by hand in the published package.json.
+# Keyed by name@version (CR19): a later version may change its license, and
+# would otherwise pass on a review of an older one.
 NPM_LICENSE_OVERRIDES = {
     # via appium -> @appium/support -> ftp; sergi/ftp-response-parser, reviewed 2026-11-07
-    'ftp-response-parser': 'MIT',
+    'ftp-response-parser@1.0.1': 'MIT',
     # via appium -> @appium/support -> ftp; sergi/parse-listing, reviewed 2026-11-07
-    'parse-listing': 'MIT',
+    'parse-listing@1.1.2': 'MIT',
+    'parse-listing@1.1.3': 'MIT',
 }
 
 # npm license texts outside the allowlist, each accepted after a review. Keyed
@@ -221,7 +224,7 @@ def check_npm_locks():
                 if not str(_entry.get('resolved', '')).startswith(NPM_REGISTRY):
                     _problems.append('{}: {} is not from {} ({})'.format(
                         _path, _id, NPM_REGISTRY, _entry.get('resolved')))
-            _text = NPM_LICENSE_OVERRIDES.get(_name) or _entry.get('license') or ''
+            _text = NPM_LICENSE_OVERRIDES.get(_id) or _entry.get('license') or ''
             if not isinstance(_text, str):
                 _text = ''
             _seen[_id] = _text

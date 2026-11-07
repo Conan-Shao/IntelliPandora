@@ -223,7 +223,9 @@ def _locator_finding(failures, message: str = '', asserted: bool = False):
     """
     if not failures:
         return None
-    _named = [_f for _f in failures if _f.get('selector') and _f['selector'] in (message or '')]
+    # an Android lookup a failed assert names (core/android.asserted_lookup) is what it is about
+    _named = [_f for _f in failures if (_f.get('selector') and _f['selector'] in (message or ''))
+              or _f.get('asserted')]
     if _named:
         _f = _named[-1]
     elif not asserted:

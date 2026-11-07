@@ -418,7 +418,7 @@ def pytest_runtest_makereport(item, call):
     if call.when in ('setup', 'call') and _excinfo is not None \
             and not _excinfo.errisinstance(pytest.skip.Exception):
         _keep_service_logs(item)
-        _keep_device_evidence(item)
+        _keep_device_evidence(item, _excinfo)
     if call.when != 'call' or _excinfo is None \
             or not _excinfo.errisinstance(AssertionError):
         return None
@@ -447,17 +447,24 @@ def _keep_service_logs(item) -> None:
         logger.warning('could not keep the service logs of %s: %s', item.nodeid, exc)
 
 
-def _keep_device_evidence(item) -> None:
+def _keep_device_evidence(item, excinfo=None) -> None:
     """
     A case failed on an Android device (core/android.py): its screen, widget
     tree and log now, before the fixture stops the app -- and whether the app
-    crashed, which decides the verdict.
+    crashed, which decides the verdict. A failed assert hands over its text
+    and statement: an assert on a lookup that came back empty is diagnosed.
     """
     from ipandora.core import android
     if not android.active():
         return
+    _failure = ''
+    if excinfo is not None and excinfo.errisinstance(AssertionError):
+        try:
+            _failure = '{}\n{}'.format(excinfo.value, excinfo.traceback[-1].statement)
+        except Exception:  # noqa: BLE001 -- no statement: the message alone
+            _failure = str(excinfo.value)
     try:
-        android.keep_evidence(item.nodeid)
+        android.keep_evidence(item.nodeid, _failure)
     except Exception as exc:  # noqa: BLE001 -- evidence must never break the run
         logger.warning('could not keep the device evidence of %s: %s', item.nodeid, exc)
 

@@ -68,6 +68,8 @@ PLATFORM = 'android'
 CRASH, ANR = 'crash', 'anr'
 LOG_LINES = 300
 """Lines of the device log kept with a failed case."""
+EMPTY_KEPT = 20
+"""Empty lookups remembered per case."""
 
 NAME_KEYS = ('text', 'textContains', 'textStartsWith', 'description', 'descriptionContains',
              'descriptionStartsWith', 'resourceId')
@@ -113,6 +115,8 @@ class Session:
     since: str = ''
     """Device time when the case began, as logcat -T reads it (seconds.millis since the epoch)."""
     pids: List[str] = field(default_factory=list)
+    empty: List[Dict[str, Any]] = field(default_factory=list)
+    """Lookups that came back empty during the case, latest last (at most EMPTY_KEPT): what an assert may be about."""
 
 
 def current() -> Optional[Session]:
@@ -130,9 +134,23 @@ def _shell(device, args: List[str], timeout: float = 30) -> str:
 
 
 def _device_time(device) -> str:
+    """
+    The device's clock as logcat -T reads it, to the millisecond.
+
+    Whole seconds were not enough (CR19): `N.000` opens the window up to a
+    second early, and a crash the previous case caused in that second became
+    this case's -- a product defect, high confidence, on an innocent case.
+    The fraction is cut, not rounded: a window opened a few microseconds
+    early cannot reach the previous case, one opened late could miss a crash
+    on launch. A device whose `date` has no %N (it prints it back) falls back
+    to whole seconds.
+    """
     try:
-        _t = _shell(device, ['date', '+%s']).strip()
-        return '{}.000'.format(int(_t))
+        _t = _shell(device, ['date', '+%s.%N']).strip()
+        _m = re.fullmatch(r'(\d+)\.(\d{3})\d*', _t)
+        if _m:
+            return '{}.{}'.format(_m.group(1), _m.group(2))
+        return '{}.000'.format(int(_t.split('.', 1)[0]))
     except Exception:  # noqa: BLE001 -- no device time: the log is read without a start
         return ''
 
@@ -287,6 +305,32 @@ def _record_not_found(selector_text: str, names: List[str]) -> None:
     _evidence.locator_failures.append(diagnose(selector_text, names, _xml))
 
 
+def _record_empty(selector_text: str, names: List[str]) -> None:
+    """
+    A lookup that found nothing without raising -- `d(...).exists`, `d(...).wait()`
+    false. Not a failure: a test may look for an optional dialog. Remembered
+    in case an assert is about it (asserted_lookup()).
+    """
+    _session = current()
+    if _session is None or not names:
+        return
+    _session.empty.append({'selector': selector_text, 'names': list(names)})
+    del _session.empty[:-EMPTY_KEPT]
+
+
+def asserted_lookup(session: Session, failure: str) -> Optional[Dict[str, Any]]:
+    """
+    The latest empty lookup a failed assert is about: one of its names,
+    quoted, in the assertion's text -- pytest spells the call out
+    (`where ... = <Device>(text='欢迎')`) and the statement is part of it.
+    Quoted, so a name like OK does not match any message holding the word.
+    """
+    for _e in reversed(session.empty if session else []):
+        if any("'{}'".format(_n) in (failure or '') or '"{}"'.format(_n) in (failure or '') for _n in _e['names']):
+            return _e
+    return None
+
+
 # -- patching uiautomator2 for the run ---------------------------------------------------------------
 
 _originals: List[tuple] = []
@@ -309,6 +353,28 @@ def install() -> bool:
                 _record_not_found(str(self.selector), _names(self.selector))
             raise
     _patch(_selector.UiObject, 'must_wait', _must_wait, must_wait)
+
+    # CR19: `assert d(text=...).exists` failing was a plain assert -- a product
+    # defect, even when the selector was stale. Empty lookups are remembered,
+    # and keep_evidence() diagnoses the one the failed assert names.
+    _wait = _selector.UiObject.wait
+
+    def wait(self, exists=True, timeout=None):
+        _found = _wait(self, exists, timeout)
+        if exists and not _found:
+            _record_empty(str(self.selector), _names(self.selector))
+        return _found
+    _patch(_selector.UiObject, 'wait', _wait, wait)
+
+    from uiautomator2 import utils
+    _nonzero = utils.Exists.__nonzero__
+
+    def __nonzero__(self):
+        _found = _nonzero(self)
+        if not _found:
+            _record_empty(str(self.uiobject.selector), _names(self.uiobject.selector))
+        return _found
+    _patch(utils.Exists, '__nonzero__', _nonzero, __nonzero__)
 
     _cls = getattr(xpath, 'DeviceXPathSelector', None) or getattr(xpath, 'XPathSelector')
     _get = _cls.get
@@ -348,12 +414,14 @@ def _slug(text: str) -> str:
     return re.sub(r'[^A-Za-z0-9_.-]+', '_', text)[-100:]
 
 
-def keep_evidence(nodeid: str) -> List[Dict[str, Any]]:
+def keep_evidence(nodeid: str, failure: str = '') -> List[Dict[str, Any]]:
     """
     The screenshot, widget tree and device log of the case failing on this
     thread, as its artifacts; the app's crashes and ANRs as its app events.
     Each piece is taken on its own: a device that cannot screenshot still
-    gives its log.
+    gives its log. `failure` is the text of a failed assert: when it names a
+    lookup that came back empty, that lookup is diagnosed against this
+    widget tree, as a failed click is.
     """
     from ipandora.core.evidence import recorder
     from ipandora.core.report.redact import redact_text
@@ -367,12 +435,18 @@ def keep_evidence(nodeid: str) -> List[Dict[str, Any]]:
         _out.append({'kind': 'screenshot', 'path': os.path.abspath(_base + '.png'), 'group': _s.serial})
     except Exception as exc:  # noqa: BLE001 -- evidence must never break the run
         _log.debug('no screenshot of %s: %s', nodeid, exc)
+    _xml = ''
     try:
+        _xml = _s.device.dump_hierarchy()
         with open(_base + '.xml', 'w', encoding='utf-8') as _f:
-            _f.write(_s.device.dump_hierarchy())
+            _f.write(_xml)
         _out.append({'kind': 'hierarchy', 'path': os.path.abspath(_base + '.xml'), 'group': _s.serial})
     except Exception as exc:  # noqa: BLE001
         _log.debug('no widget tree of %s: %s', nodeid, exc)
+    _lookup = asserted_lookup(_s, failure)
+    _evidence = recorder.current()
+    if _lookup is not None and _evidence is not None:
+        _evidence.locator_failures.append(dict(diagnose(_lookup['selector'], _lookup['names'], _xml), asserted=True))
     _events = []
     try:
         _logcat = _shell(_s.device, ['logcat', '-d', '-v', 'threadtime', '-b', 'main,system,crash']
@@ -444,5 +518,5 @@ class Fixtures:
 
 
 __all__ = ['Fixtures', 'Session', 'app_events', 'diagnose', 'same_name', 'relevant', 'keep_evidence', 'install',
-           'uninstall', 'available', 'settings', 'active', 'current', 'begin', 'end', 'STALE', 'UNKNOWN', 'CRASH',
+           'uninstall', 'asserted_lookup', 'available', 'settings', 'active', 'current', 'begin', 'end', 'STALE', 'UNKNOWN', 'CRASH',
            'ANR', 'PLATFORM']

@@ -159,10 +159,12 @@ class TestWhereASelectorFindsNothing:
     def test_uninstall_restores_uiautomator2(self):
         from uiautomator2 import _selector
         assert android.install()
-        _patched = _selector.UiObject.must_wait
+        from uiautomator2 import utils
+        _patched = (_selector.UiObject.must_wait, _selector.UiObject.wait, utils.Exists.__nonzero__)
         android.uninstall()
         try:
-            assert _selector.UiObject.must_wait is not _patched
+            assert _selector.UiObject.must_wait is not _patched[0]
+            assert _selector.UiObject.wait is not _patched[1] and utils.Exists.__nonzero__ is not _patched[2]
             assert android._originals == []
         finally:
             android.install()
@@ -180,7 +182,7 @@ class TestTheEvidence:
         assert all(os.path.isfile(_a['path']) and _a['path'].startswith(str(tmp_path)) for _a in _out)
         _log = _out[2]['text']
         assert 'OtherApp' not in _log and 'FATAL EXCEPTION' in _log and 'sk-live-should-not-leak' not in _log
-        assert ('shell', ('logcat', '-d', '-v', 'threadtime', '-b', 'main,system,crash', '-T', '1762516800.000')) \
+        assert ('shell', ('logcat', '-d', '-v', 'threadtime', '-b', 'main,system,crash', '-T', '1762516800.123')) \
             in on_device.calls
         _evidence = recorder.current()
         assert _evidence.app_events == [{'kind': 'crash', 'package': PACKAGE,
@@ -239,6 +241,22 @@ def test_a_widget_gone(android):
     android(text='Checkout').click()
 
 
+def test_an_assert_on_a_stale_selector(android):
+    # CR19: was a plain assert -- a product defect. 'Login' is on screen, as a content-desc
+    assert android(text='Login').exists
+
+
+def test_an_assert_on_a_widget_gone(android):
+    assert android(text='Checkout').wait(timeout=0.01)
+
+
+def test_an_optional_dialog_is_not_what_failed(android):
+    if android(text='Allow').exists:
+        android(text='Allow').click()
+    assert android(text='Welcome').exists and 1 + 1 == 3
+
+
+# last: the stand-in device keeps its log, which -T would leave out on a real one
 def test_the_app_crashed(android):
     from test.testandroid.fake_device import CRASH_LOG
     android.log = CRASH_LOG
@@ -285,7 +303,14 @@ class TestARun:
         assert _by['test_the_app_is_there'].outcome == 'passed', _by['test_the_app_is_there'].message
         _verdicts = {_f.nodeid.split('::')[-1]: (_f.category, _f.confidence) for _f in triage(_result).findings}
         assert _verdicts == {'test_a_stale_selector': ('harness', 'medium'), 'test_a_widget_gone': ('unknown', 'low'),
-                             'test_the_app_crashed': ('defect', 'high')}
+                             'test_the_app_crashed': ('defect', 'high'),
+                             'test_an_assert_on_a_stale_selector': ('harness', 'medium'),
+                             'test_an_assert_on_a_widget_gone': ('unknown', 'low'),
+                             # an empty lookup the assert does not name is not the cause
+                             'test_an_optional_dialog_is_not_what_failed': ('defect', 'medium')}
+        _diag = _by['test_an_assert_on_a_stale_selector'].locator_failures
+        assert [(_d['verdict'], _d['names'], _d.get('asserted')) for _d in _diag] == [('stale_selector', ['Login'], True)]
+        assert _by['test_an_optional_dialog_is_not_what_failed'].locator_failures == []
         assert {_a['kind'] for _a in _by['test_a_widget_gone'].artifacts} >= {'screenshot', 'hierarchy', 'device-log'}
         assert _by['test_the_app_crashed'].app_events[0]['detail'] == 'java.lang.NullPointerException: cart was null'
         assert _by['test_the_app_is_there'].artifacts == []           # no failure, no evidence taken
@@ -293,7 +318,7 @@ class TestARun:
         assert len(fake_device.DEVICES) == 1
         _calls = [_c for _c in fake_device.DEVICES[0].calls if _c[0] != 'shell']
         assert _calls[0] == ('install', str(tmp_path / 'shop.apk'))
-        assert _calls[1:] == [('clear', PACKAGE), ('start', PACKAGE, True), ('stop', PACKAGE)] * 4
+        assert _calls[1:] == [('clear', PACKAGE), ('start', PACKAGE, True), ('stop', PACKAGE)] * 7
         # the device was held for each case, and is free again
         _lock = ResourceLock(lock_path('device:emulator-5554'))
         assert _lock.acquire(0.1)
@@ -331,13 +356,22 @@ class TestWhatMutationTestingFound:
         _d = FakeDevice('dev-9')
         _s = android.begin(_d, 'dev-9', PACKAGE, 't::n')
         try:
-            assert (_s.serial, _s.package, _s.nodeid, _s.since, _s.pids) == ('dev-9', PACKAGE, 't::n', '1762516800.000',
+            assert (_s.serial, _s.package, _s.nodeid, _s.since, _s.pids) == ('dev-9', PACKAGE, 't::n', '1762516800.123',
                                                                              ['4242'])
-            assert ('shell', ('date', '+%s')) in _d.calls and ('shell', ('pidof', PACKAGE)) in _d.calls
+            assert ('shell', ('date', '+%s.%N')) in _d.calls and ('shell', ('pidof', PACKAGE)) in _d.calls
             assert android.current() is _s
         finally:
             android.end()
         assert android.current() is None and not android.active()
+
+        # CR19: whole seconds opened the window up to a second early, into the previous case
+        for _date, _since in (('1762516800.999999999\n', '1762516800.999'),   # cut, never rounded up
+                              ('1762516800.000500000', '1762516800.000'),
+                              ('1762516800.N\n', '1762516800.000'),          # no %N: whole seconds
+                              ('1762516800\n', '1762516800.000'),
+                              ('date: bad format', '')):
+            _d.date = _date
+            assert android._device_time(_d) == _since, _date
 
         class _Plain:
             def shell(self, args, timeout=None):
@@ -515,3 +549,35 @@ class TestWhatMutationTestingFound:
         with pytest.raises(UiObjectNotFoundError):
             on_device(text='Login').click()
         assert recorder.current().locator_failures[-1]['verdict'] == 'unknown'
+
+
+class TestAnAssertOnALookup:
+    """CR19: `assert d(text=...).exists` failing was judged a plain assert -- a product defect."""
+
+    def test_empty_lookups_are_remembered_during_a_case_only(self, on_device):
+        assert not on_device(text='Nope').exists
+        assert not on_device(text='Gone').wait(timeout=0.01)
+        assert on_device(text='Welcome').exists                       # found: nothing to remember
+        assert [_e['names'] for _e in android.current().empty] == [['Nope'], ['Gone']]
+        assert on_device(text='Gone').wait(exists=False, timeout=0.01)   # waiting for it to go: not a lookup
+        assert [_e['names'] for _e in android.current().empty] == [['Nope'], ['Gone']]
+        android.end()
+        assert not on_device(text='Elsewhere').exists                 # no case: nothing kept, nothing raised
+
+    def test_at_most_the_latest_are_kept(self, on_device):
+        for _i in range(android.EMPTY_KEPT + 5):
+            assert not on_device(text='w{}'.format(_i)).exists
+        _names = [_e['names'][0] for _e in android.current().empty]
+        assert len(_names) == android.EMPTY_KEPT and _names[-1] == 'w{}'.format(android.EMPTY_KEPT + 4)
+
+    def test_the_assert_must_name_it_quoted(self):
+        _s = android.Session(device=None, serial='s', empty=[
+            {'selector': 'a', 'names': ['OK']}, {'selector': 'b', 'names': ['Pay now']},
+            {'selector': 'c', 'names': ["it's"]}])
+        assert android.asserted_lookup(_s, "assert x\n +  where x = <Device>(text='OK').exists")['selector'] == 'a'
+        assert android.asserted_lookup(_s, 'assert d(text="Pay now").exists')['selector'] == 'b'
+        assert android.asserted_lookup(_s, 'assert d(text="it\'s").exists')['selector'] == 'c'
+        assert android.asserted_lookup(_s, 'assert status == OK') is None      # the word, not the lookup
+        assert android.asserted_lookup(_s, '') is None and android.asserted_lookup(None, "'OK'") is None
+        _s.empty.append({'selector': 'd', 'names': ['OK']})
+        assert android.asserted_lookup(_s, "d(text='OK')")['selector'] == 'd'   # the latest of that name
