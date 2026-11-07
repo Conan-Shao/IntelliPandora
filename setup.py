@@ -97,6 +97,9 @@ setup(
         # Python 3.11, so the extra installs nothing on 3.10. 0.x and released
         # often, so bounded to the 0.3 line. See docs/security/components.md.
         'inspect': ['inspect_ai>=0.3.283,<0.4; python_version >= "3.11"'],
+        # Android (docs/design/decisions/14 §5, M5): uiautomator2, used as it is. It brings
+        # adbutils, which bundles adb. See docs/security/components.md.
+        'android': ['uiautomator2>=3.7.1,<4'],
     },
     entry_points={
         'console_scripts': [

@@ -50,6 +50,7 @@ run()
 | `core/evidence/` | 每条用例的证据槽，按线程区分；`concurrently()` 会把它绑定到自己启动的线程 |
 | `core/protocol/http/` | HTTP 层：传输策略（超时、重试、TLS）、响应解析 |
 | `core/web.py` | Playwright 原样使用；把 expect 记为判定；区分"选择器过时"和"元素真的没了"；把 `web.*` 配置映射为 pytest-playwright 的默认选项 |
+| `core/android.py` | uiautomator2 原样使用；`android` fixture（每次会话装一次 App，每条用例前启动、后停止，持有 `device:<serial>` 锁）；失败时取截图、控件树、logcat；App 崩溃或 ANR 判为产品缺陷；选择器找不到时按名字在控件树里找同名控件 |
 | `core/layout.py` | `ipandora check layout`：分层规则的静态检查（AST），判定只在 `tests/` 等 |
 | `core/cases.py` | `cases()`：YAML / JSON / CSV 的每一行变成一个 `pytest.param`，带 id 和 dims |
 | `core/auth.py` | 身份与提供者：`identity()` 选择会话，提供者登录并缓存凭据，提前刷新，未登录时重新登录并重放一次；运行结束清空 |

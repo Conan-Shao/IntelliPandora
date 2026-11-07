@@ -111,6 +111,8 @@ class CaseEvidence:
     """Where the case lives: its file, and the browser it ran in (core/runner/plugin.py)."""
     faults: List[Dict[str, Any]] = field(default_factory=list)
     """Faults the case injected (core/faults.py): what, where, from when to when. Read by triage."""
+    app_events: List[Dict[str, str]] = field(default_factory=list)
+    """Android: the app's crashes and ANRs while the case ran (core/android.py). Read by triage."""
     trace_id: str = ''
     """The W3C trace id of this case's requests (core/tracing.py); set on first use."""
     trace_shown: bool = False
@@ -199,6 +201,7 @@ class Recorder:
             target.locators.update(source.locators)
             target.locator_failures.extend(source.locator_failures)
             target.faults.extend(_f for _f in source.faults if _f not in target.faults)
+            target.app_events.extend(_e for _e in source.app_events if _e not in target.app_events)
             for _artifact in source.artifacts:
                 if _artifact not in target.artifacts:
                     target.artifacts.append(_artifact)
@@ -263,6 +266,15 @@ class Recorder:
             return
         with self._write:
             _current.faults.append(record)
+
+    def add_app_event(self, event: Dict[str, str]) -> None:
+        """A crash or ANR of the app under test while this case ran (core/android.py)."""
+        _current = self.current()
+        if _current is None:
+            return
+        with self._write:
+            if event not in _current.app_events:
+                _current.app_events.append(dict(event))
 
     def add_artifact(self, entry: Dict[str, str]) -> None:
         """A file the case produced for the report: kind, path, group (and a command that opens it)."""

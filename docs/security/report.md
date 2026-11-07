@@ -11,12 +11,12 @@
 
 | 检查 | 范围 | 结果 |
 |---|---|---|
-| 依赖漏洞 | `requirements/ci.txt`：框架 + 可选组 ai、inspect、mcp、parallel、system、test、visual、web | 通过：113 个包，0 个已知漏洞 |
-| 依赖漏洞 | `requirements/ci-noai.txt`：框架 + 可选组 mcp、parallel、test、visual、web，不含 AI 组 | 通过：54 个包，0 个已知漏洞 |
+| 依赖漏洞 | `requirements/ci.txt`：框架 + 可选组 ai、android、inspect、mcp、parallel、system、test、visual、web | 通过：119 个包，0 个已知漏洞 |
+| 依赖漏洞 | `requirements/ci-noai.txt`：框架 + 可选组 android、mcp、parallel、test、visual、web，不含 AI 组 | 通过：60 个包，0 个已知漏洞 |
 | 依赖漏洞 | `requirements/tools.txt`：构建与工具链（不安装到用户环境） | 通过：69 个包，0 个已知漏洞 |
-| 自身代码 | `src/`，bandit 静态扫描 | 通过：0 个未处理问题，26 处经评估标注（理由见下） |
-| 许可证 | 运行环境 115 个分发包、工具链 72 个（含间接依赖） | 通过：其余在白名单内，text-unidecode 经人工审查（见下） |
-| 组件登记 | 32 个直接依赖与 CI 动作 | 通过：与代码声明一致 |
+| 自身代码 | `src/`，bandit 静态扫描 | 通过：0 个未处理问题，28 处经评估标注（理由见下） |
+| 许可证 | 运行环境 121 个分发包、工具链 72 个（含间接依赖） | 通过：其余在白名单内，text-unidecode 经人工审查（见下） |
+| 组件登记 | 33 个直接依赖与 CI 动作 | 通过：与代码声明一致 |
 | 漏洞例外 | 例外登记表 | 通过：0 条 |
 
 ## 漏洞明细
@@ -43,10 +43,12 @@ bandit 报出、经评估不构成问题的地方，在源码里标注 `# nosec`
 | B311 | `src/ipandora/core/eval/stats.py` | resampling for a confidence interval, not secrecy |
 | B311 | `src/ipandora/utils/variable.py` | test data |
 | B311 | `src/ipandora/utils/variable.py` | test data, not a secret |
+| B314 | `src/ipandora/core/android.py` | expat resolves no external entities, and Python's expat limits entity expansion |
 | B404 | `src/ipandora/core/consistency.py` | the checker is a Java tool run as a child process, never through a shell |
 | B404 | `src/ipandora/core/eval/coding.py` | the graders run git and the agent's tests as child processes, never through a shell |
 | B404 | `src/ipandora/core/eval/testgen.py` | pytest and git, run in the work directory with argument lists, never a shell |
 | B404 | `src/ipandora/core/stack.py` | Docker Compose is run as a child process, never through a shell |
+| B405 | `src/ipandora/core/android.py` | the tree comes from the uiautomator server on the device under test, not from a user |
 | B405 | `src/ipandora/core/report/junit.py` | this module builds XML and never parses it |
 | B603 | `src/ipandora/core/consistency.py` | a java executable we located, asking its version; no shell |
 | B603 | `src/ipandora/core/consistency.py` | the verified checker jar, our own arguments and file; no shell |
@@ -60,10 +62,11 @@ bandit 报出、经评估不构成问题的地方，在源码里标注 `# nosec`
 
 白名单为宽松许可证（MIT、BSD、Apache、ISC、MPL-2.0、PSF 等），不接受 GPL 系、SSPL、BUSL 等，理由见 [`docs/design/decisions/15`](../design/decisions/15-第三方组件安全准入与漏洞扫描.md) §3。
 
-<details><summary>运行环境（框架 + 全部可选组，即用户可能装上的全部）：115 个</summary>
+<details><summary>运行环境（框架 + 全部可选组，即用户可能装上的全部）：121 个</summary>
 
 | 分发包 | 版本 | 许可证 | 结果 |
 |---|---|---|---|
+| adbutils | 2.12.0 | MIT | 通过 |
 | agent-client-protocol | 0.12.1 | Apache-2.0 | 通过 |
 | aiobotocore | 3.9.2 | Apache-2.0 | 通过 |
 | aiohappyeyeballs | 2.7.1 | Python Software Foundation License | 通过 |
@@ -84,6 +87,8 @@ bandit 报出、经评估不构成问题的地方，在源码里标注 `# nosec`
 | click | 8.5.0 | BSD-3-Clause | 通过 |
 | cryptography | 50.0.2 | Apache-2.0 OR BSD-3-Clause | 通过 |
 | debugpy | 1.8.22 | MIT License | 通过 |
+| decorator | 5.3.1 | BSD-2-Clause | 通过 |
+| deprecation | 2.1.0 | Apache Software License | 通过 |
 | docstring-parser | 0.18.0 | MIT License | 通过 |
 | execnet | 2.1.2 | MIT | 通过 |
 | fastapi | 0.161.1 | MIT | 通过 |
@@ -112,6 +117,7 @@ bandit 报出、经评估不构成问题的地方，在源码里标注 `# nosec`
 | jsonschema | 4.26.0 | MIT | 通过 |
 | jsonschema-specifications | 2025.9.1 | MIT | 通过 |
 | linkify-it-py | 2.2.0 | MIT License | 通过 |
+| lxml | 6.1.3 | BSD-3-Clause | 通过 |
 | markdown-it-py | 4.2.0 | MIT License | 通过 |
 | markupsafe | 3.0.4 | BSD-3-Clause | 通过 |
 | mcp | 2.3.0 | MIT License | 通过 |
@@ -150,6 +156,7 @@ bandit 报出、经评估不构成问题的地方，在源码里标注 `# nosec`
 | referencing | 0.37.0 | MIT | 通过 |
 | regex | 2026.9.29 | Apache-2.0 AND CNRI-Python | 通过 |
 | requests | 2.34.2 | Apache Software License | 通过 |
+| retry2 | 0.9.5 | Apache Software License | 通过 |
 | rich | 15.0.0 | MIT License | 通过 |
 | rpds-py | 2026.9.1 | MIT | 通过 |
 | s3fs | 2026.6.0 | BSD License | 通过 |
@@ -170,6 +177,7 @@ bandit 报出、经评估不构成问题的地方，在源码里标注 `# nosec`
 | truststore | 0.10.5 | MIT | 通过 |
 | typing-extensions | 4.16.0 | PSF-2.0 | 通过 |
 | typing-inspection | 0.4.4 | MIT | 通过 |
+| uiautomator2 | 3.7.1 | MIT License | 通过 |
 | universal-pathlib | 0.3.10 | MIT | 通过 |
 | urllib3 | 2.8.0 | MIT | 通过 |
 | uvicorn | 0.54.0 | BSD-3-Clause | 通过 |

@@ -44,9 +44,9 @@ LOCKS = {
     # `inspect` only in ci.txt: ci-noai checks that nothing needs ai/, and
     # the Inspect path is tested where every extra is installed.
     'ci.txt': (['setup.py', 'requirements/build.in'],
-               ['ai', 'inspect', 'mcp', 'parallel', 'system', 'test', 'visual', 'web']),
+               ['ai', 'android', 'inspect', 'mcp', 'parallel', 'system', 'test', 'visual', 'web']),
     'ci-noai.txt': (['setup.py', 'requirements/build.in'],
-                    ['mcp', 'parallel', 'test', 'visual', 'web']),
+                    ['android', 'mcp', 'parallel', 'test', 'visual', 'web']),
     'tools.txt': (['requirements/tools.in'], []),
 }
 
