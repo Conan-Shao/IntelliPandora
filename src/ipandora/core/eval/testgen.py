@@ -78,6 +78,10 @@ import json, os, traceback
 import pytest
 
 _ROWS = []
+# the path is taken out of the environment as soon as this loads -- before
+# any conftest -- so the agent's test code cannot learn where results go
+_OUT = os.environ.pop('IPANDORA_TESTGEN_OUT', '')
+_COLLECT = os.environ.pop('IPANDORA_TESTGEN_COLLECT', '')
 
 
 def _origin(excinfo):
@@ -107,14 +111,15 @@ def pytest_collectreport(report):
 
 
 def pytest_collection_finish(session):
-    if os.environ.get('IPANDORA_TESTGEN_COLLECT'):
+    if _COLLECT:
         _ROWS.extend({'nodeid': _i.nodeid, 'when': 'collected', 'outcome': '', 'exc': '', 'message': '',
                       'origin': str(_i.path)} for _i in session.items)
 
 
+@pytest.hookimpl(tryfirst=True)
 def pytest_sessionfinish(session, exitstatus):
-    with open(os.environ['IPANDORA_TESTGEN_OUT'], 'w', encoding='utf-8') as _f:
-        json.dump(_ROWS, _f)
+    with open(_OUT, 'w', encoding='utf-8') as _f:
+        json.dump({'rows': _ROWS, 'exitstatus': int(exitstatus)}, _f)
 '''
 
 
@@ -125,6 +130,8 @@ class Run:
     returncode: Optional[int] = None
     output: str = ''
     timed_out: bool = False
+    consistent: bool = True
+    """Whether the recorded outcomes agree with the exit status pytest itself reported and returned."""
 
     def outcome(self, nodeid: str) -> Dict[str, Any]:
         """The decisive row of a test: its first failure, else its call."""
@@ -136,6 +143,21 @@ class Run:
     @property
     def collect_errors(self) -> List[Dict[str, Any]]:
         return [_r for _r in self.rows if _r['when'] == 'collect']
+
+
+def _consistent(run: 'Run', status: Optional[int], collect_only: bool) -> bool:
+    """
+    Recorded rows, the status the plugin saw, and the process's exit code
+    must tell one story: all passed is exit 0, a failure is exit 1. Test code
+    that rewrote what was recorded rarely keeps all three in step.
+    """
+    if status is None or run.returncode != status:
+        return False
+    if collect_only:
+        return True
+    _failed = any(_r['outcome'] == 'failed' for _r in run.rows if _r['when'] in ('setup', 'call', 'teardown', 'collect'))
+    _ran = any(_r['when'] == 'call' for _r in run.rows)
+    return (status == 1) == _failed if _ran or _failed else status in (4, 5)
 
 
 def _command(test_cmd: str, targets: Sequence[str]) -> List[str]:
@@ -173,11 +195,14 @@ def pytest_run(workdir: str, targets: Sequence[str], test_cmd: str = DEFAULT_CMD
             return Run(timed_out=True, output='timed out after {:g}s'.format(timeout))
         except OSError as exc:
             raise RuntimeError('cannot run the test command {!r}: {}'.format(' '.join(_cmd[:3]), exc))
-        _rows = []
+        _rows, _status = [], None
         if os.path.isfile(_out):
             with open(_out, encoding='utf-8') as _f:
-                _rows = json.load(_f)
-        return Run(rows=_rows, returncode=_done.returncode, output=(_done.stdout + _done.stderr)[-2000:])
+                _data = json.load(_f)
+            _rows, _status = _data.get('rows', []), _data.get('exitstatus')
+        _run = Run(rows=_rows, returncode=_done.returncode, output=(_done.stdout + _done.stderr)[-2000:])
+        _run.consistent = _consistent(_run, _status, collect_only)
+        return _run
     finally:
         shutil.rmtree(_tmp, ignore_errors=True)
 
@@ -209,6 +234,28 @@ def restore(workdir: str, base: str, paths: Iterable[str]) -> None:
             _full = os.path.join(workdir, _p)
             if os.path.isfile(_full) or os.path.islink(_full):
                 os.remove(_full)
+
+
+def hooks_in(workdir: str, test_files: Sequence[str]) -> List[str]:
+    """
+    pytest hooks the agent's test files define (`pytest_*` functions, or
+    anything decorated with hookimpl). A reproduction test has no business
+    changing how pytest runs or reports, and a hook can rewrite any verdict.
+    """
+    _out = []
+    for _f in test_files:
+        if not _f.endswith('.py'):
+            continue
+        try:
+            _tree = ast.parse(_read(os.path.join(workdir, _f)))
+        except SyntaxError:
+            continue
+        for _n in ast.walk(_tree):
+            if isinstance(_n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                _hookimpl = any('hookimpl' in ast.dump(_d) for _d in _n.decorator_list)
+                if _n.name.startswith('pytest_') or _hookimpl:
+                    _out.append('{}::{}'.format(_f, _n.name))
+    return _out
 
 
 def _function_sources(source: str) -> Dict[str, str]:
@@ -329,8 +376,25 @@ def _asserts(function_node) -> bool:
     return False
 
 
+def _asserts_through(function_node, helpers: Dict[str, Any], seen=None) -> bool:
+    """Asserts itself, or calls a function of the same file that does (transitively)."""
+    if _asserts(function_node):
+        return True
+    _seen = set() if seen is None else seen
+    for _n in ast.walk(function_node):
+        if isinstance(_n, ast.Call) and isinstance(_n.func, ast.Name) and _n.func.id in helpers \
+                and _n.func.id not in _seen:
+            _seen.add(_n.func.id)
+            if _asserts_through(helpers[_n.func.id], helpers, _seen):
+                return True
+    return False
+
+
 def asserting(workdir: str, nodeids: Sequence[str]) -> Dict[str, bool]:
-    """nodeid -> whether its function contains an assertion (assert, pytest.raises/warns, self.assert*)."""
+    """
+    nodeid -> whether its function asserts anything (assert, pytest.raises /
+    warns, self.assert*), itself or through a function of the same file.
+    """
     _out = {}
     _cache: Dict[str, Any] = {}
     for _id in nodeids:
@@ -351,16 +415,30 @@ def asserting(workdir: str, nodeids: Sequence[str]) -> Dict[str, bool]:
             if _i == len(_parts) - 1:
                 _found = _hit
             _nodes = getattr(_hit, 'body', [])
-        _out[_id] = bool(_found is not None and _asserts(_found))
+        _helpers = {_n.name: _n for _n in (_tree.body if _tree is not None else [])
+                    if isinstance(_n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+        _out[_id] = bool(_found is not None and _asserts_through(_found, _helpers))
     return _out
 
 
-def classify(rows: List[Dict[str, Any]]) -> str:
-    """'reproduced', 'weak' or 'passed' for one test's decisive row before the fix."""
-    if rows['outcome'] == 'passed' or rows['outcome'] == 'skipped':
+def classify(row: Dict[str, Any], workdir: str = '') -> str:
+    """
+    'reproduced', 'weak' or 'passed' for one test's decisive row before the
+    fix. A failure while running the test reproduces -- unless it is an
+    import, syntax or name error *of the test*: the same error raised from
+    the code under test (the bug is a misspelt name) is a reproduction.
+    """
+    if row['outcome'] in ('passed', 'skipped'):
         return 'passed'
-    if rows['when'] == 'call' and rows['exc'] not in WEAK_EXCEPTIONS:
+    if row['when'] != 'call' or row['exc'] in ('FixtureLookupError', 'CollectError'):
+        return 'weak'
+    if row['exc'] not in WEAK_EXCEPTIONS:
         return 'reproduced'
+    _origin = row.get('origin') or ''
+    if workdir and _origin and os.path.isabs(_origin):
+        _rel = os.path.relpath(_origin, os.path.abspath(workdir)).replace('\\', '/')
+        if not _rel.startswith('../') and not is_test_file(_rel):
+            return 'reproduced'
     return 'weak'
 
 
@@ -403,6 +481,11 @@ class Result:
         return not self.error and bool(self.tests) and self.reproduced and self.fixed_passes
 
     @property
+    def tampered(self) -> bool:
+        """The agent's tests define pytest hooks, or what was recorded disagrees with pytest's own exit status."""
+        return self.error.startswith(HOOKS_ERROR) or self.error == INCONSISTENT
+
+    @property
     def zero_assertion(self) -> List[str]:
         return [_t for _t, _ok in sorted(self.asserting.items()) if not _ok]
 
@@ -430,6 +513,8 @@ class Result:
                           expr='{} 个新增或改动的测试'.format(len(self.tests)), src=TESTGEN, claim='agent wrote tests'))
         _out.append(Check(name='判分完成', ok=not self.error, expr=self.error or '—', src=TESTGEN,
                           claim='grading completed'))
+        _out.append(Check(name='测试结果可信', ok=not self.tampered, src=TESTGEN, claim='test results trustworthy',
+                          expr=self.error if self.tampered else '没有钩子，记录与 pytest 的退出状态一致'))
         if self.mutation is not None and self.mutation.get('score') is not None:
             _out.append(Check(name='杀死修复处的变异', ok=self.mutation['score'] >= self.mutation.get('min_score', 0),
                               expr='{killed}/{tested} 个变异被杀死'.format(**self.mutation), src=TESTGEN,
@@ -460,6 +545,9 @@ def _after_text(after: List[Dict[str, str]]) -> str:
 
 
 COLLECT_ERROR = 'the tests do not collect: '
+INCONSISTENT = ('what was recorded does not agree with pytest\'s exit status: the results were tampered with, '
+                'or pytest did not run the tests')
+HOOKS_ERROR = 'the agent\'s test files define pytest hooks -- its results cannot be trusted: '
 
 
 def _selected(workdir: str, base: str, test_files: List[str], test_cmd: str, timeout: float) -> Tuple[List[str], str]:
@@ -486,6 +574,10 @@ def _selected(workdir: str, base: str, test_files: List[str], test_cmd: str, tim
             _before = pytest_run(workdir, _existing, test_cmd, collect_only=True, timeout=timeout)
             _was = {_r['nodeid'] for _r in _before.rows if _r['when'] == 'collected'}
     finally:
+        for _f in test_files:
+            # a file the agent deleted came back with the base version: delete it again
+            if _f not in _saved and os.path.isfile(os.path.join(workdir, _f)):
+                os.remove(os.path.join(workdir, _f))
         for _f, _text in _saved.items():
             _full = os.path.join(workdir, _f)
             os.makedirs(os.path.dirname(_full) or '.', exist_ok=True)
@@ -520,6 +612,12 @@ def grade(workdir: str, fix: str, base: str = 'HEAD', test_cmd: str = DEFAULT_CM
     _tests, _r.out_of_scope = split_changes(workdir, base)
     # out of scope: counted, then put back -- the code under test is the original
     restore(workdir, base, _r.out_of_scope)
+    _hooks = hooks_in(workdir, _tests)
+    if _hooks:
+        _r.tests = []
+        _r.error = HOOKS_ERROR + '、'.join(_hooks[:5])
+        _r.seconds = round(time.monotonic() - _start, 3)
+        return _r
     _r.tests, _r.error = _selected(workdir, base, _tests, test_cmd, timeout)
     if _r.error.startswith(COLLECT_ERROR):
         # a test that cannot even be collected is a weak reproduction, not a grading failure
@@ -535,13 +633,17 @@ def grade(workdir: str, fix: str, base: str = 'HEAD', test_cmd: str = DEFAULT_CM
         return _r
     _r.asserting = asserting(workdir, _r.tests)
     _pre = pytest_run(workdir, _r.tests, test_cmd, timeout=timeout)
+    if not _pre.timed_out and not _pre.consistent:
+        _r.error = INCONSISTENT
+        _r.seconds = round(time.monotonic() - _start, 3)
+        return _r
     if _pre.timed_out:
         _r.error = 'the tests timed out before the fix'
         _r.seconds = round(time.monotonic() - _start, 3)
         return _r
     for _t in _r.tests:
         _row = _pre.outcome(_t)
-        _r.before[_t] = classify(_row)
+        _r.before[_t] = classify(_row, workdir)
         _r.before_detail[_t] = {_k: _row.get(_k, '') for _k in ('when', 'outcome', 'exc', 'message')}
     _fix_file = os.path.abspath(fix)
     try:
@@ -552,6 +654,9 @@ def grade(workdir: str, fix: str, base: str = 'HEAD', test_cmd: str = DEFAULT_CM
         return _r
     for _ in range(runs):
         _post = pytest_run(workdir, _r.tests, test_cmd, timeout=timeout)
+        if not _post.timed_out and not _post.consistent:
+            _r.error = INCONSISTENT
+            break
         _r.after.append({_t: ('timeout' if _post.timed_out else _post.outcome(_t)['outcome']) for _t in _r.tests})
     if _r.f2p and max_mutants > 0:
         _r.mutation = dict(_mutate(workdir, _patch, _r.tests, test_cmd, max_mutants, timeout), min_score=min_score)
@@ -736,7 +841,8 @@ ENVIRONMENT, TIMEOUT_OR_BUDGET, MODIFIED_SOURCE, WEAK_REPRODUCTION, NOT_REPRODUC
     'environment', 'timeout_or_budget', 'modified_source', 'weak_reproduction', 'not_reproduced', 'flaky',
     'no_tests')
 ZERO_ASSERTION, WEAK_ASSERTIONS, OUT_OF_SCOPE = 'zero_assertion', 'weak_assertions', 'out_of_scope'
-REASONS = {ENVIRONMENT: '环境问题', TIMEOUT_OR_BUDGET: '超时或超预算', MODIFIED_SOURCE: '改了源码',
+TAMPERING = 'tampering'
+REASONS = {TAMPERING: '测试改动了判分（钩子或记录与退出状态不符）', ENVIRONMENT: '环境问题', TIMEOUT_OR_BUDGET: '超时或超预算', MODIFIED_SOURCE: '改了源码',
            WEAK_REPRODUCTION: '弱复现', NOT_REPRODUCED: '没复现（修复前就通过）', FLAKY: '修复后不稳定',
            NO_TESTS: '没有写测试', ZERO_ASSERTION: '零断言', WEAK_ASSERTIONS: '断言太弱（变异分数低）',
            OUT_OF_SCOPE: '越界改动'}
@@ -755,7 +861,8 @@ def failure_reason(checks: Sequence[Any], status: str = 'graded', ended: str = '
                    over_budget: bool = False) -> str:
     """
     Why a test-generation run did not reach F→P, by rule -- the first that
-    applies: environment, timeout_or_budget, no_tests, modified_source,
+    applies: environment (the harness failed), tampering, timeout_or_budget,
+    environment (grading did not finish), no_tests, modified_source,
     weak_reproduction, flaky, not_reproduced. '' when it succeeded.
     """
     _c = _by_claim(checks)
@@ -763,6 +870,8 @@ def failure_reason(checks: Sequence[Any], status: str = 'graded', ended: str = '
         return ENVIRONMENT
     if _c.get('fail to pass'):
         return ''
+    if _c.get('test results trustworthy') is False:
+        return TAMPERING
     if ended.startswith('limit:') or over_budget:
         return TIMEOUT_OR_BUDGET
     if 'fail to pass' not in _c or _c.get('grading completed') is False:
