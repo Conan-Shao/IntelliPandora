@@ -309,7 +309,18 @@ ipandora eval f2p /work --fix fix.patch --test-cmd "pytest -q {test_files}" --ru
 3. **修复前**：至少一个在执行阶段（`call`）失败。收集失败、`ImportError`、`SyntaxError`、`NameError`、找不到 fixture 算**弱复现**：坏的是测试本身。被测代码抛出的其他异常算有效复现。
 4. **修复后**：`git apply fix.patch`，同一批测试跑 `--runs` 次（默认 3），每次都全过；有一次不过就是 flaky。
 5. 3 和 4 都满足才算 F→P。另外单独报告、不影响 F→P：每个测试有没有断言（从源码读：`assert`、`pytest.raises` / `warns`、`self.assert*`）；F→P 成立时的变异分数：只变异 fix.patch 改到的函数，至多 `--max-mutants` 个（默认 20），算子是比较符、算术符、and/or、去掉 not、布尔取反、整数加减一、`return` 改 `None`。
-6. `--json` 输出一行：用到的测试、越界文件、修复前每个测试的结论（`reproduced` / `weak` / `passed`）和异常类型、修复后每次的结果、断言、变异、耗时，以及各条判定。
+6. `--json` 输出一行：用到的测试、越界文件、修复前每个测试的结论（`reproduced` / `weak` / `passed`）和异常类型、修复后每次的结果、断言、变异、耗时、用了哪些规则（`rules`），以及各条判定。
+
+**和 SWT-bench 同口径**：第 1 步的越界丢弃、第 3 步的弱复现规则是这里比 SWT-bench 多的两条，都默认打开。和官方 harness 对照判定时把它们关掉：
+
+```shell
+ipandora eval f2p /work --task tasks/calc-12 --keep-out-of-scope --no-weak-rule --json
+```
+
+- `--keep-out-of-scope`（`grade(discard_out_of_scope=False)`）：agent 改的源码留在原处，和官方 harness 打上整个补丁一样；越界照样报告。agent 改了修复补丁要改的那几行时，补丁打不上，判分报错，官方 harness 也是如此。
+- `--no-weak-rule`（`grade(weak_rule=False)`）：修复前任何失败都算复现，包括导入失败、找不到 fixture。测试文件在修复前连收集都过不了（典型的是导入修复才加的函数），就打上修复后再收集，收集到的测试都算修复前失败；打上修复也收集不了，就不是 F→P。
+
+F→P 判定的名字会写明关掉了哪条规则（"关掉了：越界丢弃、弱复现规则"），`--json` 的 `rules` 也记着，同口径的结果不会和默认口径的混在一起看。`f2p-selfcheck` 总是用默认口径。
 
 题目目录（`tasks/<id>/task.yaml`，加上 `issue.md`、`fix.patch`、`reference_test.patch`）用 `testgen.load(tasks_dir)` 读成数据集，字段一个不能少，类型和取值逐项校验，错一个就报出来：
 

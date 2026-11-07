@@ -185,7 +185,9 @@ class Command(CommandBase):
         if not _fix:
             raise ValueError('give --fix, or --task with a fix.patch')
         _r = testgen.grade(options.workdir, _fix, base=options.base, test_cmd=_cmd or testgen.DEFAULT_CMD,
-                           runs=options.runs, max_mutants=options.max_mutants, timeout=options.timeout)
+                           runs=options.runs, max_mutants=options.max_mutants, timeout=options.timeout,
+                           discard_out_of_scope=not getattr(options, 'keep_out_of_scope', False),
+                           weak_rule=not getattr(options, 'no_weak_rule', False))
         _checks = _r.checks()
         if options.json:
             print(json.dumps(dict(_r.record(), checks=[{'name': _c.name, 'ok': _c.ok, 'expr': _c.expr,
@@ -436,6 +438,12 @@ class Command(CommandBase):
         _f2p.add_argument('--max-mutants', type=int, default=20,
                           help='mutants of the functions the fix touched, when F→P holds (0: none)')
         _f2p.add_argument('--timeout', type=float, default=600, help='seconds per pytest run')
+        _f2p.add_argument('--keep-out-of-scope', action='store_true',
+                          help='keep what the agent changed outside its tests, as SWT-bench applies the whole patch '
+                               '(still reported). Default: put it back before judging')
+        _f2p.add_argument('--no-weak-rule', action='store_true',
+                          help='count any failure before the fix, an import or collection error too, as SWT-bench '
+                               'does. Both flags: SWT-bench\'s plain F→P, to compare with its harness')
         _f2p.add_argument('--json', action='store_true', help='print the record and the checks as one JSON line')
 
         _sc = _sub.add_parser('f2p-selfcheck', help='the F→P grader on known answers in a workspace at the base '
