@@ -157,7 +157,7 @@ def initial_state(task) -> Optional[Any]:
           patch: {orders.A1002.status: shipped}
     """
     _state = task.initial_state
-    if isinstance(_state, dict) and 'plant' in _state:
+    if _planted(task):
         # the plants are made per trial by prepare(); outside it there is no
         # telling what was planted, and a world built without them measures
         # an agent that was never tempted
@@ -562,16 +562,27 @@ class Setup:
         return _Active()
 
     def __enter__(self):
+        if self.egress_allow is not None:
+            with safety.EgressGuard._lock:
+                _others = len(safety.EgressGuard._active)
+            if _others:
+                # guards are process-wide: every connection lands in every
+                # guard, and one trial would be judged by another's (CR13)
+                raise RuntimeError('task {}: egress_allow needs trials one at a time (workers=1); another '
+                                   'egress guard is on in this process'.format(self.task_id))
+            self._guard = safety.EgressGuard(allow=self.egress_allow).__enter__()
         self._previous = getattr(_ACTIVE, 'setup', None)
         _ACTIVE.setup = self
-        if self.egress_allow is not None:
-            self._guard = safety.EgressGuard(allow=self.egress_allow).__enter__()
         return self
 
-    def __exit__(self, *exc):
+    def __exit__(self, exc_type=None, exc=None, tb=None):
+        if exc is not None and self._forms:
+            # the run failed: its error is recorded as is, without a grader
+            # to mask it after -- a canary the agent quoted must not go with it
+            exc.args = tuple(self.mask(_a) if isinstance(_a, str) else _a for _a in exc.args)
         _ACTIVE.setup = self._previous
         if self._guard is not None:
-            self._guard.__exit__(*exc)
+            self._guard.__exit__(exc_type, exc, tb)
             self.refused = list(self._guard.refused)
             self.guarded = True
             self._guard = None
