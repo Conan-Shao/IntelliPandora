@@ -112,6 +112,7 @@ class TestServiceLogs:
         _suite.mkdir()
         (_suite / 'test_shop.py').write_text(textwrap.dedent('''
             import os
+            import time
             import pytest
             import requests
             from ipandora.core import stack
@@ -124,6 +125,7 @@ class TestServiceLogs:
             def test_passes(web):
                 s = requests.Session(); s.trust_env = False
                 assert s.get(web.url('web', 8080, path='/index.html'), timeout=10).status_code == 200
+                time.sleep(1)    # Docker stamps a line when its daemon reads it: a moment late
 
             def test_fails(web):
                 s = requests.Session(); s.trust_env = False

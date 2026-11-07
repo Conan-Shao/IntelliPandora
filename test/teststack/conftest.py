@@ -24,3 +24,7 @@ def docker_or_skip():
 @pytest.fixture
 def needs_docker():
     return docker_or_skip()
+
+
+def pytest_configure(config):
+    config.addinivalue_line('markers', 'expects_skip: the test checks that docker() skips (test_stack_unit.py)')
