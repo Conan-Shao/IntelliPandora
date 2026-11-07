@@ -89,7 +89,7 @@ faults:
 ```
 
 - **集群要写明**：每次调用 kubectl 都带上配置里的 `context`；没写就拒绝注入。kubectl 当前指着哪个集群不起作用，免得指着生产集群的 kubectl 被误用。
-- **生效了才往下走**：建好 Chaos 对象后等 Chaos Mesh 报告"所有选中的 Pod 都已注入"；超时、或者选择器一个 Pod 都没选中，就报错并删掉对象。撤销是删除对象并等 Chaos Mesh 恢复完 Pod。
+- **生效了才往下走**：建好 Chaos 对象后等 Chaos Mesh 报告"所有选中的 Pod 都已注入"；超时、或者选择器一个 Pod 都没选中，就报错并删掉对象。撤销是删除对象并等 Chaos Mesh 恢复完 Pod。网络故障撤销的那一刻，Chaos Mesh 拆除规则时可能重置正在建立的连接（CI 上见过）：`with` 块之后紧接着发请求的用例，应当允许第一个请求重试一次。
 - 框架只调用 `kubectl`，Python 侧不装任何东西；Chaos Mesh 由集群的维护者安装。本仓库的 CI 在一个 kind 集群上真实验收这几种故障（`test/testfaults/kind/`）。
 
 ## 接入别的故障注入平台

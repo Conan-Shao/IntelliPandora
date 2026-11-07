@@ -85,11 +85,25 @@ def _answers():
         return False
 
 
+def _settled(seconds=15):
+    """
+    Seconds until the service answers again. Right after a network fault is
+    undone, Chaos Mesh tearing its rules down can reset a connection (seen on
+    CI); the guide says so. How long it takes is printed, to keep track of it.
+    """
+    _start = time.monotonic()
+    assert _until(_answers, seconds), 'the service does not answer {}s after the undo'.format(seconds)
+    _took = time.monotonic() - _start
+    print('answering again {:.2f}s after the undo'.format(_took))
+    return _took
+
+
 def test_a_delay_slows_every_answer_while_it_is_in_effect():
     assert _seconds() < 0.5
     with faults.injected(chaosmesh.delay(WEB, ms=1000)) as _records:
         assert _ours() == [_records[0]['name']]
         assert _seconds(3) >= 1.0
+    _settled()
     assert _seconds() < 0.5
     assert _records[0]['backend'] == 'chaos-mesh' and _records[0]['via'] == 'kube-context:' + CONTEXT
     assert _records[0]['ended'] >= _records[0]['started']
@@ -107,4 +121,5 @@ def test_what_a_killed_run_left_is_cleaned():
     faults.backend('chaos-mesh').apply(_left)            # as if the process died inside injected()
     assert _ours() == ['ipandora-999999-1'] and _seconds(3) >= 1.0
     assert faults.clean() == ['shop/networkchaos/ipandora-999999-1']
+    _settled()
     assert _seconds() < 0.5

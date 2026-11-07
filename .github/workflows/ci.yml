@@ -156,7 +156,7 @@ jobs:
       - name: Acceptance on the cluster
         env:
           IPANDORA_REQUIRE_CHAOS_MESH: '1'
-        run: pytest test/testfaults/test_chaosmesh_on_kind.py -v
+        run: pytest test/testfaults/test_chaosmesh_on_kind.py -v -s
 
       - name: What the cluster says
         if: failure()
