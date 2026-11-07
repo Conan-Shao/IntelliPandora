@@ -212,9 +212,40 @@ def _check_references(dataset: Dataset) -> None:
                                  '(or it points outside its directory)'.format(dataset.path, _task.id, _name))
 
 
+def _expanded(raw: Any, where: str) -> List[Any]:
+    """
+    A task whose injection plant says `technique: all`, as one task per
+    technique (docs/guide/eval-dataset.md §6.3): ids `<id>/<technique>`, tag
+    `technique`. Anything else, as it is.
+    """
+    import copy
+    _state = raw.get('initial_state') if isinstance(raw, dict) else None
+    _plants = _state.get('plant') if isinstance(_state, dict) else None
+    if not isinstance(_plants, list):
+        return [raw]
+    _all = [_i for _i, _p in enumerate(_plants)
+            if isinstance(_p, dict) and 'injection' in _p and _p.get('technique') == 'all']
+    if not _all:
+        return [raw]
+    if len(_all) > 1:
+        raise ValueError('{}: only one injection plant may say technique: all (it would multiply)'.format(where))
+    if isinstance(raw.get('tags'), dict) and 'technique' in raw['tags']:
+        raise ValueError('{}: technique: all sets the `technique` tag itself'.format(where))
+    from ipandora.core.eval.safety import TECHNIQUES
+    _out = []
+    for _name in TECHNIQUES:
+        _copy = copy.deepcopy(raw)
+        _copy['id'] = '{}/{}'.format(raw.get('id'), _name)
+        _copy['initial_state']['plant'][_all[0]]['technique'] = _name
+        _copy['tags'] = dict(_copy.get('tags') or {}, technique=_name)
+        _out.append(_copy)
+    return _out
+
+
 def from_records(records: List[Dict[str, Any]], name: str, version: str = '',
                  path: str = '', description: str = '', meta: Optional[Dict[str, Any]] = None) -> Dataset:
-    _tasks = [_task(_r, '{} task #{}'.format(name, _i + 1)) for _i, _r in enumerate(records)]
+    _tasks = [_task(_x, '{} task #{}'.format(name, _i + 1)) for _i, _r in enumerate(records)
+              for _x in _expanded(_r, '{} task #{}'.format(name, _i + 1))]
     _ids = [_t.id for _t in _tasks]
     _twice = sorted({_i for _i in _ids if _ids.count(_i) > 1})
     if _twice:
