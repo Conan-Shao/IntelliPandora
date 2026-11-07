@@ -13,10 +13,12 @@ Each line: the task, the configuration (the manifest's harness), which
 attempt, the verdict and every check, tokens (cache hits apart), cost, time,
 turns, tool calls, how the run ended, how often its infrastructure failed and
 was retried (infra_retries, infra_errors) -- and for test-generation tasks, the
-reason a run failed and what was flagged (testgen.failure_reason / flags).
+reason a run failed and what was flagged (testgen.failure_reason / flags),
+and the mutants its tests killed of those tried (mutation).
 `over_budget` compares the cost with the task's budget.max_usd: a flag, never
 a failure -- the run is judged as it ran.
 """
+import re
 from typing import Any, Dict, List, Optional
 
 from ipandora.core.eval import testgen
@@ -51,8 +53,19 @@ def records(run: EvalRun, budgets: Optional[Dict[str, Dict[str, float]]] = None)
         if _testgen:
             _row['reason'] = testgen.failure_reason(_t.checks, _t.status, _row['ended'], _over)
             _row['flags'] = testgen.flags(_t.checks, _over)
+            _row['mutation'] = _mutation(_t.checks)
         _out.append(_row)
     return _out
+
+
+_KILLED = re.compile(r'^(\d+)/(\d+) ')
+
+
+def _mutation(checks) -> Optional[Dict[str, int]]:
+    """{killed, tested} of the mutation check (testgen.Result.checks), or None when no mutant was run."""
+    _c = next((_x for _x in checks if _x.get('claim') == 'kills mutants of the fixed functions'), None)
+    _m = _KILLED.match(str((_c or {}).get('expr') or ''))
+    return {'killed': int(_m.group(1)), 'tested': int(_m.group(2))} if _m else None
 
 
 def budgets_of(dataset) -> Dict[str, Dict[str, float]]:

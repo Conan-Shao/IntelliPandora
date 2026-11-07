@@ -354,6 +354,19 @@ ipandora eval f2p-selfcheck /work --task tasks/calc-12     # 有一项判错就�
 - `over_budget`：费用超过题目的 `budget.max_usd`，或用时超过 `max_minutes`；只是标记，不改变结论。
 - `reason`（测试生成任务，没通过时）按规则取第一个成立的：`environment`（基础设施出错、判分没完成）→ `timeout_or_budget` → `no_tests` → `modified_source` → `weak_reproduction` → `flaky` → `not_reproduced`。
 - `flags`：不影响 F→P、但要报告的：`out_of_scope`、`zero_assertion`、`weak_assertions`（变异分数低于阈值）、`timeout_or_budget`。
+- `mutation`：测试达到 F→P 并做了变异时，杀死的变异数和试过的变异数（`{killed, tested}`）。
+
+**报告里的表，只从这些行算**：`ipandora eval table results/*.jsonl [-o tables.md] [--json] [--k 5]`（`ipandora.core.eval.tables`）读一个或几个 JSONL 文件，每个配置一行，给出：
+
+| 表 | 内容 |
+|---|---|
+| 主表 | 题数、运行数、成功率（先算每题再对题平均）、95% 区间（按题重采样）、pass@k、pass^k、没有结论的运行数。k 默认取这个配置里运行次数最少的那道题的次数；给了更大的 `--k`，次数不够的题不计入 pass@k，并注明几道 |
+| 刷绿指标 | 只算测试生成任务判了分的运行：越界率、零断言率、弱复现率；变异分数只算达到 F→P 并做了变异的运行 |
+| 成本 | 每次运行的平均：输入、输出 token，缓存读、写，费用，耗时，轮数，工具调用；总费用；超预算次数 |
+| 失败原因 | 每种原因（`reason`）的次数，没有出现过的原因不列 |
+| 配置之间 | 每两个配置在共同的题上配对比较，按比较的组数做 Bonferroni 校正；区间跨 0 写"没有可靠差异" |
+
+数字都由脚本从原始结果重新算出，不手改：结果文件变了，重跑这条命令即可。
 
 在 Inspect 的 scorer 里跑 `ipandora eval f2p … --json`，再用 `testgen.from_json(stdout)` 还原成判定；`Result.graded()` 只把 F→P 作为必需判定，其余是并列报告。
 

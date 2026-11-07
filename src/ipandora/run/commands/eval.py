@@ -42,6 +42,8 @@ class Command(CommandBase):
                 sys.exit(self._compare(options))
             if _action == 'noise':
                 sys.exit(self._noise(options))
+            if _action == 'table':
+                sys.exit(self._table(options))
             if _action == 'to-inspect':
                 sys.exit(self._to_inspect(options))
             if _action == 'selfcheck':
@@ -252,6 +254,23 @@ class Command(CommandBase):
         return 1 if _problems else 0
 
     @staticmethod
+    def _table(options) -> int:
+        import json
+        from ipandora.core.eval import tables
+        if options.k is not None and options.k < 1:
+            raise ValueError('--k is 1 or more')
+        _result = tables.tables(tables.read(options.records), k=options.k)
+        _text = json.dumps(_result, ensure_ascii=False, indent=2) + '\n' if options.as_json else \
+            tables.markdown(_result)
+        if options.out:
+            with open(options.out, 'w', encoding='utf-8') as fh:
+                fh.write(_text)
+            print('  {} 个配置  ->  {}'.format(len(_result['main']), options.out))
+        else:
+            print(_text, end='')
+        return 0
+
+    @staticmethod
     def _noise(options) -> int:
         import json
         from ipandora.core.eval import EvalRun, report, stats
@@ -437,6 +456,14 @@ class Command(CommandBase):
                                                'paired difference and interval; exit 1 if not comparable')
         _cmp.add_argument('runs', nargs='+', help='report.json of each run (two or more)')
         _cmp.add_argument('--name', action='append', help='a name per run, in order (default: its harness)')
+
+        _table = _sub.add_parser('table', help='the main, green-washing, cost and failure-reason tables, and every '
+                                                'pairwise comparison, from the records of `eval records` alone')
+        _table.add_argument('records', nargs='+', help='JSONL files written by `ipandora eval records`')
+        _table.add_argument('--k', type=int, default=None,
+                            help='k for pass@k and pass^k. Default: the fewest runs of any task of a configuration')
+        _table.add_argument('--json', dest='as_json', action='store_true', help='the numbers as JSON, not markdown')
+        _table.add_argument('-o', '--out', default=None, help='file to write; default stdout')
 
         _noise = _sub.add_parser('noise', help='measure the infrastructure noise: runs of one configuration on '
                                                 'the same tasks, and how far apart they are -- the --noise to use')
