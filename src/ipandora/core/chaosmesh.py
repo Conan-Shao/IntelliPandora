@@ -52,6 +52,30 @@ API_VERSION = 'chaos-mesh.org/v1alpha1'
 RESOURCES = {'NetworkChaos': 'networkchaos', 'PodChaos': 'podchaos'}
 
 DEFAULT_TIMEOUT = 60.0
+DEFAULT_MAX_DURATION = 600
+"""Seconds a fault lasts at most, whatever happens to the run: Chaos Mesh ends it by itself (CR20)."""
+
+HOST_LABEL = 'ipandora.dev/host'
+PID_LABEL = 'ipandora.dev/pid'
+"""Who made an object: clean() removes only what a dead process of this host left (CR20)."""
+
+
+def owner() -> Dict[str, str]:
+    """This process, as label values (at most 63 characters, [A-Za-z0-9_.-])."""
+    import re
+    import socket
+    _host = re.sub(r'[^A-Za-z0-9_.-]+', '-', socket.gethostname() or 'unknown').strip('-_.')[:63].strip('-_.') or 'unknown'
+    return {HOST_LABEL: _host, PID_LABEL: str(os.getpid())}
+
+
+def _alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:          # there, but someone else's
+        return True
 
 
 # -- what to inject into ------------------------------------------------------------------------------
@@ -128,8 +152,15 @@ def _mode(spec: Dict[str, Any]) -> Dict[str, Any]:
     return {'mode': _m[0], **({'value': _m[1]} if len(_m) > 1 else {})}
 
 
-def manifest(fault: faults.Fault, namespace: str) -> Dict[str, Any]:
-    """The Chaos Mesh object for `fault`, created in `namespace`, named fault.name."""
+def manifest(fault: faults.Fault, namespace: str, max_duration: int = DEFAULT_MAX_DURATION,
+             labels: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+    """
+    The Chaos Mesh object for `fault`, created in `namespace`, named
+    fault.name, carrying `labels` (its owner). It lasts at most `max_duration`
+    seconds: undone earlier by deleting it, ended by Chaos Mesh then if the
+    run that made it died and nobody did (CR20). pod-kill happens once and has
+    no duration.
+    """
     _a = fault.attributes
     _pods = _a.get('pods')
     if not isinstance(_pods, dict):
@@ -156,9 +187,11 @@ def manifest(fault: faults.Fault, namespace: str) -> Dict[str, Any]:
     else:
         raise ValueError('chaos-mesh cannot inject {!r}: delay, loss, partition, pod-failure, pod-kill'.format(
             fault.kind))
+    if fault.kind != 'pod-kill':
+        _spec['duration'] = '{}s'.format(int(max_duration))
     return {'apiVersion': API_VERSION, 'kind': _kind,
             'metadata': {'name': fault.name, 'namespace': namespace,
-                         'labels': {'app.kubernetes.io/managed-by': MANAGED_BY}},
+                         'labels': dict(labels or {}, **{'app.kubernetes.io/managed-by': MANAGED_BY})},
             'spec': _spec}
 
 
@@ -183,6 +216,10 @@ class ChaosMesh(faults.Backend):
         self.namespace = str(_s.get('namespace') or 'default')
         self.timeout = float(_s.get('timeout') or DEFAULT_TIMEOUT)
         self.kubectl = str(_s.get('kubectl') or 'kubectl')
+        self.max_duration = int(_s.get('max_duration') or DEFAULT_MAX_DURATION)
+        if self.max_duration <= self.timeout:
+            raise ValueError('faults.chaos_mesh.max_duration ({}s) must be longer than its timeout ({:g}s)'.format(
+                self.max_duration, self.timeout))
         self.poll = poll
 
     def where(self) -> str:
@@ -215,7 +252,7 @@ class ChaosMesh(faults.Backend):
                        '--wait=true', '--timeout={:g}s'.format(self.timeout)])
 
     def apply(self, fault: faults.Fault) -> None:
-        _m = manifest(fault, self.namespace)
+        _m = manifest(fault, self.namespace, self.max_duration, owner())
         _resource = RESOURCES[_m['kind']]
         self._kubectl(['apply', '-f', '-'], stdin=json.dumps(_m))
         _deadline = time.monotonic() + self.timeout
@@ -245,12 +282,31 @@ class ChaosMesh(faults.Backend):
         self._delete(RESOURCES[manifest(fault, self.namespace)['kind']], fault.name)
 
     def clean(self) -> List[str]:
+        """
+        Remove what a dead run of this host left behind, and this process's own.
+        Not what another run is injecting right now: a cluster is often shared
+        (a staging cluster, several CI pipelines), and removing every
+        `ipandora-` object took the faults of the run next door away mid-case
+        (CR20). Another host's leftovers are not removed either -- this host
+        cannot tell whether they are alive -- and end by themselves after
+        max_duration.
+        """
+        _me = owner()
         _out = json.loads(self._kubectl(['get', ','.join(sorted(RESOURCES.values())), '-A', '-l',
                                          'app.kubernetes.io/managed-by={}'.format(MANAGED_BY), '-o', 'json']) or '{}')
         _removed = []
         for _item in _out.get('items') or []:
             _meta = _item.get('metadata') or {}
             if not str(_meta.get('name', '')).startswith(faults.PREFIX):
+                continue
+            _labels = _meta.get('labels') or {}
+            if _labels.get(HOST_LABEL) != _me[HOST_LABEL]:
+                continue
+            try:
+                _pid = int(_labels.get(PID_LABEL, ''))
+            except ValueError:
+                continue
+            if _pid != os.getpid() and _alive(_pid):
                 continue
             _resource = RESOURCES.get(_item.get('kind'), str(_item.get('kind', '')).lower())
             self._delete(_resource, _meta['name'], _meta.get('namespace'))
@@ -259,4 +315,4 @@ class ChaosMesh(faults.Backend):
 
 
 __all__ = ['Pods', 'pods', 'delay', 'loss', 'partition', 'pod_failure', 'pod_kill', 'manifest', 'condition',
-           'ChaosMesh', 'BACKEND', 'MANAGED_BY']
+           'owner', 'ChaosMesh', 'BACKEND', 'MANAGED_BY', 'HOST_LABEL', 'PID_LABEL']
