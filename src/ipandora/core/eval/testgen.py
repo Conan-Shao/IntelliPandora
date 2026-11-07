@@ -899,7 +899,8 @@ def flags(checks: Sequence[Any], over_budget: bool = False) -> List[str]:
     _out = []
     if _c.get('only test files changed') is False:
         _out.append(OUT_OF_SCOPE)
-    if _c.get('tests assert') is False:
+    # a run that wrote no test is no_tests, not also a test that asserts nothing (CR17)
+    if _c.get('tests assert') is False and _c.get('agent wrote tests') is not False:
         _out.append(ZERO_ASSERTION)
     if _c.get('kills mutants of the fixed functions') is False:
         _out.append(WEAK_ASSERTIONS)
