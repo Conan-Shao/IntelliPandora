@@ -212,6 +212,24 @@ class TestCompose:
                                       '--tail', '5', 'web']
         assert _all['args'][-3:] == ['logs', '--no-color', '--timestamps']
 
+    def test_logs_since_are_cut_to_the_instant_not_the_second(self, fake):
+        # Docker's --since stops at whole seconds: the case before's request,
+        # 58 ms earlier, showed up in the failed case's evidence
+        fake.set(logs={'web': 'web-1  | 2026-11-07T00:17:35.230091592Z GET /index.html\n'
+                              '    continued line of the earlier request\n'
+                              'web-1  | 2026-11-07T00:17:35.288674716Z GET /missing-page\n'
+                              '    continued line of this one\n'
+                              'web-1  | 2026-11-07T00:17:36Z done\n'})
+        from datetime import datetime, timezone
+        _since = datetime(2026, 11, 7, 0, 17, 35, 250000, tzinfo=timezone.utc).timestamp()
+        with stack.compose(fake.file) as _s:
+            _text = _s.logs('web', since=_since)
+            _all = _s.logs('web')
+        assert '/index.html' not in _text and 'continued line of the earlier' not in _text
+        assert '/missing-page' in _text and 'continued line of this one' in _text and 'done' in _text
+        assert '/index.html' in _all                                 # without since: everything
+        assert '2026-11-07T00:17:35.250000Z' in fake.calls('logs')[0]['args']
+
     def test_keep_logs_writes_and_quotes_each_service(self, fake, monkeypatch, tmp_path):
         monkeypatch.setenv('IPANDORA_ARTIFACTS_DIR', str(tmp_path / 'artifacts'))
         fake.set(services=['web', 'db'], logs={'web': ''.join('line {}\n'.format(_i) for _i in range(100))})
@@ -223,6 +241,32 @@ class TestCompose:
         assert os.path.dirname(_entries[0]['path']) == str(tmp_path / 'artifacts')
         assert open(_entries[0]['path'], encoding='utf-8').read() == _entries[0]['text'] + '\n'
         assert '--tail' in fake.calls('logs')[0]['args']
+
+
+class TestKeepLogs:
+
+    def test_waits_for_dockers_log_then_records_each_stack(self, fake, monkeypatch, tmp_path):
+        from ipandora.core.evidence import recorder
+        monkeypatch.setenv('IPANDORA_ARTIFACTS_DIR', str(tmp_path / 'artifacts'))
+        assert 0 < stack.LOG_SETTLE <= 1                            # long enough for Docker, short for a failure
+        _slept, _real = [], stack.time.sleep
+
+        def _sleep(seconds):
+            _slept.append(seconds)
+            _real(seconds)
+        monkeypatch.setattr(stack, 'LOG_SETTLE', 0.0123)            # a value nothing else sleeps for
+        monkeypatch.setattr(stack.time, 'sleep', _sleep)
+        stack.keep_logs('t::x', since=0)                            # no stack up: nothing to wait for
+        assert 0.0123 not in _slept
+        fake.set(logs={'web': 'boom\n'})
+        recorder.begin('t::x')
+        try:
+            with stack.compose(fake.file):
+                stack.keep_logs('t::x', since=0)
+        finally:
+            _evidence = recorder.end('t::x')
+        assert _slept.count(0.0123) == 1
+        assert [(_a['kind'], _a['group'], _a['text']) for _a in _evidence.artifacts] == [('service-log', 'web', 'boom')]
 
 
 class TestClean:

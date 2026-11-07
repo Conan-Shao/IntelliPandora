@@ -55,6 +55,13 @@ STACK_MARKER = 'ipandora: environment did not start'
 """In StackError's message; core/triage/rules.py calls such a failure the environment's."""
 LOG_LINES = 80
 """Lines of each service's log kept with a failed case."""
+LOG_SETTLE = 0.25
+"""
+Seconds to wait before reading a failed case's logs. Docker stamps and
+stores a line when its daemon reads it from the container, a little after
+the container wrote it: read at once, the log could lack the very request
+the case failed on.
+"""
 
 
 class StackError(RuntimeError):
@@ -174,6 +181,32 @@ def clean(exe: Optional[str] = None) -> List[str]:
     return _removed
 
 
+_STAMP = re.compile(r'(?:^|\|\s)(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.(\d+))?Z\s')
+
+
+def _since(text: str, since: float) -> str:
+    """
+    Only the lines logged at or after `since`. Docker's own --since stops at
+    whole seconds, so a failed case's evidence began with the log of the case
+    before it whenever the two ran within the same second -- a request that
+    case never made, shown as its own. Every line carries the timestamp
+    `--timestamps` asked for; a line without one belongs to the line before.
+    The timestamp is when Docker's daemon read the line, a little after the
+    container wrote it, so a line the previous case caused in its last
+    moments can still fall just inside: documented in docs/guide/stack.md.
+    """
+    _kept, _keep = [], True
+    for _line in text.splitlines(keepends=True):
+        _m = _STAMP.search(_line)
+        if _m:
+            _at = datetime.strptime(_m.group(1), '%Y-%m-%dT%H:%M:%S').replace(tzinfo=timezone.utc).timestamp()
+            _at += float('0.' + (_m.group(2) or '0'))
+            _keep = _at >= since
+        if _keep:
+            _kept.append(_line)
+    return ''.join(_kept)
+
+
 class Stack:
     """A compose project this process started. See compose()."""
 
@@ -217,7 +250,8 @@ class Stack:
             _args += ['--since', datetime.fromtimestamp(since, timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.%fZ')]
         if tail is not None:
             _args += ['--tail', str(int(tail))]
-        return self._call(*(_args + ([service] if service else [])), timeout=60, check=False).stdout
+        _out = self._call(*(_args + ([service] if service else [])), timeout=60, check=False).stdout
+        return _out if since is None else _since(_out, since)
 
     def keep_logs(self, nodeid: str, since: float) -> List[Dict[str, str]]:
         """
@@ -353,7 +387,10 @@ class _Up:
 def keep_logs(nodeid: str, since: float) -> None:
     """Service logs of every stack up, for a case that failed (core/runner/plugin.py)."""
     from ipandora.core.evidence import recorder
-    for _stack in active():
+    _stacks = active()
+    if _stacks:
+        time.sleep(LOG_SETTLE)
+    for _stack in _stacks:
         try:
             for _entry in _stack.keep_logs(nodeid, since):
                 recorder.add_artifact(_entry)
