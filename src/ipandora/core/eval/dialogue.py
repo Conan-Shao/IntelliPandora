@@ -405,13 +405,28 @@ def never_says(result, pattern: str, what: str = '') -> Check:
 
 # -- where the world ended up ------------------------------------------------------------------
 
-def _diff(actual, expected, path: str, ignore: frozenset, out: List[str], limit: int) -> None:
-    if len(out) >= limit or path in ignore:
+def _ignorer(patterns: Iterable[str]) -> Callable[[str], bool]:
+    """
+    Paths to leave out: exact (`orders.A1001.updated_at`), or with `*` for
+    one whole segment (`orders.*.updated_at`) -- every record's timestamp.
+    """
+    _exact, _wild = set(), []
+    for _p in patterns:
+        if '*' in _p:
+            _wild.append(re.compile(r'\.'.join(
+                '[^.]+' if _s == '*' else re.escape(_s) for _s in _p.split('.')) + r'\Z'))
+        else:
+            _exact.add(_p)
+    return lambda path: path in _exact or any(_r.match(path) for _r in _wild)
+
+
+def _diff(actual, expected, path: str, ignore: Callable[[str], bool], out: List[str], limit: int) -> None:
+    if len(out) >= limit or (path and ignore(path)):
         return
     if isinstance(actual, dict) and isinstance(expected, dict):
         for _k in sorted(set(actual) | set(expected), key=str):
             _p = '{}.{}'.format(path, _k) if path else str(_k)
-            if _p in ignore:
+            if ignore(_p):
                 continue
             if _k not in actual:
                 out.append('{}：缺少，应为 {}'.format(_p, brief(expected[_k], 80)))
@@ -438,7 +453,7 @@ def _diff(actual, expected, path: str, ignore: frozenset, out: List[str], limit:
 def differences(actual, expected, ignore: Iterable[str] = (), limit: int = 20) -> List[str]:
     """Where `actual` differs from `expected`, as `path: actual, expected` lines (at most `limit`)."""
     _out: List[str] = []
-    _diff(actual, expected, '', frozenset(ignore), _out, limit)
+    _diff(actual, expected, '', _ignorer(ignore), _out, limit)
     return _out
 
 
@@ -446,7 +461,8 @@ def same_state(actual, expected, ignore: Iterable[str] = (), name: str = '终态
     """
     The world ended where it should have (τ-bench's end-state check): every
     record equal, nothing missing, nothing extra. `ignore` names paths that
-    legitimately differ between runs -- `orders.A1001.updated_at`.
+    legitimately differ between runs -- `orders.A1001.updated_at`, or
+    `orders.*.updated_at` for every order's.
     """
     _diffs = differences(actual, expected, ignore)
     return Check(name=name, ok=not _diffs, expr='；'.join(_diffs[:5]) + (

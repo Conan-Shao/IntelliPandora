@@ -313,3 +313,15 @@ E0 已经有按任务的基线、配对检验、噪声阈值和"变差即退出�
 - 规范里的计划项一律放在 `expected`、`initial_state`、`meta` 里，今天的加载器（十个字段、严格校验）照样能读：数据现在就能按规范写，实现之后不用改。有测试用当前加载器读一遍规范里的每个例子。
 - **E5（计划）**：一个标准评分器，按规范第 5 节的词汇（`answer` / `checks`、`state`、`called` / `not_called` / `called_at_most` / `no_loops` / `finished`、`says` / `never_says`、`safety`、编码任务的限制）生成判定，底层全部用现有的确定性判定函数；`initial_state` 的 `fixture` / `patch` / `plant` 标准读取。实现后，常见的数据集不再需要各自写评分器，spec 文件只负责调用被测 agent。
 - `rubric`（结构化评分标准的模型评委）按 §5 的约定：一个维度一个评委、有版本号、允许"不确定"、校准之前只展示。
+
+## 追加（2026-11-07）：E5a 标准评分器已实现
+
+`ipandora.core.eval.standard`，用法见 [`docs/guide/eval-dataset.md`](../../guide/eval-dataset.md) 第 5、6.1、11 节。E5 拆成两步：E5a 是 5.1–5.4 的词汇、`fixture` / `patch`、参数比较；E5b 是 `plant` 埋点和 `expected.safety`。
+
+- **spec 不写 `grade()` 就用标准评分器。** spec 给出 `world(task)`：一个刚构造、没动过的业务系统就是终态比较的初始状态；另一个用来重放写成工具调用序列的参考解。没有 `world` 时用任务的 `initial_state.fixture`。
+- **不认识的键报错，不跳过。** 拼错一个键（`not_caled`）而悄悄少判一项，评测会显得比实际宽松；所以 `expected` 里每个键、每条判定里每个键都要认识，spec 自己判的列在 `SKIP`。`safety`、`rubric` 在 E5b 和模型评委之前同样要列出。`initial_state.plant` 遇到就报错：没埋就跑，测出的是一个从没被诱惑过的 agent。
+- **`changes` 的键是从根开始的路径**；只写记录 id 时，id 必须恰好在一个集合里，否则报错要求写全。规范里最初的例子写的是裸 id，照样能读。
+- **fixture 和 schema 文件算进数据集哈希**：改了初始数据就是改了题。之前没有框架读这些文件，带 fixture 的数据集哈希会变一次。
+- **参数比较的条件写进判定的 claim**（`amount=<条件 >= 1000>`），放宽阈值在判定清单里是一处变化。
+- 参考解是工具调用序列时 `says` 不判：参考解不说话，判了就永远过不了自检。
+

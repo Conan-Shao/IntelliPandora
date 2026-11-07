@@ -64,7 +64,9 @@ tasks:
 
 ## 判分
 
-评分器返回 `Check`，或者用 `Graded` 加上权重和是否必需：
+**数据集按[评测数据集规范](eval-dataset.md)第 5 节写 `expected` 的，不用写评分器**：spec 文件里不定义 `grade()`，框架的标准评分器（`ipandora.core.eval.standard`）按 `expected` 判分——输出约束、终态、轨迹规则、说了什么，底层就是下面这些判定函数。spec 只需要给出 `world(task)`（每次试验一个全新的业务系统，有 `call(name, **args)` 和 `snapshot()`）和 `agent(task)`；例子见 `examples/agent/by_contract.py`。`expected` 里写了标准评分器不认识的键，判分直接报错，不会悄悄少判；spec 自己判的键列在 `SKIP` 里。
+
+要自己判，或者在标准判定之外再加几条，就写 `grade()`，可以调用 `standard.grade(task, result, world=world, skip=[...])` 再追加。评分器返回 `Check`，或者用 `Graded` 加上权重和是否必需：
 
 ```python
 from ipandora.core.assertion import Check, that
@@ -82,7 +84,7 @@ def grade(task, result):
 - **成功**：所有必需判定都成立。**得分**：按权重算成立的比例。两个数字都报。
 - **模型评委**（`src='llm_judge'`）的判定只展示，不参与成功和得分，直到它和人工标注的一致率达标。评委不确定时用 `Graded(..., uncertain=True)`，不算成立也不算不成立。
 - **agent 抛异常**算基础设施问题：沙箱没起来、超时。不计入成功率，单独统计。agent 答错要体现在输出里，由评分器判。
-- **评分器抛异常**算评分器的问题。
+- **评分器抛异常**算评分器的问题；标准评分器读不了任务（`expected` 里拼错的键、不存在的 fixture）时抛 `TaskError`，算任务的问题，`eval selfcheck` 同样以退出码 1 报出。
 
 ## 参考解自检
 
@@ -163,7 +165,7 @@ def grade(task, result):
   ```
 
   每条规则只回答一次，所以对话一定会结束，同样的 agent 回复得到同样的对话，试验可以复现。想让模型扮演用户（发现脚本没想到的说法），用 `ipandora.ai.simulated_user.ModelUser(opening, persona, goal)`：需要 `ai` 安装组，有调用上限，发给模型的内容先脱敏；把它的 `name` 写进 `MANIFEST['user_simulator']`，换了用户就是换了测量方式，报告会提示和基线不可比。模型只扮演用户，不参与判定。
-- **终态**：`same_state(actual, expected, ignore=[...])` 逐项比较，列出每一处不同（缺少、多出、值不同；`9` 和 `9.0` 算同一个金额，`True` 和 `1`、`'1'` 和 `1` 不算）。`ignore` 写每次运行本来就不同的字段，如 `orders.A1001.updated_at`。
+- **终态**：`same_state(actual, expected, ignore=[...])` 逐项比较，列出每一处不同（缺少、多出、值不同；`9` 和 `9.0` 算同一个金额，`True` 和 `1`、`'1'` 和 `1` 不算）。`ignore` 写每次运行本来就不同的字段，如 `orders.A1001.updated_at`；`*` 代表一整段，`orders.*.updated_at` 是每个订单的。
 - **轨迹**：`called(result, name, **args)` 至少有一次这样的调用，参数可以写成判断函数（`amount=lambda v: Decimal(v) <= 100`）；`not_called`、`called_at_most(result, name, n)`、`no_loops(result, repeats=3)`。
 - **输出**：`says(result, pattern)`、`never_says(result, pattern, what)`：只看 agent 说的话，不看用户的。`never_says` 不在证据里复述匹配到的内容，它可能就是要保护的秘密。
 - **参考解**：τ-bench 的写法，参考解是一串正确的工具调用。`dialogue.replay(actions, run, state)` 在全新的业务系统上执行它们，得到的结果交给同一个评分器，`ipandora eval selfcheck` 就能证明每道题可解、评分器认得正确答案。

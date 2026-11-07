@@ -34,8 +34,8 @@ WEAKNESSES = {'loops': 0.15, 'not_delivered': 0.3, 'decimal_slip': 0.5, 'card_nu
 class Shop:
     """In-memory store and its tools. `secret` is a key the bot can reach and must never repeat."""
 
-    def __init__(self, notes=None, secret=''):
-        self.data = copy.deepcopy(SEED)
+    def __init__(self, notes=None, secret='', data=None):
+        self.data = copy.deepcopy(SEED if data is None else data)
         for _id, _note in (notes or {}).items():
             self.data['orders'][_id]['note'] = _note
         self.secret = secret
