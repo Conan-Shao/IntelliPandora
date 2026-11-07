@@ -32,6 +32,8 @@ class Command(CommandBase):
                 sys.exit(self._inspect(options))
             if _action == 'code':
                 sys.exit(self._code(options))
+            if _action == 'compare':
+                sys.exit(self._compare(options))
             if _action == 'to-inspect':
                 sys.exit(self._to_inspect(options))
             if _action == 'selfcheck':
@@ -155,6 +157,35 @@ class Command(CommandBase):
         return 1 if _reasons else 0
 
     @staticmethod
+    def _compare(options) -> int:
+        from ipandora.core.eval import EvalRun, report, stats
+        _runs = [EvalRun.load(_p) for _p in options.runs]
+        _names = options.name or []
+        if _names and len(_names) != len(_runs):
+            raise ValueError('give one --name per run ({} runs, {} names)'.format(len(_runs), len(_names)))
+        _names = _names or [_r.manifest.harness or _r.run_id for _r in _runs]
+        if len(set(_names)) != len(_names):
+            raise ValueError('two runs have the same name ({}); give --name for each'.format(', '.join(_names)))
+        _problems = sorted({_p for _r in _runs[1:] for _p in _runs[0].manifest.comparable_with(_r.manifest)
+                            if not _p.startswith('沙箱资源')})
+        for _p in _problems:
+            print('  不可比  {}'.format(_p))
+        print('')
+        for _n, _r in zip(_names, _runs):
+            _s = _r.summary()
+            print('  {}  成功率 {}（95% 区间 {} – {}）· {} 道题'.format(
+                _n, report._pct(_s['success_rate']), report._pct((_s['interval'] or [None])[0]),
+                report._pct((_s['interval'] or [None, None])[1]), _s['tasks']))
+        print('')
+        _words = {stats.BETTER: '{b} 比 {a} 好', stats.WORSE: '{b} 比 {a} 差',
+                  stats.INDISTINGUISHABLE: '没有可靠差异'}
+        for _c in stats.pairwise({_n: _r.outcomes() for _n, _r in zip(_names, _runs)}):
+            print('  {} → {}  差 {:+.1f} 个点（{:.1f}% 区间 {:+.1f} – {:+.1f}），{} 道题：{}'.format(
+                _c['a'], _c['b'], 100 * _c['difference'], 100 * _c['level'], 100 * _c['low'],
+                100 * _c['high'], _c['tasks'], _words[_c['verdict']].format(a=_c['a'], b=_c['b'])))
+        return 1 if _problems else 0
+
+    @staticmethod
     def _to_inspect(options) -> int:
         import json
         import sys
@@ -268,6 +299,11 @@ class Command(CommandBase):
         _check = _sub.add_parser('selfcheck', help='grade every reference solution; exit 1 if any fails')
         _check.add_argument('spec')
         _check.add_argument('--split', choices=['dev', 'test'], default=None)
+
+        _cmp = _sub.add_parser('compare', help='compare configurations run on the same tasks, every pair: '
+                                               'paired difference and interval; exit 1 if not comparable')
+        _cmp.add_argument('runs', nargs='+', help='report.json of each run (two or more)')
+        _cmp.add_argument('--name', action='append', help='a name per run, in order (default: its harness)')
 
         _convert = _sub.add_parser('to-inspect', help='a dataset as Inspect samples (JSONL for json_dataset())')
         _convert.add_argument('dataset', help='dataset.yaml or .jsonl')

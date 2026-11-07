@@ -80,7 +80,7 @@
   <div class="tile">
     <span class="k">成功率 · {{ s.decided }} 次试验</span>
     <span class="v"><b>{{ pct(s.success_rate) }}</b></span>
-    {%- if s.interval %}<span class="d">95% 区间 {{ pct(s.interval[0]) }} – {{ pct(s.interval[1]) }}（Wilson）</span>{% endif %}
+    {%- if s.interval %}<span class="d">95% 区间 {{ pct(s.interval[0]) }} – {{ pct(s.interval[1]) }}（按题重采样）</span>{% endif %}
   </div>
   <div class="tile">
     <span class="k">稳定性 · pass^{{ s.k }}</span>
