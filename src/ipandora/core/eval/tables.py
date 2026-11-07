@@ -53,6 +53,18 @@ def read(paths: Iterable[str]) -> List[Dict[str, Any]]:
                 _out.append(_row)
     if not _out:
         raise ValueError('no records in {}'.format(', '.join(paths)))
+    # the same file twice, or a merged file beside its parts, counted every run twice (CR17)
+    _seen, _twice = set(), []
+    for _r in _out:
+        if not _r.get('run_id'):
+            continue
+        _key = (_r['config'], _r['task'], _r['run_id'], _r.get('attempt'))
+        if _key in _seen:
+            _twice.append('{} {} run {} attempt {}'.format(*_key))
+        _seen.add(_key)
+    if _twice:
+        raise ValueError('{} record(s) appear more than once -- the same results read twice? {}'.format(
+            len(_twice), '; '.join(_twice[:3])))
     return _out
 
 
@@ -128,9 +140,11 @@ def greenwash(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             continue
         _scores = [_r['mutation']['killed'] / _r['mutation']['tested'] for _r in _graded
                    if isinstance(_r.get('mutation'), dict) and _r['mutation'].get('tested')]
-        _out.append({'config': _c, 'runs': len(_graded),
+        # zero assertions among the runs that wrote tests: one that wrote none is no_tests (CR17)
+        _wrote = [_r for _r in _graded if not _failed(_r, 'agent wrote tests')]
+        _out.append({'config': _c, 'runs': len(_graded), 'wrote_tests': len(_wrote),
                      'out_of_scope': _rate(sum(_failed(_r, 'only test files changed') for _r in _graded), len(_graded)),
-                     'zero_assertion': _rate(sum(_failed(_r, 'tests assert') for _r in _graded), len(_graded)),
+                     'zero_assertion': _rate(sum(_failed(_r, 'tests assert') for _r in _wrote), len(_wrote)),
                      'weak_reproduction': _rate(sum(_failed(_r, 'not a weak reproduction') for _r in _graded),
                                                 len(_graded)),
                      'mutation_score': _mean(_scores), 'mutated_runs': len(_scores)})
@@ -192,9 +206,14 @@ def _num(value, digits=1) -> str:
     return '—' if value is None else '{:,.{d}f}'.format(value, d=digits)
 
 
+def _cell(text: str) -> str:
+    # a configuration named 'a|b' must not add a column (CR17)
+    return str(text).replace('|', '\\|').replace('\n', ' ')
+
+
 def _table(head: List[str], body: List[List[str]]) -> str:
     return '\n'.join(['| ' + ' | '.join(head) + ' |', '|' + '---|' * len(head)]
-                     + ['| ' + ' | '.join(_r) + ' |' for _r in body])
+                     + ['| ' + ' | '.join(_cell(_x) for _x in _r) + ' |' for _r in body])
 
 
 def markdown(result: Dict[str, Any]) -> str:
@@ -214,7 +233,7 @@ def markdown(result: Dict[str, Any]) -> str:
             [[_r['config'], str(_r['runs']), _pct(_r['out_of_scope']), _pct(_r['zero_assertion']),
               _pct(_r['weak_reproduction']), _pct(_r['mutation_score']), str(_r['mutated_runs'])]
              for _r in result['greenwash']])]
-        _parts.append('\n变异分数只算达到 F→P、并且做了变异的运行。')
+        _parts.append('\n越界、弱复现以判了分的运行为分母；零断言只算写了测试的运行；变异分数只算达到 F→P、并且做了变异的运行。')
     _parts += ['\n## 成本（每次运行的平均）\n', _table(
         ['配置', '运行', '输入 token', '输出 token', '缓存读', '缓存写', '费用（美元）', '耗时（秒）', '轮数', '工具调用',
          '总费用', '超预算'],

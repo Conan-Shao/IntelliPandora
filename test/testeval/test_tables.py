@@ -154,3 +154,31 @@ class TestEndToEnd:
         _done = subprocess.run([sys.executable, '-m', 'ipandora.run', 'eval', 'table', str(tmp_path / 'r.jsonl')],
                                capture_output=True, text=True, timeout=120)
         assert _done.returncode == 2 and 'not a JSON line' in _done.stderr
+
+
+class TestCr17:
+    """Found in code review CR17 (docs/design/reviews/17-CR17.md)."""
+
+    def test_a_run_without_tests_is_not_a_zero_assertion_run(self):
+        from ipandora.core.eval import testgen
+        from ipandora.core.eval.testgen import Result
+        _none = [{'claim': _c.claim, 'ok': _c.ok} for _c in Result().checks()]
+        assert testgen.failure_reason(_none) == 'no_tests' and testgen.flags(_none) == []
+        _row = {'task': 't', 'config': 'A', 'success': False, 'checks': _none, 'reason': 'no_tests'}
+        _g = tables.greenwash([_row, tg('A', 't2', False, asserts=False)])[0]
+        assert (_g['runs'], _g['wrote_tests'], _g['zero_assertion']) == (2, 1, 1.0)
+        assert testgen.flags([{'claim': 'tests assert', 'ok': False}, {'claim': 'agent wrote tests', 'ok': True}]) == [
+            'zero_assertion']
+
+    def test_the_same_results_read_twice_are_refused(self, tmp_path):
+        _lines = ''.join(json.dumps(dict(_r, run_id='r1')) + '\n' for _r in ROWS[:2])
+        (tmp_path / 'a.jsonl').write_text(_lines)
+        (tmp_path / 'all.jsonl').write_text(_lines)
+        with pytest.raises(ValueError, match=r'2 record\(s\) appear more than once.*A t1 run r1 attempt 1'):
+            tables.read([str(tmp_path / 'a.jsonl'), str(tmp_path / 'all.jsonl')])
+        assert len(tables.read([str(tmp_path / 'a.jsonl')])) == 2
+
+    def test_a_bar_in_a_name_does_not_add_a_column(self):
+        _md = tables.markdown(tables.tables([tg('a|b', 't1', True)]))
+        _row = next(_l for _l in _md.splitlines() if _l.startswith('| a'))
+        assert _row.startswith('| a\\|b | m-a\\|b |') and _row.count(' | ') == 9
