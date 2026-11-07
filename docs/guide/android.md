@@ -63,6 +63,10 @@ def test_login(android):
 
 "同名"按选择器里的 `text`、`description`、`resourceId`（及其 `:id/` 后面的名字）比较，XPath 按其中引号里的值比较，不区分大小写。拿不准时不往"不是产品问题"那边判。
 
+## 和 Appium 比
+
+同一台模拟器上的实测（[决策 14](../design/decisions/14-技术方案与实施计划.md) 末尾）：单次操作两者在同一量级，查找、读文字、截图 Appium 略快，建会话和取控件树 uiautomator2 快。选 uiautomator2 的理由不是速度，而是 Python 直接调用、不用起 Node 服务端、依赖少得多。要上云真机或和 iOS 共用写法，用 Appium。
+
 ## 在 CI 上跑
 
 GitHub Actions 的 Linux runner 支持 KVM，可以起 Android 模拟器（例如 `reactivecircus/android-emulator-runner`）；本框架自己的 CI 就这样跑 Android 的验收用例。没有 KVM 的机器上模拟器慢到不可用，改用真机或云真机。
