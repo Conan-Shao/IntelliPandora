@@ -36,20 +36,31 @@ def cluster(monkeypatch, tmp_path):
         'allowed': True, 'backends': ['chaos-mesh'],
         'chaos_mesh': {'context': CONTEXT, 'namespace': 'shop', 'timeout': 120}})
     monkeypatch.setenv('IPANDORA_LOCK_DIR', str(tmp_path / 'locks'))
-    try:
-        _get()
-    except requests.RequestException as exc:
+    if not _until(_answers, 60):
         if REQUIRED:
-            pytest.fail('IPANDORA_REQUIRE_CHAOS_MESH is set and the web service does not answer: {}'.format(exc))
-        pytest.skip('the web service does not answer: {}'.format(exc))
+            pytest.fail('IPANDORA_REQUIRE_CHAOS_MESH is set and the web service does not answer at ' + URL)
+        pytest.skip('the web service does not answer at ' + URL)
     yield
     assert _ours() == [], 'a Chaos object was left on the cluster'
 
 
-def _get(timeout=10):
-    _r = requests.get(URL, timeout=timeout, proxies=NO_PROXY)
-    _r.raise_for_status()
-    return _r
+def _get(timeout=10, resets=3):
+    """
+    One answer. A connection reset is tried again (at most `resets` times):
+    on a kind node, kube-proxy and Chaos Mesh rewriting iptables reset a new
+    connection now and then -- seen on CI right after the service came up,
+    and right after a fault was undone. Printed, to keep count.
+    """
+    for _attempt in range(resets + 1):
+        try:
+            _r = requests.get(URL, timeout=timeout, proxies=NO_PROXY)
+            _r.raise_for_status()
+            return _r
+        except requests.ConnectionError as exc:
+            if 'reset' not in str(exc).lower() or _attempt == resets:
+                raise
+            print('connection reset, trying again')
+            time.sleep(0.5)
 
 
 def _seconds(n=5):
@@ -79,7 +90,7 @@ def _until(predicate, seconds):
 
 def _answers():
     try:
-        _get(timeout=2)
+        _get(timeout=2, resets=0)
         return True
     except requests.RequestException:
         return False
