@@ -95,6 +95,38 @@ faults:
 - **故障有上限**：每个故障最多持续 `max_duration` 秒（默认 10 分钟），到时由 Chaos Mesh 自己结束；`with` 块提前结束时照常立即撤销。这样即使运行被杀、机器也没了，故障也不会一直留在集群里。一次注入要比这更久，就调大它。
 - 框架只调用 `kubectl`，Python 侧不装任何东西；Chaos Mesh 由集群的维护者安装。本仓库的 CI 在一个 kind 集群上真实验收这几种故障（`test/testfaults/kind/`）。
 
+## 在容器上：tc netem
+
+被测服务跑在 Docker 容器里（比如 [依赖环境编排](stack.md) 起的 docker compose 服务）时，可以直接在它的网卡上注入：
+
+```python
+from ipandora.core import faults, netem
+
+db = netem.container('shop-db-1')                 # docker ps 里的名字，或容器 id
+slow = netem.delay(db, ms=800, jitter=200)        # 它发出的每个包延迟
+lossy = netem.loss(db, percent=5)                 # 丢包
+# 用例里：with faults.injected(slow, lossy): ...
+```
+
+| 故障 | 效果 |
+|---|---|
+| `delay(container, ms, jitter=0)` | 容器发出的每个包延迟 `ms` 毫秒（±`jitter`） |
+| `loss(container, percent)` | 按比例丢包 |
+| `corrupt(container, percent)` | 按比例翻转一个比特 |
+| `duplicate(container, percent)` | 按比例重复发送 |
+| `rate(container, kbit)` | 限速 |
+
+```yaml
+faults:
+  allowed: true
+  backends: [netem]
+```
+
+- **怎么注入的**：框架起一个临时的辅助容器，加入目标容器的网络命名空间（`docker run --network container:<目标> --cap-add NET_ADMIN`），在里面执行 `tc`。目标容器不需要装 tc，也不需要任何特权。辅助镜像默认是已准入的 Chaos Mesh daemon 镜像（带 iproute2，按摘要钉住），可以用 `faults.netem.image` 换成你们自己的。
+- **作用在发出的方向**：在数据库容器上加延迟，延迟的是它的应答，不是它收到的查询。
+- **同一个容器上的几个故障合在一起**：一个容器只有一个根 qdisc，同时生效的故障合成一个 netem，撤销一个就按剩下的重建，最后一个撤销时删除。
+- **清理**：qdisc 上没法做标记，所以注入的同时在本机写一个标记文件，记下机器和进程。运行开始和结束时，只清理本机上已经不在了的进程（或本进程自己）留下的；容器重启后网络命名空间是新的，故障也随之消失。
+
 ## 接入别的故障注入平台
 
 Toxiproxy 是内置的后端。公司自己的故障平台、云厂商的故障服务、K8s 上的 Chaos Mesh，都可以作为另一个后端接进来：写一个 `faults.Backend` 的子类，注册一个名字，故障写明用哪个后端。

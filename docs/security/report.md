@@ -16,7 +16,7 @@
 | 依赖漏洞 | `requirements/tools.txt`：构建与工具链（不安装到用户环境） | 通过：69 个包，0 个已知漏洞 |
 | 依赖漏洞 | `requirements/bench.txt`：Android 对比作业专用：框架的 android 组 + Appium 客户端（不安装到用户环境） | 通过：43 个包，0 个已知漏洞 |
 | 依赖漏洞 | `bench/android/package-lock.json`：Android 对比作业专用：Appium 服务端与 UiAutomator2 驱动（npm，不安装到用户环境） | 通过：286 个包，2 个已知漏洞（均已登记例外） |
-| 自身代码 | `src/`，bandit 静态扫描 | 通过：0 个未处理问题，30 处经评估标注（理由见下） |
+| 自身代码 | `src/`，bandit 静态扫描 | 通过：0 个未处理问题，32 处经评估标注（理由见下） |
 | 许可证 | 运行环境 121 个分发包、工具链与对比作业 116 个（含间接依赖） | 通过：其余在白名单内，text-unidecode 经人工审查（见下） |
 | npm 锁文件 | 286 个包（含间接依赖）：哈希、来源、许可证 | 通过：全部来自 npm 官方仓库、带 sha512；许可证在白名单内，BlueOak-1.0.0、CC-BY-3.0、MIT or GPL-2.0、WTFPL 经人工审查（见下） |
 | 组件登记 | 37 个直接依赖与 CI 动作 | 通过：与代码声明一致 |
@@ -54,6 +54,7 @@ bandit 报出、经评估不构成问题的地方，在源码里标注 `# nosec`
 | B404 | `src/ipandora/core/consistency.py` | the checker is a Java tool run as a child process, never through a shell |
 | B404 | `src/ipandora/core/eval/coding.py` | the graders run git and the agent's tests as child processes, never through a shell |
 | B404 | `src/ipandora/core/eval/testgen.py` | pytest and git, run in the work directory with argument lists, never a shell |
+| B404 | `src/ipandora/core/netem.py` | docker runs as a list of arguments, never through a shell (_docker) |
 | B404 | `src/ipandora/core/stack.py` | Docker Compose is run as a child process, never through a shell |
 | B405 | `src/ipandora/core/android.py` | the tree comes from the uiautomator server on the device under test, not from a user |
 | B405 | `src/ipandora/core/report/junit.py` | this module builds XML and never parses it |
@@ -63,6 +64,7 @@ bandit 报出、经评估不构成问题的地方，在源码里标注 `# nosec`
 | B603 | `src/ipandora/core/eval/coding.py` | a fixed argument list with the git found on PATH; no shell |
 | B603 | `src/ipandora/core/eval/coding.py` | this interpreter, our own script, the grader's own arguments; no shell |
 | B603 | `src/ipandora/core/eval/testgen.py` | the task's own test command, split without a shell, in its work directory |
+| B603 | `src/ipandora/core/netem.py` | a list of arguments, no shell; the executable is docker, resolved on PATH or configured |
 | B603 | `src/ipandora/core/stack.py` | docker, located by full path; arguments are ours, no shell |
 | B704 | `src/ipandora/core/report/render.py` | all text went through html.escape; only our own span tags are raw |
 

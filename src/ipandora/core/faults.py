@@ -343,6 +343,14 @@ def _chaos_mesh():
 register('chaos-mesh', _chaos_mesh)
 
 
+def _netem():
+    from ipandora.core.netem import Netem
+    return Netem()
+
+
+register('netem', _netem)
+
+
 # -- injecting ---------------------------------------------------------------------------------
 
 def _evidence(fault: Fault, started: float, ended: Optional[float], via: str, backend_name: str) -> Dict[str, Any]:
