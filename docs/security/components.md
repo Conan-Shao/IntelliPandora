@@ -62,6 +62,7 @@
 | 组件 | 用途 | 版本 | 来源 | SHA-256 | 许可证 | 运行期行为 | 审查日期 |
 |---|---|---|---|---|---|---|---|
 | elle-cli | 一致性检查（`core/consistency.py`，决策 18 D3）：Knossos 判线性一致，Elle 判事务隔离异常，Jepsen 的 counter / set / bank 检查器 | 0.1.11（2026-09-01 构建） | GitHub release `elle-cli-bin-0.1.11.zip`（zip 的 SHA-256 `9d3c72eaf3ccc4d0c7dc1da710264dee01f03af58c9fa177fec3f78ff5af1779`） | jar：`85c39a6247509075bf21762d4c8ed3a2cb3d2c9b2c169cb2c80dde25fa760388` | EPL-1.0 或更新版本（Elle、Knossos、Jepsen 同为 EPL-1.0）。**不在白名单内，经单独评审接受**（决策 18 §7）：作为外部工具调用，不分发、不链接，框架代码与它之间只有命令行和文件 | 需要 Java 21+。读一个历史文件，向标准输出写结论，不联网；`--directory` 未使用，不写图。发布流程带 `overwrite: true`，同名文件可能被替换，所以核对哈希而不是只看版本号 | 2026-11-06 |
+| Android 模拟器 + 系统镜像（`system-images;android-34;google_apis;x86_64`） | CI 的 `android` 作业里运行 Android 验收用例（`test/testandroid/test_on_emulator.py`） | 由 android-emulator-runner 按 API 34 取当时的最新修订 | Google 的 Android SDK 仓库（`dl.google.com`），经 sdkmanager | —（sdkmanager 按仓库清单里的校验和核对下载内容；修订号由 Google 发布，不钉哈希） | Android SDK License（只在 CI 里使用，不分发、不链接）。**不在白名单内，经单独评审接受**：这是使用 Android 模拟器的唯一途径 | 只在 CI 的 runner 上运行，跑完即销毁；被测的是镜像自带的"设置"App，不下载第三方 APK | 2026-11-07 |
 | Docker Engine + Docker Compose | 依赖环境编排（`core/stack.py`，决策 19 D5）：`up --wait`、`port`、`logs`、`down -v` | Compose ≥ 2.20（`--wait-timeout`），运行时检查 | 用户自己安装的系统工具；框架不下载、不分发 | —（系统工具，版本由用户环境决定，不钉哈希） | Apache-2.0 | 框架只用完整路径调用 `docker compose`，参数为列表、不经 shell，只操作自己创建的 `ipandora-<主机>-<进程>-` 项目；清理只删本机已不存在的进程留下的项目。容器里运行什么由用户的 compose 文件决定 | 2026-11-06 |
 
 ## 测试用容器镜像
@@ -83,4 +84,5 @@
 | actions/setup-python | action | v7.1.0@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 | 安装 Python | MIT | 下载 Python 构建 | 2026-11-05 |
 | actions/upload-artifact | action | v7.0.2@cf430e030ddbb5b0abf93d22962f4752f3646cd9 | 上传报告、wheel、SBOM | MIT | 写入工作流制品 | 2026-11-05 |
 | actions/download-artifact | action | v8.0.2@9000827ccba6bdab643e8b6fd33ac0654aef8333 | 发布作业取回构建产物，使构建与持有发布凭据的作业分开 | MIT | 读取本次运行的工作流制品 | 2026-11-05 |
+| reactivecircus/android-emulator-runner | action | v2.38.0@a421e43855164a8197daf9d8d40fe71c6996bb0d | CI 的 `android` 作业：装 Android SDK 的模拟器和系统镜像，启动模拟器，跑 Android 的验收用例（M5b） | Apache-2.0（LICENSE 文件；package.json 写的是 MIT，以 LICENSE 为准，两者都在白名单内） | 在 runner 上用 sdkmanager 从 Google 的 SDK 仓库下载模拟器和系统镜像（sdkmanager 校验它们），创建并启动 AVD，运行给定脚本后关掉模拟器。不接触仓库令牌。v2.38.0 发布于 2026-07-05 | 2026-11-07 |
 | pypa/gh-action-pypi-publish | action | v1.14.3@7245906fb61fa33a13554f9d5fb856fe61758086 | 发布到 PyPI（Trusted Publishing，附来源证明） | BSD-3-Clause | 使用 OIDC 令牌，仅在 `pypi` 环境中运行 | 2026-11-05 |
