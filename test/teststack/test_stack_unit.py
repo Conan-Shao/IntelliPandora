@@ -58,6 +58,28 @@ def fake(tmp_path, monkeypatch):
     return _fake
 
 
+@pytest.fixture(autouse=True)
+def no_silent_skips(request, monkeypatch):
+    """
+    docker() reports a missing prerequisite with require(), which skips the
+    case. In these tests the fake always provides Docker, so a skip means
+    docker() is broken -- and a broken docker() used to make every test that
+    goes through it skip, silently green (mutation testing found it). Only a
+    test marked expects_skip may be skipped.
+    """
+    if request.node.get_closest_marker('expects_skip'):
+        return
+    import ipandora.core.assertion as assertion
+    _real = assertion.require
+
+    def _strict(*checks):
+        _missing = [_c for _c in checks if not getattr(_c, 'ok', False)]
+        if _missing:
+            pytest.fail('unexpected skip: {}'.format('; '.join(_c.expr for _c in _missing)))
+        return _real(*checks)
+    monkeypatch.setattr(assertion, 'require', _strict)
+
+
 def _project(name='compose'):
     return re.compile(r'^ipandora-{}-{}-{}-[0-9a-f]{{6}}$'.format(stack._host_tag(), os.getpid(), name))
 
@@ -67,8 +89,24 @@ class TestDocker:
     def test_found_checked_once_and_remembered(self, fake):
         assert stack.docker() == fake.exe
         assert stack.docker() == fake.exe
-        assert len(fake.calls('version')) == 1 and len(fake.calls('info')) == 1
+        assert [_c['args'] for _c in fake.calls()] == [['compose', 'version', '--short'],
+                                                        ['info', '--format', '{{.ServerVersion}}']]
 
+    def test_every_docker_call_has_a_time_limit(self, fake, monkeypatch):
+        _limits = []
+        _real = stack._run
+
+        def _spy(cmd, timeout, **kwargs):
+            _limits.append((cmd[1:3], timeout))
+            return _real(cmd, timeout, **kwargs)
+        monkeypatch.setattr(stack, '_run', _spy)
+        fake.set(ports={'web:8080': '0.0.0.0:1'}, logs={'web': 'x\n'})
+        with stack.compose(fake.file, wait=30) as _s:
+            _s.port('web', 8080)
+            _s.keep_logs('t::x', since=0)
+        assert _limits and all(isinstance(_t, (int, float)) and 0 < _t <= 630 for _, _t in _limits), _limits
+
+    @pytest.mark.expects_skip
     @pytest.mark.parametrize('behaviour, why', [
         ({'version': '2.19.1'}, r'Compose v2\.20 或更新的版本.*现在是 2\.19'),
         ({'version': 'garbage'}, r'现在是 没有'),
@@ -80,6 +118,7 @@ class TestDocker:
             stack.docker()
         assert stack._CHECKED == {}                            # a failed check is tried again next time
 
+    @pytest.mark.expects_skip
     def test_no_docker_at_all(self, fake, monkeypatch):
         monkeypatch.setattr(stack, '_settings', lambda: {'docker': str(fake.dir / 'nowhere')})
         with pytest.raises(pytest.skip.Exception, match='没有找到 docker'):
@@ -206,6 +245,10 @@ class TestClean:
     def test_unreadable_listing(self, fake):
         fake.set(projects_text='not json')
         assert stack.clean(fake.exe) == []
+        assert fake.calls('ls')[0]['args'] == ['compose', 'ls', '--all', '--format', 'json']
+
+    def test_a_failing_listing_is_not_an_error(self, fake):
+        assert stack.clean(str(fake.dir / 'nowhere')) == []           # could not even run: nothing to clean
 
     def test_swept_once_per_process(self, fake):
         with stack.compose(fake.file):
