@@ -52,6 +52,46 @@ def test_payment_degrades_cleanly_when_the_db_resets_connections():
 
 故障生效期间出现的传输失败（连接被重置、超时）归为**注入的故障**，不归为"环境"。判断依据是时间：故障生效期间抛出的传输错误，消息里会写明当时生效的故障，`concurrently()` 的线程里发出的请求也一样：依赖是用例自己弄坏的，要看的是被测系统（或用例的客户端）该不该扛住它——重试、超时、降级。判定不成立（比如重复扣款）仍然是产品缺陷。故障撤销之后、或者没有注入故障的用例遇到连接失败，照旧归为环境问题。
 
+## 在 K8s 上：Chaos Mesh
+
+集群里装了 [Chaos Mesh](https://chaos-mesh.org) 时，可以对 Pod 注入故障，用法和上面一样：
+
+```python
+from ipandora.core import chaosmesh, faults
+
+orders = chaosmesh.pods('orders', namespace='shop', labels={'app': 'orders'})
+db = chaosmesh.pods('db', namespace='shop', labels={'app': 'db'})
+
+slow = chaosmesh.delay(orders, ms=800, jitter=200)       # Pod 发出的每个包延迟
+cut = chaosmesh.partition(orders, peer=db)               # 两组 Pod 之间双向不通
+broken = chaosmesh.pod_failure(orders)                   # 容器换成什么都不做的 pause，撤销后恢复
+# 用例里：with faults.injected(slow): ...
+```
+
+| 故障 | 效果 |
+|---|---|
+| `delay(pods, ms, jitter=0)` | Pod 发出的每个包延迟 `ms` 毫秒（±`jitter`） |
+| `loss(pods, percent)` | 按比例丢包 |
+| `partition(pods, peer)` | 两组 Pod 之间双向断网 |
+| `pod_failure(pods)` | Pod 还在，但不再工作，直到撤销 |
+| `pod_kill(pods)` | 杀掉一次（由它的控制器重建）；撤销只是删掉记录 |
+
+`pods(..., mode='one')` 只选一个，`'fixed:2'`、`'fixed-percent:50'` 等同 Chaos Mesh 的写法。环境配置：
+
+```yaml
+faults:
+  allowed: true
+  backends: [chaos-mesh]
+  chaos_mesh:
+    context: kind-staging      # 必填：要注入的集群
+    namespace: default         # Chaos 对象建在哪个命名空间
+    timeout: 60                # 等故障生效、等撤销完成的秒数
+```
+
+- **集群要写明**：每次调用 kubectl 都带上配置里的 `context`；没写就拒绝注入。kubectl 当前指着哪个集群不起作用，免得指着生产集群的 kubectl 被误用。
+- **生效了才往下走**：建好 Chaos 对象后等 Chaos Mesh 报告"所有选中的 Pod 都已注入"；超时、或者选择器一个 Pod 都没选中，就报错并删掉对象。撤销是删除对象并等 Chaos Mesh 恢复完 Pod。
+- 框架只调用 `kubectl`，Python 侧不装任何东西；Chaos Mesh 由集群的维护者安装。本仓库的 CI 在一个 kind 集群上真实验收这几种故障（`test/testfaults/kind/`）。
+
 ## 接入别的故障注入平台
 
 Toxiproxy 是内置的后端。公司自己的故障平台、云厂商的故障服务、K8s 上的 Chaos Mesh，都可以作为另一个后端接进来：写一个 `faults.Backend` 的子类，注册一个名字，故障写明用哪个后端。

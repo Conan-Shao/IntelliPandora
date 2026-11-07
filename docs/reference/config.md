@@ -38,6 +38,10 @@ Fault injection (core/faults.py). Off unless an environment turns it on in its c
 | `faults.allowed` | `false` |  |
 | `faults.backends` | `[toxiproxy]` | the backends this environment injects through; cleaned up when a run starts and ends |
 | `faults.toxiproxy` | `null` | default http://127.0.0.1:8474, or $TOXIPROXY_URL |
+| `faults.chaos_mesh.context` | `null` | required: the kubectl context of the cluster -- the current context is never used |
+| `faults.chaos_mesh.namespace` | `default` | where the Chaos objects are created |
+| `faults.chaos_mesh.timeout` | `60` | seconds to wait for a fault to be in effect, and for its undo |
+| `faults.chaos_mesh.kubectl` | `kubectl` | the kubectl to run |
 
 ## `tracing`
 

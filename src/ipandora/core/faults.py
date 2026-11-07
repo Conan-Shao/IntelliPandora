@@ -96,7 +96,9 @@ class Fault:
         return self.proxy
 
     def describe(self) -> str:
-        _attrs = ', '.join('{}={}'.format(_k, _v) for _k, _v in sorted(self.attributes.items()))
+        # a nested target (Chaos Mesh's pods) by its name: the target itself is already the first argument
+        _attrs = ', '.join('{}={}'.format(_k, _v['name'] if isinstance(_v, dict) and 'name' in _v else _v)
+                           for _k, _v in sorted(self.attributes.items()) if _k != 'pods')
         return '{}({}{}{}{})'.format(self.kind, self.proxy, ', ' + _attrs if _attrs else '',
                                      '' if self.stream == 'downstream' else ', ' + self.stream,
                                      '' if self.toxicity >= 1 else ', toxicity={:g}'.format(self.toxicity))
@@ -331,6 +333,14 @@ class Toxiproxy(Backend):
 
 
 register('toxiproxy', Toxiproxy)
+
+
+def _chaos_mesh():
+    from ipandora.core.chaosmesh import ChaosMesh
+    return ChaosMesh()
+
+
+register('chaos-mesh', _chaos_mesh)
 
 
 # -- injecting ---------------------------------------------------------------------------------
