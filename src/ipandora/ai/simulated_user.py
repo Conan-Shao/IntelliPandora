@@ -56,6 +56,34 @@ class ModelUser(User):
         self.max_calls, self.calls = max_calls, 0
         self.name = 'model-user v{}{}'.format(PROMPT_VERSION, ' ({})'.format(label) if label else '')
 
+    @classmethod
+    def from_task(cls, task, provider=None, max_calls: int = 20, label: str = '') -> 'ModelUser':
+        """
+        The user a task's input describes (docs/guide/eval-dataset.md §4):
+
+            input:
+              opening: 东西有问题
+              persona: 不太会描述问题的老年用户，说话简短
+              goal: 退掉订单 A1003；agent 问到才说订单号
+
+        `opening`, `persona` and `goal` are all required: a model user without
+        a goal never knows when it is done.
+        """
+        _input = getattr(task, 'input', task)
+        _id = getattr(task, 'id', '?')
+        if not isinstance(_input, dict):
+            raise ValueError('task {}: a model user needs input: {{opening, persona, goal}}'.format(_id))
+        _missing = [_k for _k in ('opening', 'persona', 'goal') if not str(_input.get(_k) or '').strip()]
+        if _missing:
+            raise ValueError('task {}: a model user needs {} in its input'.format(_id, ', '.join(_missing)))
+        _extra = sorted(set(_input) - {'opening', 'persona', 'goal'})
+        if _extra:
+            # `rules` here would be a scripted user's, quietly ignored by a model
+            raise ValueError('task {}: {} is not for a model user (opening, persona, goal)'.format(
+                _id, ', '.join(_extra)))
+        return cls(str(_input['opening']), str(_input['persona']), str(_input['goal']), provider=provider,
+                   max_calls=max_calls, label=label)
+
     @property
     def provider(self):
         if self._provider is None:

@@ -88,6 +88,11 @@ class Dataset:
     tasks: List[Task] = field(default_factory=list)
     path: str = ''
     """The file it was read from; reference paths are relative to its directory."""
+    description: str = ''
+    """One sentence on what the dataset measures: shown in the report, kept in the manifest."""
+    meta: Dict[str, Any] = field(default_factory=dict)
+    """Source, licence, authors... (docs/guide/eval-dataset.md §9). Not part of the hash: it says
+    where the questions came from, it does not change them."""
 
     def task(self, task_id: str) -> Optional[Task]:
         return next((_t for _t in self.tasks if _t.id == task_id), None)
@@ -99,7 +104,7 @@ class Dataset:
         if name not in SPLITS:
             raise ValueError('unknown split {!r}; use one of {}'.format(name, ', '.join(SPLITS)))
         return Dataset(self.name, self.version, [_t for _t in self.tasks if _t.split == name],
-                       self.path)
+                       self.path, self.description, self.meta)
 
     def file_path(self, relative: Any) -> Optional[str]:
         """A file next to the dataset, if `relative` names one that exists -- never outside its directory."""
@@ -204,18 +209,63 @@ def _check_references(dataset: Dataset) -> None:
 
 
 def from_records(records: List[Dict[str, Any]], name: str, version: str = '',
-                 path: str = '') -> Dataset:
+                 path: str = '', description: str = '', meta: Optional[Dict[str, Any]] = None) -> Dataset:
     _tasks = [_task(_r, '{} task #{}'.format(name, _i + 1)) for _i, _r in enumerate(records)]
     _ids = [_t.id for _t in _tasks]
     _twice = sorted({_i for _i in _ids if _ids.count(_i) > 1})
     if _twice:
         raise ValueError('{}: duplicate task id(s): {}'.format(name, ', '.join(_twice)))
-    _data = Dataset(name=name, version=str(version or ''), tasks=_tasks, path=path)
+    if not isinstance(description, str):
+        raise ValueError('{}: description is one sentence of text'.format(name))
+    if meta is not None and not isinstance(meta, dict):
+        raise ValueError('{}: meta is a mapping (source, license, author, ...)'.format(name))
+    _data = Dataset(name=name, version=str(version or ''), tasks=_tasks, path=path,
+                    description=description, meta=dict(meta or {}))
     if path:
         for _t in _tasks:
             _t.root = os.path.dirname(os.path.abspath(path))
     _check_references(_data)
     return _data
+
+
+def to_inspect(dataset: Dataset) -> List[Dict[str, Any]]:
+    """
+    The tasks as Inspect samples (docs/guide/eval-dataset.md §6.4), one dict
+    per task in the shape inspect_ai's json_dataset() reads:
+
+        id       -> id
+        input    -> input: text as is, {messages: [...]} as the message list;
+                    a user script or persona as its opening line (the whole
+                    input stays in metadata)
+        reference-> target: as text, a file's content for a file
+        the rest -> metadata: expected, initial_state, tags, polarity, split,
+                    meta, input
+
+    `budget` is left out: in Inspect, limits are Inspect's own (time_limit,
+    token_limit) -- a budget carried along would be judged by nobody.
+    inspect_scorer.task_of() reads `expected` and `initial_state` back from
+    the metadata, so the same grader judges the sample in Inspect.
+    """
+    _out = []
+    for _t in dataset.tasks:
+        _input = _t.input
+        if isinstance(_input, dict) and isinstance(_input.get('messages'), list):
+            _sample_input: Any = [{'role': str(_m.get('role', 'user')), 'content': str(_m.get('content', ''))}
+                                  for _m in _input['messages'] if isinstance(_m, dict)]
+        elif isinstance(_input, dict) and isinstance(_input.get('opening'), str):
+            _sample_input = _input['opening']
+        elif isinstance(_input, str):
+            _sample_input = _input
+        else:
+            _sample_input = json.dumps(_input, ensure_ascii=False, sort_keys=True, default=str)
+        _reference = dataset.reference(_t)
+        _target = _reference if isinstance(_reference, str) else (
+            '' if _reference is None else json.dumps(_reference, ensure_ascii=False, sort_keys=True, default=str))
+        _meta = {'expected': _t.expected, 'initial_state': _t.initial_state, 'tags': _t.tags,
+                 'polarity': _t.polarity, 'split': _t.split, 'meta': _t.meta, 'input': _input}
+        _out.append({'id': _t.id, 'input': _sample_input, 'target': _target,
+                     'metadata': {_k: _v for _k, _v in _meta.items() if _v not in (None, {}, '')}})
+    return _out
 
 
 def load(path: str) -> Dataset:
@@ -247,5 +297,11 @@ def load(path: str) -> Dataset:
         return from_records(_data, _name, path=path)
     if not isinstance(_data, dict) or not isinstance(_data.get('tasks'), list):
         raise ValueError('{}: expected a list of tasks, or a mapping with a `tasks` list'.format(path))
+    _unknown = sorted(set(_data) - {'name', 'version', 'description', 'meta', 'tasks'})
+    if _unknown:
+        # a top-level `metadata:` or `desc:` would be silently dropped
+        raise ValueError('{}: unknown top-level key(s) {}; known: name, version, description, meta, tasks'.format(
+            path, ', '.join(_unknown)))
     return from_records(_data['tasks'], str(_data.get('name') or _name),
-                        version=_data.get('version', ''), path=path)
+                        version=_data.get('version', ''), path=path,
+                        description=_data.get('description') or '', meta=_data.get('meta'))

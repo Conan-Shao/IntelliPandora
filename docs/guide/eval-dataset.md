@@ -55,7 +55,7 @@ tasks:
 {"id": "refund/delivered", "input": "我要退订单 A1001 的款", "expected": {"answer": "A1001"}, "reference": "A1001"}
 ```
 
-🔜 顶层的 `description`（一句话说明）和 `meta`（同第 9 节的字段）：现在会被忽略，计划写进报告和版本清单。
+顶层还可以写 `description`（一句话说明这个数据集测什么）和 `meta`（同第 9 节的字段）✅：两者写进每次运行的版本清单，显示在报告里，不算进内容哈希（出处变了，题没变）。顶层只认 `name`、`version`、`description`、`meta`、`tasks` 五个键，拼错的报错。
 
 ## 3. 任务字段 ✅
 
@@ -111,7 +111,7 @@ budget: {seconds: 120, usd: 0.5, tokens_in: 20000, tokens_out: 4000, turns: 10, 
 | 一句话 | `input: 订单 A1001 金额 120.50 元，帮我退款` | ✅ 原样交给 agent |
 | 消息列表 | `input: {messages: [{role: user, content: …}, …]}` | ✅ 原样交给 agent（spec 负责转给被测 agent） |
 | 脚本用户（多轮） | `input: {opening, rules, otherwise}` | ✅ `dialogue.ScriptedUser.from_task` |
-| 模型扮演用户（多轮） | `input: {opening, persona, goal}` | ✅ 代码里用 `ModelUser`；🔜 从数据直接构造 |
+| 模型扮演用户（多轮） | `input: {opening, persona, goal}` | ✅ `ModelUser.from_task(task)` |
 | 编码任务 | `input: 把配置项 timeout_s 重命名为 timeout，旧名继续可读` | ✅ 作为任务描述交给编码 agent |
 
 **脚本用户**：
@@ -149,6 +149,18 @@ tasks:
 ```
 
 用模型扮演用户时，换了用户模型就是换了测量方式，和基线不可比，报告会提示。模型只扮演用户，不参与判定。
+
+spec 里这样接（需要 `ai` 安装组；`opening`、`persona`、`goal` 三项都要写，多写 `rules` 之类脚本用户的键会报错）：
+
+```python
+from ipandora.ai.simulated_user import ModelUser
+
+def agent(task):
+    return standard.converse(task, world, lambda shop: Bot(shop).respond,
+                             user=ModelUser.from_task(task))
+```
+
+`standard.converse()` 遇到写了 `persona` / `goal` 的题而没有传 `user`，会报错，而不是退回脚本用户。
 
 ## 5. expected：什么算对
 
@@ -382,7 +394,10 @@ tasks:
 - 这些字段一一对应 `ipandora eval code DIR --base … --allow … --forbid … --max-files … --max-lines … --tests … --targets … --min-score …`。
 - 隐藏测试放在 `fixtures/` 里，**不要放进仓库快照**，否则 agent 能读到。
 - 改动"决定用例怎么运行的文件"（conftest.py、pytest.ini……）默认不允许；确有需要写 `allow_harness_changes: true`。
-- 在 Inspect 里，每道题是一个 `Sample`：`input` → `input`，`id` → `id`，`tags` / `polarity` / `split` 放进 `metadata`，其余（`expected`、`initial_state`）也放进 `metadata`。🔜 `ipandora eval to-inspect dataset.yaml` 自动转换。
+- 在 Inspect 里，每道题是一个 `Sample`：`input` → `input`，`id` → `id`，参考解 → `target`，`tags` / `polarity` / `split` / `expected` / `initial_state` / `meta` 放进 `metadata`。✅ `ipandora eval to-inspect dataset.yaml -o samples.jsonl` 自动转换，输出 Inspect 的 `json_dataset()` 能直接读的 JSONL。
+  - `input` 是一句话的原样放进去；`{messages: […]}` 转成消息列表；脚本用户或模型用户的写法放开场白，完整的 `input` 留在 `metadata` 里。
+  - `budget` 不带过去：Inspect 用它自己的上限（`time_limit`、`token_limit`）。
+  - 框架的评分器包成 scorer（`inspect_scorer.scorer(grade)`）后，从 `metadata` 里读回 `expected` 和 `initial_state`，所以同一个评分器（包括标准评分器）在 Inspect 里照样判。
 
 ## 7. reference：参考解（入库门槛）✅
 
@@ -405,7 +420,7 @@ tasks:
 - `test` 集定下来、跑过基线之后，不要为了让分数好看去改它的题。调提示只看 `dev` 集；框架记录每次运行用的是哪个集合。
 - 只改任务的顺序不算改动。
 
-## 9. meta 与数据说明 ✅ 保留；🔜 进报告
+## 9. meta 与数据说明 ✅
 
 ```yaml
 meta:
@@ -499,7 +514,7 @@ ipandora eval run evals/x/spec.py -k 5 --split test --fail-on-regression tag   #
 | `budget`（时间、agent 报告的成本） | ✅ |
 | 参考解自检（`eval selfcheck`），多轮任务的工具调用重放 | ✅ |
 | 脚本用户（`opening` / `rules` / `otherwise`） | ✅ |
-| 模型扮演用户 | ✅ 代码；🔜 从 `input.persona` / `goal` 直接构造 |
+| 模型扮演用户 | ✅ `ModelUser.from_task(task)`，从 `input.persona` / `goal` 直接构造 |
 | 终态、轨迹、说了什么、安全、编码的判定函数 | ✅（spec 里调用） |
 | `expected` 的标准词汇由框架统一解释（5.1–5.4，不必为每个数据集写评分器） | ✅ E5a |
 | `initial_state.fixture` / `patch` 标准读取 | ✅ E5a |
@@ -507,5 +522,5 @@ ipandora eval run evals/x/spec.py -k 5 --split test --fail-on-regression tag   #
 | `initial_state.plant` 埋点的数据写法，`expected.safety` 由标准评分器判 | ✅ E5b |
 | 注入按六种手法自动展开成多道题 | 🔜 |
 | `rubric` 模型评委（结构化评分标准，允许"不确定"，校准前只展示） | 🔜 |
-| `ipandora eval to-inspect`：数据集转 Inspect 样本 | 🔜 |
-| 顶层 `description` / `meta` 进报告 | 🔜 |
+| `ipandora eval to-inspect`：数据集转 Inspect 样本 | ✅ |
+| 顶层 `description` / `meta` 进报告和版本清单 | ✅ |

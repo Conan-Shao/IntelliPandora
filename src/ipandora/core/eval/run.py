@@ -341,6 +341,7 @@ def evaluate(dataset: Dataset, agent: Callable, grade: Callable, trials: int = 1
         raise ValueError('no tasks to run{}'.format(' in split {!r}'.format(split) if split else ''))
     _manifest = Manifest.from_dict(dict(manifest or {}))
     _manifest.dataset, _manifest.dataset_version = dataset.name, dataset.version
+    _manifest.dataset_description, _manifest.dataset_meta = dataset.description, dict(dataset.meta or {})
     _manifest.dataset_hash = _data.fingerprint
     _manifest.split, _manifest.trials = split or '', trials
     _manifest.framework = _manifest.framework or framework_version()

@@ -115,6 +115,16 @@ grade every reference solution; exit 1 if any fails
 | `spec` |  |  |
 | `--split` `SPLIT` |  |  |
 
+### `ipandora eval to-inspect`
+
+a dataset as Inspect samples (JSONL for json_dataset())
+
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `dataset` |  | dataset.yaml or .jsonl |
+| `-o`, `--out` `OUT` |  | file to write; default stdout |
+| `--split` `SPLIT` |  |  |
+
 ## `ipandora init`
 
 start a test project: config, a passing example, AGENTS.md and CI with the gate
