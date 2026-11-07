@@ -68,9 +68,13 @@ class TestHistory:
 
 class TestChecker:
 
+    @pytest.mark.expects_skip
     def test_missing_java_or_jar_skips_and_says_why(self, monkeypatch):
+        # a skip, not any exception mentioning elle-cli: under the no-silent-skips
+        # guard that also matched the guard's own failure, so a checker() that
+        # crashed with that text instead of skipping passed (CR12)
         monkeypatch.setattr(consistency, '_settings', lambda: {'elle_cli': '/nowhere.jar'})
-        with pytest.raises(BaseException, match='elle-cli'):
+        with pytest.raises(pytest.skip.Exception, match='elle-cli'):
             consistency.checker()
 
     def test_a_jar_with_another_hash_is_refused(self, tmp_path, monkeypatch):

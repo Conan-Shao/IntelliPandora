@@ -127,6 +127,9 @@ def write_scoped_config(module: str, tests: str, root: str = None) -> str:
 WORK = os.environ.get('IPANDORA_MUTATION_DIR') or os.path.join(tempfile.gettempdir(), 'ipandora-mutation')
 """Where a run happens. Kept afterwards, so `mutmut results` / `mutmut show` can be run there."""
 
+MARKER = '.ipandora-mutation'
+"""Marks a work directory as this script's own, so a later run may delete it."""
+
 _NOT_COPIED = ('.git', '.venv', 'venv', 'mutants', '__pycache__', '*.egg-info', 'build', 'dist', '.pytest_cache',
                'reports', 'node_modules')
 
@@ -142,8 +145,15 @@ def work_copy(work: str = None) -> str:
     _work = os.path.abspath(work or WORK)
     if os.path.normcase(_work).startswith(os.path.normcase(REPO + os.sep)) or _work == REPO:
         raise SystemExit('the mutation work directory must be outside the checkout: {}'.format(_work))
+    # deleted before each run: only a directory this script made. A mistyped
+    # IPANDORA_MUTATION_DIR -- a home directory, a project -- was wiped (CR12)
+    if os.path.isdir(_work) and os.listdir(_work) and not os.path.isfile(os.path.join(_work, MARKER)):
+        raise SystemExit('{} exists and was not made by scripts/mutation.py; refusing to delete it. '
+                         'Choose an empty or new directory'.format(_work))
     shutil.rmtree(_work, ignore_errors=True)
     shutil.copytree(REPO, _work, ignore=shutil.ignore_patterns(*_NOT_COPIED), symlinks=True)
+    with open(os.path.join(_work, MARKER), 'w', encoding='utf-8') as fh:
+        fh.write('made by scripts/mutation.py; deleted and recreated on the next run\n')
     return _work
 
 

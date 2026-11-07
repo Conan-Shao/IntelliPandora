@@ -27,6 +27,10 @@ def browser_available():
     _browser_or_skip()
 
 
+HEADERS = []
+"""Every request's headers, for the tests that need more than traceparent and Cookie."""
+
+
 def _server(seen, page=''):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
@@ -34,6 +38,7 @@ def _server(seen, page=''):
 
         def do_GET(self):
             seen.append((self.path, self.headers.get('traceparent'), self.headers.get('Cookie')))
+            HEADERS.append((self.path, self.headers.get('Host'), {_k.lower(): _v for _k, _v in self.headers.items()}))
             _body, _type, _extra = b'', 'text/plain', {}
             if self.path == '/page':
                 _body, _type = page.encode(), 'text/html; charset=utf-8'
@@ -114,3 +119,30 @@ def test_pages_send_the_case_trace_to_the_application_only(servers, tmp_path, mo
     from ipandora.core.report.builder import build_from_run
     from ipandora.core.report.render import to_html
     assert '<a href="http://jaeger.test/trace/{}"'.format(_page['trace_id']) in to_html(build_from_run(_result))
+
+
+def test_the_route_keeps_the_contexts_own_headers(servers, monkeypatch):
+    # page_as(web_headers=True) logs a browser in through extra_http_headers:
+    # had the route rebuilt the headers without them, every traced page would
+    # have been logged out (CR12, checked with a real browser)
+    from playwright.sync_api import sync_playwright
+    _url, _app_seen, _ = servers
+    HEADERS.clear()
+    monkeypatch.setattr(tracing, '_settings', lambda: {'enabled': True})
+    with sync_playwright() as _p:
+        _browser = _p.chromium.launch()
+        try:
+            _context = _browser.new_context(extra_http_headers={'Authorization': 'Bearer tok', 'X-Tenant': 't1'})
+            assert tracing.browser(_context, _url)
+            _page = _context.new_page()
+            _page.goto(_url + '/page')
+            _page.wait_for_load_state('networkidle')
+        finally:
+            _browser.close()
+    # the page and its fetch; a favicon the browser fetches by itself never reaches routes
+    _host = _url.split('://', 1)[1]
+    _sent = {_path: _h for _path, _at, _h in HEADERS if _at == _host and _path in ('/page', '/api/data')}
+    assert set(_sent) == {'/page', '/api/data'}
+    for _path, _h in _sent.items():
+        assert tracing.parse(_h.get('traceparent')), _path
+        assert (_h.get('authorization'), _h.get('x-tenant')) == ('Bearer tok', 't1'), _path

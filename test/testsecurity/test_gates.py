@@ -423,6 +423,24 @@ def test_mutation_fails_when_no_mutant_was_judged(tmp_path, monkeypatch, capsys)
     assert mutation.judged({'killed': 3, 'survived': 1, 'timeout': 1, 'skipped': 9}) == 5
 
 
+def test_mutation_never_deletes_a_directory_it_did_not_make(tmp_path, monkeypatch):
+    import mutation
+    _repo = tmp_path / 'repo'
+    (_repo / 'src').mkdir(parents=True)
+    monkeypatch.setattr(mutation, 'REPO', str(_repo))
+    _precious = tmp_path / 'home'
+    (_precious / 'notes.txt').parent.mkdir()
+    (_precious / 'notes.txt').write_text('keep me', encoding='utf-8')
+    with pytest.raises(SystemExit, match='refusing to delete it'):
+        mutation.work_copy(str(_precious))
+    assert (_precious / 'notes.txt').read_text(encoding='utf-8') == 'keep me'
+    _work = mutation.work_copy(str(tmp_path / 'work'))                 # new: made, and marked
+    assert os.path.isfile(os.path.join(_work, mutation.MARKER))
+    assert mutation.work_copy(_work) == _work                           # its own: recreated
+    (tmp_path / 'empty').mkdir()
+    assert mutation.work_copy(str(tmp_path / 'empty'))                  # empty: nothing to lose
+
+
 def test_the_cli_reference_documents_subcommands():
     import check_docs
     _md = check_docs.cli_reference()
