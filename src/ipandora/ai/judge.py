@@ -137,6 +137,11 @@ class Judge:
         """
         _levels = levels_of(dimension)
         _names = [_l['name'] for _l in _levels]
+        _weight = dimension.get('weight', 1)
+        if isinstance(_weight, bool) or not isinstance(_weight, (int, float)) or _weight < 0:
+            # as every other judgement's weight: a typo is the task's error, not weight 1 (R3)
+            raise ValueError('rubric {!r}: weight must be a non-negative number, got {!r}'.format(
+                dimension['dimension'], _weight))
         _version = dimension.get('version', 1)
         _dim = str(dimension['dimension']).strip()
         _claim = 'judge {} v{} by {}'.format(_dim, _version, self.name)
@@ -160,9 +165,8 @@ class Judge:
         _check = Check(name='评委：{}'.format(_dim), ok=not _uncertain and _verdict['level'] == _names[0],
                        expr='{}：{}'.format('不确定' if _uncertain else _verdict['level'], _verdict['reason']),
                        src=LLM_JUDGE, claim=_claim)
-        _weight = dimension.get('weight', 1)
-        return Graded(_check, weight=float(_weight) if isinstance(_weight, (int, float)) else 1.0,
-                      required=False, uncertain=_uncertain, label='' if _uncertain else _verdict['level'])
+        return Graded(_check, weight=float(_weight), required=False, uncertain=_uncertain,
+                      label='' if _uncertain else _verdict['level'])
 
 
 __all__ = ['Judge', 'parse', 'PROMPT_VERSION', 'SYSTEM', 'UNSURE']
