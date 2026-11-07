@@ -43,6 +43,9 @@ def samples(run: EvalRun, limit: Optional[int] = None, seed: int = 0,
             _rows.append({'task_id': _t.task_id, 'trial': _t.index, 'check': _c.get('name'),
                           'source': _c.get('src'),
                           'judge': None if _c.get('uncertain') else bool(_c.get('ok')),
+                          # the judge's level ('是' / '部分' / '否'): what a categorical agreement compares
+                          **({'judge_label': None if _c.get('uncertain') else _c.get('label') or None}
+                             if _c.get('src') == 'llm_judge' else {}),
                           'output': _masked(_t.output), 'trajectory_steps': len(_t.trajectory),
                           'human': None})
     if limit is not None and limit < len(_rows):
@@ -99,7 +102,16 @@ def verdict_of(value) -> Optional[bool]:
     return None
 
 
-def agreement(rows: List[Dict[str, Any]], a: str = 'judge', b: str = 'human') -> Dict[str, Any]:
+def _category(value) -> Optional[str]:
+    """A category label as people write it: trimmed; empty, null or "unsure" is undecided."""
+    if value is None:
+        return None
+    _text = str(value).strip()
+    return None if not _text or _text.lower() in ('unsure', 'uncertain', 'null', 'none', '不确定') else _text
+
+
+def agreement(rows: List[Dict[str, Any]], a: str = 'judge', b: str = 'human',
+              categorical: bool = False) -> Dict[str, Any]:
     """
     How often `a` and `b` agree, over the rows where both decided.
 
@@ -108,9 +120,10 @@ def agreement(rows: List[Dict[str, Any]], a: str = 'judge', b: str = 'human') ->
     chance. A judge that says yes to everything on a set that is 90% yes has
     90% raw agreement and a kappa of 0; the kappa is the number to gate on.
     """
+    _read = _category if categorical else verdict_of
     _pairs = []
     for _r in rows:
-        _x, _y = verdict_of(_r.get(a)), verdict_of(_r.get(b))
+        _x, _y = _read(_r.get(a)), _read(_r.get(b))
         if _x is not None and _y is not None:
             _pairs.append((_x, _y))
     _n = len(_pairs)
@@ -118,8 +131,9 @@ def agreement(rows: List[Dict[str, Any]], a: str = 'judge', b: str = 'human') ->
     if not _n:
         return {'n': 0, 'undecided': _undecided, 'agreement': None, 'kappa': None}
     _agree = sum(1 for _x, _y in _pairs if _x == _y) / _n
-    _pa = sum(1 for _x, _ in _pairs if _x) / _n
-    _pb = sum(1 for _, _y in _pairs if _y) / _n
-    _chance = _pa * _pb + (1 - _pa) * (1 - _pb)
+    # Cohen's kappa over every category either rater used (two of them for yes/no)
+    _cats = sorted({_x for _x, _ in _pairs} | {_y for _, _y in _pairs}, key=str)
+    _chance = sum((sum(1 for _x, _ in _pairs if _x == _k) / _n) * (sum(1 for _, _y in _pairs if _y == _k) / _n)
+                  for _k in _cats)
     _kappa = 1.0 if _chance == 1 else (_agree - _chance) / (1 - _chance)
     return {'n': _n, 'undecided': _undecided, 'agreement': _agree, 'kappa': _kappa}

@@ -164,7 +164,7 @@ def agent(task):
 
 ## 5. expected：什么算对
 
-`expected` 是一个映射。5.1–5.4 的词汇和安全（6.3）由框架的**标准评分器**（`ipandora.core.eval.standard`）统一解释 ✅：spec 文件里不写 `grade()`，就用它判分（第 11 节）。模型评委（5.5）还在计划中。
+`expected` 是一个映射。5.1–5.4 的词汇和安全（6.3）由框架的**标准评分器**（`ipandora.core.eval.standard`）统一解释 ✅：spec 文件里不写 `grade()`，就用它判分（第 11 节）；模型评委（5.5）由 spec 给出的 `JUDGE` 判。
 
 - 所有判定都有两个可选属性：`required`（默认 `true`；`false` 表示只算部分分，不影响成功）和 `weight`（默认 1，部分分的权重）。成功 = 全部必需判定成立。写在每一条判定的映射里，如 `{contains: A1004, required: false}`、`state: {changes: {}, weight: 2}`；`answer` 是一个值，写不了属性，需要时改写成 `checks` 里的 `{equals: …}`。
 - **拼错或写了标准评分器不认识的键，判分直接报错**（`ipandora eval selfcheck` 会报出来），不会悄悄少判一项。只有 spec 自己判的键（数据集特有的键、`rubric`）要在 spec 的 `SKIP` 里列出。
@@ -275,7 +275,7 @@ tasks:
 
 参考解是工具调用序列时，`says` 不判：参考解只是一串调用，不说话。`never_says` 照判。
 
-### 5.5 主观维度（模型评委）🔜
+### 5.5 主观维度（模型评委）✅
 
 确定性规则判不了的（解释是否清楚、语气是否得体），写成评分标准：
 
@@ -299,7 +299,7 @@ tasks:
 - 评委可以回答"不确定"，记为无结论，不算过也不算不过。
 - 评委的判定在报告里单独展示，**和人工标注的一致率达标之前不计入成功率、不用于门禁**（`ipandora eval samples` / `agreement` 做校准）。所以 `rubric` 里的维度现在一律写 `required: false`。
 - 能写成 5.1–5.4 的，就不要写成 `rubric`。
-- 标准评分器不调用模型，所以现在用 `rubric` 的数据集，spec 要把它写进 `SKIP`。
+- 标准评分器本身不调用模型：spec 给出 `JUDGE = Judge(...)`（`ipandora.ai.judge`）时由它逐个维度判，没有 `JUDGE` 就要把 `rubric` 写进 `SKIP`。维度可以写 `pass` / `fail`，也可以写多档 `levels: [{name, means}, …]`（最好的在前）。用法和校准见 [评测 agent](eval.md#模型评委rubric)。
 
 ## 6. initial_state：开始前的世界
 
@@ -521,6 +521,6 @@ ipandora eval run evals/x/spec.py -k 5 --split test --fail-on-regression tag   #
 | 参数比较（`{lte: 100}`、`{regex: …}`） | ✅ E5a |
 | `initial_state.plant` 埋点的数据写法，`expected.safety` 由标准评分器判 | ✅ E5b |
 | 注入按六种手法自动展开成多道题 | 🔜 |
-| `rubric` 模型评委（结构化评分标准，允许"不确定"，校准前只展示） | 🔜 |
+| `rubric` 模型评委（结构化评分标准，允许"不确定"，校准前只展示） | ✅ `ipandora.ai.judge.Judge` |
 | `ipandora eval to-inspect`：数据集转 Inspect 样本 | ✅ |
 | 顶层 `description` / `meta` 进报告和版本清单 | ✅ |

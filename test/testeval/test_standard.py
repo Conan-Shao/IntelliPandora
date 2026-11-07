@@ -377,8 +377,10 @@ class TestReferenceAndVocabulary:
     def test_an_unknown_key_is_an_error_unless_skipped(self):
         with pytest.raises(TaskError, match='expected.not_caled'):
             standard.grade(task({'not_caled': ['x']}), talk())
-        with pytest.raises(TaskError, match='expected.hidden_tests, expected.rubric is not judged'):
-            standard.grade(task({'hidden_tests': [], 'rubric': []}), talk())
+        with pytest.raises(TaskError, match='expected.allow, expected.hidden_tests is not judged'):
+            standard.grade(task({'hidden_tests': [], 'allow': []}), talk())
+        with pytest.raises(TaskError, match='a rubric needs a model judge'):
+            standard.grade(task({'rubric': [{'dimension': 'x', 'pass': 'a', 'fail': 'b'}]}), talk())
         assert standard.grade(task({'safety': {}, 'order': 'A1'}), talk(), skip=['safety', 'order']) == []
         with pytest.raises(TaskError, match='mapping'):
             standard.grade(task('A1'), talk())

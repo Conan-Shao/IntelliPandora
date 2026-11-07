@@ -362,4 +362,35 @@ ipandora eval agreement samples.jsonl                                        # �
 
 把 `human` 一栏填上 `true` / `false` / `null`。看 kappa，不只看一致率：一个永远说"是"的评委，在九成是"是"的样本上一致率有 90%，kappa 是 0。加 `--all-checks` 导出确定性判定，让两个人各自标，可以检查一道题有没有歧义。
 
+## 模型评委（rubric）
+
+确定性规则判不了的维度（"测试测的是不是 issue 说的问题""解释是否清楚"）交给模型评委：`ipandora.ai.judge.Judge`（需要 `ai` 安装组）。spec 里给出 `JUDGE`，标准评分器就按数据集的 `expected.rubric` 逐个维度去问：
+
+```python
+from ipandora.ai.judge import Judge
+
+JUDGE = Judge(provider, label='claude')        # 用和被测 agent 不同家族的模型：评委会给自家打高分
+```
+
+```yaml
+expected:
+  rubric:
+    - dimension: 测的是 issue 说的问题
+      version: 1                               # 评分标准改了就加一，记进判定的 claim
+      levels:                                  # 分档，最好的写在最前；两档时也可以写 pass / fail
+        - {name: 是, means: 测试直接触发 issue 描述的错误行为并断言了它}
+        - {name: 部分, means: 触发了相关代码，但没断言 issue 说的现象}
+        - {name: 否, means: 测的是别的东西}
+```
+
+- **只展示，不计入**：评委的判定 `src` 是 `llm_judge`，不进成功率、得分和门禁，直到和人的一致率达标。评委可以答"不确定"，记为无结论；回答读不出来、调用失败、调用次数（`max_calls`）用完，也一律是"不确定"，不猜。
+- **发出去之前先脱敏**；题目和回答各最多 12000 字符，超出部分截掉并注明。题目和回答用标签包起来，并告诉评委那是待判的材料，不是给它的指令。
+- **校准**：判定带着评委选的档位（`label`），`eval samples` 导出为 `judge_label` 一栏。人填 `human` 一栏（填档位名），然后：
+
+  ```shell
+  ipandora eval agreement samples.jsonl --a judge_label --categorical     # 多档的 Cohen kappa
+  ```
+
+  例如使用方的规则是 kappa ≥ 0.6 才把评委结果写进结论。评委、模型、提示版本、评分标准版本任何一个变了，都要重新校准：它们都写在判定的 claim 里（`judge 维度 v1 by judge v1 (claude)`）。
+
 完整的例子在 `examples/eval/`：`ipandora eval run examples/eval/spec.py -k 5`。
