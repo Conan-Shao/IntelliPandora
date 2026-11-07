@@ -347,11 +347,14 @@ def _minus_one(tree, index: int, value: int) -> Optional[str]:
 
 def mutants_in(source: str, path: str, spans: Sequence[Tuple[int, int, str]]) -> List[coding.Mutant]:
     """The single-point mutants of `source` inside `spans`, including integer constants minus one."""
-    _all = coding.mutants(source, path)
     try:
         _tree = ast.parse(source)
     except SyntaxError:
+        # a file this Python cannot parse has no mutants -- it must not end the grading of an F→P (R3b)
         return []
+    if not spans:
+        return []
+    _all = coding.mutants(source, path)
     for _index, _node in enumerate(ast.walk(_tree)):
         if isinstance(_node, ast.Constant) and isinstance(_node.value, int) and not isinstance(_node.value, bool):
             _code = _minus_one(_tree, _index, _node.value)
@@ -769,8 +772,10 @@ def load_task(directory: str):
             _problems.append('{} must be a commit hash'.format(_k))
     if isinstance(_raw.get('repo'), str) and not re.match(r'^[\w.-]+/[\w.-]+$', _raw['repo']):
         _problems.append('repo must be owner/name')
-    if isinstance(_raw.get('id'), str) and _raw['id'] != os.path.basename(os.path.normpath(directory)):
-        _problems.append('id {!r} is not the directory name {!r}'.format(_raw['id'], os.path.basename(directory)))
+    _dirname = os.path.basename(os.path.normpath(directory))
+    if isinstance(_raw.get('id'), str) and _raw['id'] != _dirname:
+        # the name compared, also for 'tasks/calc-12/' -- whose basename is '' (R3b)
+        _problems.append('id {!r} is not the directory name {!r}'.format(_raw['id'], _dirname))
     if isinstance(_raw.get('reference_tests'), list) and (
             not _raw['reference_tests'] or not all(isinstance(_t, str) and '::' in _t for _t in _raw['reference_tests'])):
         _problems.append('reference_tests is a non-empty list of test ids (tests/test_x.py::test_y)')
