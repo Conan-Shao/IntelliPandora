@@ -243,6 +243,9 @@ class Netem(faults.Backend):
         with self._guard:
             _before = list(self._active.get(fault.proxy, []))
             _now = _before + [fault]
+            # the marker first (CR21): the helper container takes a second or so, and a run
+            # killed meanwhile -- a timeout, a cancelled CI job -- left a qdisc nothing knew of
+            self._write_marker(fault.proxy, _c['dev'], _now)
             try:
                 self._set(fault.proxy, _c['dev'], _now)
             except faults.BackendError:
@@ -251,9 +254,9 @@ class Netem(faults.Backend):
                     self._set(fault.proxy, _c['dev'], _before)
                 except faults.BackendError:
                     pass
+                self._write_marker(fault.proxy, _c['dev'], _before)
                 raise
             self._active[fault.proxy] = _now
-            self._write_marker(fault.proxy, _c['dev'], _now)
 
     def undo(self, fault: faults.Fault) -> None:
         _dev = (fault.attributes.get('container') or {}).get('dev', 'eth0')

@@ -189,3 +189,39 @@ def test_the_default_image_is_admitted():
     _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     _registry = open(os.path.join(_root, 'docs', 'security', 'components.md'), encoding='utf-8').read()
     assert netem.DEFAULT_IMAGE.split('@', 1)[1] in _registry
+
+
+
+class TestCr21:
+
+    def test_a_run_killed_while_the_helper_runs_leaves_a_marker(self, docker, tmp_path, monkeypatch):
+        # the qdisc is set, then the process is killed before apply() returns
+        _set = netem.Netem._set
+
+        def _killed(self, target, dev, active):
+            _set(self, target, dev, active)
+            raise KeyboardInterrupt
+        monkeypatch.setattr(netem.Netem, '_set', _killed)
+        with pytest.raises(KeyboardInterrupt):
+            netem.Netem(faults._settings()['netem'], state_dir=str(tmp_path / 'locks' / 'netem')).apply(
+                netem.delay(DB, 100))
+        monkeypatch.setattr(netem.Netem, '_set', _set)
+        netem.Netem._active.clear()
+        assert docker.state()['qdiscs'] == {'shop-db-1/eth0': ['delay', '100ms']}
+        assert faults.clean() == ['shop-db-1/eth0']            # it knew: the marker was there first
+        assert docker.state()['qdiscs'] == {} and markers(tmp_path) == []
+
+    def test_a_refused_fault_puts_the_marker_back(self, docker, tmp_path):
+        with faults.injected(netem.delay(DB, 100)):
+            docker.set(behaviour='not-shown')
+            with pytest.raises(faults.BackendError):
+                with faults.injected(netem.loss(DB, 10)):
+                    pass
+            docker.set(behaviour='')
+            assert len(markers(tmp_path)) == 1 and len(markers(tmp_path)[0]) == 1
+        assert markers(tmp_path) == []
+        docker.set(behaviour='fail-replace')
+        with pytest.raises(faults.BackendError):
+            with faults.injected(netem.delay(DB, 100)):
+                pass
+        assert markers(tmp_path) == []
