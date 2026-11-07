@@ -24,8 +24,12 @@ def needs_checker():
     return checker_or_skip()
 
 
+def pytest_configure(config):
+    config.addinivalue_line('markers', 'expects_skip: the test checks that a missing prerequisite skips')
+
+
 @pytest.fixture(autouse=True)
-def no_silent_skips(monkeypatch):
+def no_silent_skips(request, monkeypatch):
     """
     Where the checker is required (IPANDORA_REQUIRE_CHECKER, as on CI), a
     test that reaches checker() through History.check() must not be skipped
@@ -33,7 +37,7 @@ def no_silent_skips(monkeypatch):
     stayed green (mutation testing found it in core/stack.py's docker()).
     The fixture above only guarded tests that ask for it by name.
     """
-    if not os.environ.get('IPANDORA_REQUIRE_CHECKER'):
+    if not os.environ.get('IPANDORA_REQUIRE_CHECKER') or request.node.get_closest_marker('expects_skip'):
         return
     import ipandora.core.assertion as assertion
     _real = assertion.require

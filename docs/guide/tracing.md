@@ -32,7 +32,7 @@ Web 用例里，页面自己发出的请求（页面、脚本、`fetch`）也带
 
 - **只发给被测应用**：`web.base_url` 的主机和 `tracing.hosts` 里列出的主机。CDN、统计服务、第三方登录页不是被测系统，不带。没有 `base_url` 也没有 `hosts` 时，浏览器请求不带。
 - 页面自己的埋点已经写了 `traceparent` 的请求，保留它的。
-- `page`、`context` 和 `page_as(...)` 打开的页面都覆盖。
+- `page`、`context` 和 `page_as(...)` 打开的页面都覆盖。浏览器自己发起、不经过页面的请求（如 favicon）不带。上下文自己的请求头（`extra_http_headers`，比如 `page_as` 放进去的登录凭据）照常发出。
 - 实现方式是 Playwright 的请求路由（`context.route`），打开链路后，这个浏览器上下文不再使用 Playwright 的 HTTP 缓存：页面每次都重新下载资源。只在 `tracing.enabled: true` 时这样。
 - 只发生在浏览器里的 trace（这条用例没有 API 请求）也会写在报告里这条用例的"链路"一行。
 
