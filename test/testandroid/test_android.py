@@ -11,6 +11,7 @@ looked for by name in the widget tree. The device is a stand-in
 runs the same cases in CI (M5b).
 """
 import os
+import re
 import textwrap
 
 import pytest
@@ -290,3 +291,209 @@ def test_the_fixtures_do_not_take_names_other_plugins_use():
     except ImportError:
         return
     assert not _names & {_n for _n in vars(_pw) if not _n.startswith('_')}
+
+
+class TestWhatMutationTestingFound:
+    """Pinned after mutation testing of core/android.py."""
+
+    def test_the_config_is_checked(self, monkeypatch):
+        from ipandora.core.schedule.runtime import Runtime
+        for _bad, _error in (('emulator-5554', 'is a mapping'), ({'serail': 'x'}, r'unknown key\(s\) serail$'),
+                             ({'serial': 'x', 'apk': 'a', 'bogus': 1}, r'unknown key\(s\) apk, bogus$')):
+            monkeypatch.setattr(Runtime, 'settings', {'android': _bad})
+            with pytest.raises(ValueError, match=_error):
+                android.settings()
+        _all = {'serial': 's', 'package': 'p', 'app_path': 'a', 'clear_data': True, 'keep_app': True}
+        monkeypatch.setattr(Runtime, 'settings', {'android': _all})
+        assert android.settings() == _all
+        monkeypatch.setattr(Runtime, 'settings', {})
+        assert android.settings() == {}
+
+    def test_the_session_and_the_shell(self):
+        _d = FakeDevice('dev-9')
+        _s = android.begin(_d, 'dev-9', PACKAGE, 't::n')
+        try:
+            assert (_s.serial, _s.package, _s.nodeid, _s.since, _s.pids) == ('dev-9', PACKAGE, 't::n', '1762516800.000',
+                                                                             ['4242'])
+            assert ('shell', ('date', '+%s')) in _d.calls and ('shell', ('pidof', PACKAGE)) in _d.calls
+            assert android.current() is _s
+        finally:
+            android.end()
+        assert android.current() is None and not android.active()
+
+        class _Plain:
+            def shell(self, args, timeout=None):
+                self.timeout = timeout
+                return 'out'
+        _p = _Plain()
+        assert android._shell(_p, ['x']) == 'out' and _p.timeout == 30
+        assert android._shell(_p, ['x'], timeout=5) == 'out' and _p.timeout == 5
+
+    def test_a_device_without_a_clock_or_package(self):
+        class _Silent(FakeDevice):
+            def shell(self, args, timeout=60):
+                raise RuntimeError('offline')
+        assert android._device_time(_Silent()) == '' and android._pids(_Silent(), PACKAGE) == []
+        assert android._pids(FakeDevice(), '') == []
+
+    def test_the_artifacts_exactly(self, on_device, tmp_path, monkeypatch):
+        from ipandora.core.assertion.visual import ARTIFACTS_VAR
+        monkeypatch.setenv(ARTIFACTS_VAR, str(tmp_path))
+        _out = android.keep_evidence('tests/test_shop.py::test_pay[a b]')
+        assert [(_a['kind'], _a['group']) for _a in _out] == [('screenshot', 'emulator-5554'),
+                                                               ('hierarchy', 'emulator-5554'), ('device-log', PACKAGE)]
+        _name = os.path.basename(_out[0]['path'])
+        assert re.match(r'^tests_test_shop\.py_test_pay_a_b_-\d{13}\.png$', _name), _name
+        assert open(_out[1]['path'], encoding='utf-8').read() == HIERARCHY
+        _text = open(_out[2]['path'], encoding='utf-8').read()
+        assert _text == _out[2]['text'] + '\n' and 'onCreate' in _text
+
+    def test_without_a_package_the_log_belongs_to_the_device(self, tmp_path, monkeypatch):
+        from ipandora.core.assertion.visual import ARTIFACTS_VAR
+        monkeypatch.setenv(ARTIFACTS_VAR, str(tmp_path))
+        _d = FakeDevice()
+        _d.log = CRASH_LOG
+        recorder.begin('t::p')
+        android.begin(_d, _d.serial, '', 't::p')
+        try:
+            _out = android.keep_evidence('t::p')
+            assert _out[-1]['group'] == 'emulator-5554' and recorder.current().app_events == []
+        finally:
+            android.end()
+            recorder.end('t::p')
+
+    def test_no_device_time_reads_the_whole_log_and_a_restarted_app_is_followed(self, on_device, tmp_path, monkeypatch):
+        from ipandora.core.assertion.visual import ARTIFACTS_VAR
+        monkeypatch.setenv(ARTIFACTS_VAR, str(tmp_path))
+        android.current().since = ''
+        android.current().pids = []                 # started before the app had a process
+        on_device.log = APP_LOG + '11-07 12:00:09.000  4242  4242 I Shop: after restart\n'
+        _out = android.keep_evidence('t::case')
+        _logcat = [_c for _c in on_device.calls if _c[:2] == ('shell', ('logcat', '-d', '-v', 'threadtime', '-b',
+                                                                        'main,system,crash'))]
+        assert _logcat and '-T' not in _logcat[-1][1]
+        assert 'after restart' in _out[-1]['text']          # the pid read again at the failure
+
+    def test_the_default_directory(self, monkeypatch, tmp_path):
+        from ipandora.core.assertion.visual import ARTIFACTS_VAR
+        monkeypatch.delenv(ARTIFACTS_VAR, raising=False)
+        monkeypatch.setattr(android.tempfile, 'gettempdir', lambda: str(tmp_path))
+        assert android._artifacts_dir() == os.path.join(str(tmp_path), 'ipandora-android')
+        assert os.path.isdir(os.path.join(str(tmp_path), 'ipandora-android'))
+        assert android._slug('x' * 150 + '/y') == 'x' * 98 + '_y'
+
+    def test_the_crash_window(self):
+        _far = CRASH_LOG.replace(
+            '11-07 12:00:02.000  4242  4242 E AndroidRuntime: Process: com.example.shop, PID: 4242\n',
+            ''.join('11-07 12:00:02.000  4242  4242 E AndroidRuntime: filler {}\n'.format(_i) for _i in range(5))
+            + '11-07 12:00:02.000  4242  4242 E AndroidRuntime: Process: com.example.shop, PID: 4242\n')
+        assert android.app_events(_far, PACKAGE) == []          # a Process line 6 lines on belongs to another block
+        _before = ('11-07 12:00:02.000  4242  4242 E AndroidRuntime: Process: com.example.shop, PID: 4242\n'
+                   '11-07 12:00:02.000  4242  4242 E AndroidRuntime: FATAL EXCEPTION: main\n')
+        assert android.app_events(_before, PACKAGE) == []        # the Process line comes after FATAL, not before
+        _bare = ('11-07 12:00:02.000  4242  4242 E AndroidRuntime: FATAL EXCEPTION: main\n'
+                 '11-07 12:00:02.000  4242  4242 E AndroidRuntime: Process: com.example.shop, PID: 4242\n')
+        assert android.app_events(_bare, PACKAGE) == [{'kind': 'crash', 'package': PACKAGE, 'detail': ''}]
+
+    def test_the_anr_reason(self):
+        _head = '11-07 12:00:05.000  500  520 E ActivityManager: ANR in com.example.shop:remote\n'
+        _r = '11-07 12:00:05.000  500  520 E ActivityManager: Reason: Input dispatching timed out (Reason: x)\n'
+        _pid = '11-07 12:00:05.000  500  520 E ActivityManager: PID: 4242\n'
+        assert android.app_events(_head + _r, PACKAGE)[0]['detail'] == 'Input dispatching timed out (Reason: x)'
+        assert android.app_events(_head + _pid * 2 + _r, PACKAGE)[0]['detail'] == 'Input dispatching timed out (Reason: x)'
+        assert android.app_events(_head + _pid * 3 + _r, PACKAGE)[0]['detail'] == ''       # too far to be its reason
+        assert android.app_events(_r + _head, PACKAGE)[0]['detail'] == ''                 # a reason before it is not its
+        assert android.app_events(_head, PACKAGE) == [{'kind': 'anr', 'package': PACKAGE, 'detail': ''}]
+
+    def test_the_lines_kept(self):
+        _log = ('11-07 12:00:01.100  4242  9999 I Shop: pid column\n'
+                '11-07 12:00:01.100  9999  4242 I Shop: tid column only\n'
+                '11-07 12:00:01.100  1 1 I Sys: mentions com.example.shop here\n'
+                '11-07 12:00:01.100  1 1 I Sys: ANR in com.other\n'
+                '11-07 12:00:01.100  1 1 I androidruntime: lower case is not the crash tag\n'
+                'short line\n'
+                '4242\n')
+        _kept = android.relevant(_log, PACKAGE, ['4242'])
+        assert _kept.splitlines() == ['11-07 12:00:01.100  4242  9999 I Shop: pid column',
+                                      '11-07 12:00:01.100  1 1 I Sys: mentions com.example.shop here',
+                                      '11-07 12:00:01.100  1 1 I Sys: ANR in com.other']
+        assert android.relevant(_log, '', []) .splitlines() == ['11-07 12:00:01.100  1 1 I Sys: ANR in com.other']
+        assert android._message('not a threadtime line') == 'not a threadtime line'
+
+    def test_the_tree_in_detail(self):
+        _xml = ('<hierarchy><node class="a.b.c.Button" text="" content-desc="" resource-id="p:id/x:id/y"/>'
+                '<node class="Plain" text="Pay" content-desc="" resource-id=""/></hierarchy>')
+        assert android.same_name(_xml, ['x:id/y']) == [{'role': 'Button', 'name': 'x:id/y', 'attribute': 'resource-id'}]
+        assert android.same_name(_xml, ['pay']) == [{'role': 'Plain', 'name': 'Pay', 'attribute': 'text'}]
+        assert android.same_name(_xml, []) == [] and android.same_name('', ['Pay']) == []
+        assert android.same_name('<hierarchy><text>Pay</text></hierarchy>', ['Pay']) == []
+        assert android._names({'resourceId': 'a:id/b:id/c'}) == ['a:id/b:id/c', 'b:id/c']
+        assert android._names({'resourceId': 'plain_id', 'text': '  '}) == ['plain_id']
+        assert android._names('not a selector') == []
+
+    def test_a_case_without_evidence_slot_records_nothing(self):
+        assert android.install()
+        _d = FakeDevice()
+        android.begin(_d, _d.serial, PACKAGE, 't::x')
+        try:
+            from uiautomator2.exceptions import UiObjectNotFoundError
+            with pytest.raises(UiObjectNotFoundError):
+                _d(text='Login').click()
+            assert recorder.current() is None
+        finally:
+            android.end()
+
+    def test_the_timeouts_reach_uiautomator2(self, on_device, monkeypatch):
+        from uiautomator2 import _selector, xpath
+        _seen = []
+        monkeypatch.setattr(_selector.UiObject, 'wait', lambda self, exists=True, timeout=None: _seen.append(
+            ('wait', exists, timeout)) or True)
+        on_device(text='Welcome').must_wait(timeout=7)
+        on_device(text='Welcome').must_wait(exists=False, timeout=3)
+        assert _seen == [('wait', True, 7), ('wait', False, 3)]
+        _cls = getattr(xpath, 'DeviceXPathSelector', None) or xpath.XPathSelector
+        _s = _cls.__new__(_cls)
+        monkeypatch.setattr(_cls, 'wait', lambda self, timeout=None: _seen.append(('xwait', timeout)) or True)
+        monkeypatch.setattr(_cls, 'get_last_match', lambda self: 'el', raising=False)
+        assert _s.get(timeout=4) == 'el' and _seen[-1] == ('xwait', 4)
+
+    def test_an_xpath_without_its_text_is_named_by_itself(self, on_device, monkeypatch):
+        from uiautomator2 import xpath
+        from uiautomator2.exceptions import XPathElementNotFoundError
+        _cls = getattr(xpath, 'DeviceXPathSelector', None) or xpath.XPathSelector
+        _s = _cls.__new__(_cls)
+        _s._base_xpath = ''
+        monkeypatch.setattr(_cls, 'wait', lambda self, timeout=None: False)
+        monkeypatch.setattr(_cls, '__str__', lambda self: '//*[@text="Pay"]', raising=False)
+        with pytest.raises(XPathElementNotFoundError):
+            _s.get(timeout=0.01)
+        _f = recorder.current().locator_failures[-1]
+        assert (_f['selector'], _f['names']) == ('//*[@text="Pay"]', ['Pay'])
+
+    def test_another_apps_crash_before_ours_does_not_hide_it(self):
+        _other = CRASH_LOG.replace('Process: com.example.shop', 'Process: com.other.app')
+        assert [_e['detail'] for _e in android.app_events(_other + CRASH_LOG, PACKAGE)] == [
+            'java.lang.NullPointerException: cart was null']
+
+    def test_more_lines_kept(self):
+        _log = ('a b 4242\n'
+                '11-07 12:00:01.100  1 1 E AndroidRuntime: system_server crashed\n')
+        assert android.relevant(_log, PACKAGE, ['4242']).splitlines() == _log.splitlines()
+
+    def test_the_log_is_read_with_a_time_limit_and_names_the_app(self, on_device, tmp_path, monkeypatch):
+        from ipandora.core.assertion.visual import ARTIFACTS_VAR
+        monkeypatch.setenv(ARTIFACTS_VAR, str(tmp_path))
+        on_device.log = '11-07 12:00:01.100  1 1 I Sys: Start proc com.example.shop\n'
+        _out = android.keep_evidence('t::case')
+        _i = next(_n for _n, _c in enumerate(on_device.calls) if _c[1][0] == 'logcat')
+        assert on_device.timeouts[_i] == 60 and 'Start proc com.example.shop' in _out[-1]['text']
+
+    def test_a_tree_that_cannot_be_read_is_unknown(self, on_device):
+        from uiautomator2.exceptions import UiObjectNotFoundError
+
+        def _broken(*args, **kwargs):
+            raise RuntimeError('uiautomator died')
+        on_device.dump_hierarchy = _broken
+        with pytest.raises(UiObjectNotFoundError):
+            on_device(text='Login').click()
+        assert recorder.current().locator_failures[-1]['verdict'] == 'unknown'

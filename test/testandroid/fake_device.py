@@ -56,6 +56,7 @@ class FakeDevice:
         self.wait_timeout = 0.01
         self.jsonrpc = _Rpc(self)
         self.calls = []
+        self.timeouts = []
         self.shown = {'Welcome'}
         self.log = APP_LOG
         self.hierarchy = HIERARCHY
@@ -69,6 +70,7 @@ class FakeDevice:
 
     def shell(self, args, timeout=60):
         self.calls.append(('shell', tuple(args)))
+        self.timeouts.append(timeout)
         if args[:1] == ['date']:
             return SimpleNamespace(output='1762516800\n', exit_code=0)
         if args[:1] == ['pidof']:
