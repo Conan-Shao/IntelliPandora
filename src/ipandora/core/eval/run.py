@@ -60,10 +60,16 @@ def run_trial(task: Task, index: int, agent: Callable, grade: Callable,
     _start = time.perf_counter()
     try:
         _result_value = _result(agent(task))
+    except TaskError as exc:
+        # standard.converse()/prepare() could not read the task (a plant, a
+        # fixture): the task's fault -- not the infrastructure's, not retried (CR16)
+        return Trial(task_id=task.id, index=index, status=NO_VERDICT, category=TASK,
+                     seconds=round(time.perf_counter() - _start, 3), ended='error',
+                     error=_cut('the task cannot be run: {}'.format(exc)))
     except Exception as exc:  # noqa: BLE001 -- any harness failure is an outcome to report
         return Trial(task_id=task.id, index=index, status=INFRA, category=INFRASTRUCTURE,
                      seconds=round(time.perf_counter() - _start, 3), ended='error',
-                     error='{}: {}'.format(type(exc).__name__, exc))
+                     error=_cut('{}: {}'.format(type(exc).__name__, exc)))
     _seconds = round(time.perf_counter() - _start, 3)
     _out = _result_value.output
     _ended = _out.get('ended') if isinstance(_out, dict) and isinstance(_out.get('ended'), str) \
@@ -85,6 +91,14 @@ def run_trial(task: Task, index: int, agent: Callable, grade: Callable,
     elif not _trial.success:
         _trial.category = TASK if task.id in broken_tasks else AGENT
     return _trial
+
+
+ERROR_LIMIT = 2000
+"""Characters kept of an agent's error: a client that raises with a whole HTML error page, once per retry, filled the report (CR16)."""
+
+
+def _cut(text: str) -> str:
+    return text if len(text) <= ERROR_LIMIT else text[:ERROR_LIMIT] + ' [... {} characters in all]'.format(len(text))
 
 
 def run_with_retries(task: Task, index: int, agent: Callable, grade: Callable, broken_tasks=frozenset(),

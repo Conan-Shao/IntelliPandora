@@ -205,7 +205,11 @@ class Trial:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'Trial':
         _fields = set(cls.__dataclass_fields__)
-        return cls(**{_k: _v for _k, _v in data.items() if _k in _fields})
+        _trial = cls(**{_k: _v for _k, _v in data.items() if _k in _fields})
+        # a run written elsewhere, or by hand, may carry null: attempts counts it (CR16)
+        if not isinstance(_trial.infra_errors, list):
+            _trial.infra_errors = []
+        return _trial
 
 
 @dataclass
