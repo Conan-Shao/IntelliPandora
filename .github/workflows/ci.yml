@@ -86,6 +86,49 @@ jobs:
           IPANDORA_REQUIRE_DOCKER: '1'
         run: pytest test/ -v
 
+  # Android (core/android.py, docs/design/decisions/14 §5): uiautomator2 against
+  # a real emulator, which the hosted Linux runner can run with KVM. The emulator
+  # and its system image come from Google's SDK repository through sdkmanager
+  # (registered in docs/security/components.md). The app driven is the system's
+  # own Settings, so no third-party APK is downloaded. IPANDORA_REQUIRE_EMULATOR
+  # makes the test fail instead of skipping when no device answers.
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements/ci.txt
+
+      - name: Install
+        run: |
+          pip install --require-hashes -r requirements/ci.txt
+          pip install --no-deps --no-build-isolation -e .
+
+      - name: Let the emulator use KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Acceptance on an emulator
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        env:
+          IPANDORA_REQUIRE_EMULATOR: '1'
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: pytest test/testandroid/test_on_emulator.py -v
+
   # LLM support must stay optional. If deleting ai/ breaks the suite, then
   # something in core/ grew a dependency on it.
   # See docs/design/decisions/03-LLM接入边界.md
