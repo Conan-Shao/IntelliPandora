@@ -264,6 +264,9 @@ class Appium:
             _o.udid = self.serial
         _o.app_package, _o.app_activity = self.package, self.activity
         _o.no_reset = True
+        # with noReset, a running app is not started again -- and Settings keeps a process
+        # in the background after force-stop, so the launcher stayed in front (CI)
+        _o.set_capability('appium:forceAppLaunch', True)
         _o.new_command_timeout = 300
         # an emulator in CI installs the server APKs slowly the first time
         _o.uiautomator2_server_install_timeout = 120000
