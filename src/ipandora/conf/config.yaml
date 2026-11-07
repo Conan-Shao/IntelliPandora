@@ -33,6 +33,7 @@ faults:
     context:            # required: the kubectl context of the cluster -- the current context is never used
     namespace: default  # where the Chaos objects are created
     timeout: 60         # seconds to wait for a fault to be in effect, and for its undo
+    max_duration: 600   # seconds a fault lasts at most: Chaos Mesh ends it by itself if the run died
     kubectl: kubectl    # the kubectl to run
 
 # Cross-service traces (core/tracing.py): each request carries a W3C traceparent,

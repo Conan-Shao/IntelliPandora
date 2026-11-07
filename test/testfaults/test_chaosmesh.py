@@ -66,7 +66,7 @@ class TestTheObjects:
                          'labels': {'app.kubernetes.io/managed-by': 'ipandora'}},
             'spec': {'selector': {'namespaces': ['shop'], 'labelSelectors': {'app': 'orders'}}, 'mode': 'all',
                      'action': 'delay', 'direction': 'to',
-                     'delay': {'latency': '800ms', 'jitter': '200ms', 'correlation': '0'}}}
+                     'delay': {'latency': '800ms', 'jitter': '200ms', 'correlation': '0'}, 'duration': '600s'}}
 
     def test_loss_partition_and_pods(self):
         assert chaosmesh.manifest(chaosmesh.loss(ORDERS, 30), 'c')['spec']['loss'] == {'loss': '30',
@@ -209,3 +209,55 @@ def test_the_cluster_pins_are_registered():
     assert _images
     for _image in _images:
         assert '@sha256:' in _image and _image.split('@', 1)[1] in _registry, _image
+
+
+
+class TestCr20:
+    """A cluster is often shared; a run can die. Cleanup must not take a live run's faults; an orphan must end."""
+
+    def _object(self, cluster, name, host, pid):
+        _b = backend(cluster)
+        _f = chaosmesh.delay(ORDERS, 100)
+        _f.name = name
+        _b.apply(_f)
+        _state = cluster.state()
+        _key = next(_k for _k in _state['objects'] if _k.endswith('/' + name))
+        _state['objects'][_key]['metadata']['labels'].update({chaosmesh.HOST_LABEL: host, chaosmesh.PID_LABEL: pid})
+        import pathlib
+        pathlib.Path(os.environ['FAKE_KUBECTL_STATE']).write_text(json.dumps(_state), encoding='utf-8')
+
+    def test_cleanup_leaves_live_runs_and_other_hosts_alone(self, cluster):
+        _me = chaosmesh.owner()
+        _dead = 2 ** 22 + 12345                                   # above any pid_max: nobody
+        self._object(cluster, 'ipandora-1-1', _me[chaosmesh.HOST_LABEL], str(os.getppid()))   # alive: our parent
+        self._object(cluster, 'ipandora-2-1', _me[chaosmesh.HOST_LABEL], str(_dead))          # its run died
+        self._object(cluster, 'ipandora-3-1', _me[chaosmesh.HOST_LABEL], str(os.getpid()))   # ours
+        self._object(cluster, 'ipandora-4-1', 'another-runner', str(_dead))                  # cannot tell: left
+        self._object(cluster, 'ipandora-5-1', _me[chaosmesh.HOST_LABEL], 'not-a-pid')
+        assert faults.clean() == ['chaos/networkchaos/ipandora-2-1', 'chaos/networkchaos/ipandora-3-1']
+        assert sorted(_k.rsplit('/', 1)[1] for _k in cluster.state()['objects']) == [
+            'ipandora-1-1', 'ipandora-4-1', 'ipandora-5-1']
+
+    def test_every_object_says_who_made_it_and_ends_by_itself(self, cluster):
+        with faults.injected(chaosmesh.pod_failure(ORDERS), chaosmesh.loss(ORDERS, 5)):
+            _objects = list(cluster.state()['objects'].values())
+            for _o in _objects:
+                assert _o['metadata']['labels'] == dict(chaosmesh.owner(), **{
+                    'app.kubernetes.io/managed-by': 'ipandora'})
+                assert _o['spec']['duration'] == '600s'
+        _kill = chaosmesh.manifest(chaosmesh.pod_kill(ORDERS), 'c', 30)
+        assert 'duration' not in _kill['spec']                       # once, not for a while
+        assert chaosmesh.manifest(chaosmesh.delay(ORDERS, 1), 'c', 45)['spec']['duration'] == '45s'
+
+    def test_max_duration_is_configured_and_longer_than_the_wait(self):
+        assert chaosmesh.ChaosMesh({'context': 'x', 'max_duration': 120, 'timeout': 30}).max_duration == 120
+        with pytest.raises(ValueError, match='must be longer than its timeout'):
+            chaosmesh.ChaosMesh({'context': 'x', 'max_duration': 30, 'timeout': 60})
+
+    def test_the_owner_is_a_valid_label(self, monkeypatch):
+        import re
+        import socket
+        monkeypatch.setattr(socket, 'gethostname', lambda: 'Runner #7 (eu-west)' + 'x' * 80)
+        _o = chaosmesh.owner()
+        assert re.fullmatch(r'[A-Za-z0-9]([A-Za-z0-9_.-]{0,61}[A-Za-z0-9])?', _o[chaosmesh.HOST_LABEL])
+        assert _o[chaosmesh.PID_LABEL] == str(os.getpid())

@@ -36,20 +36,30 @@ def cluster(monkeypatch, tmp_path):
         'allowed': True, 'backends': ['chaos-mesh'],
         'chaos_mesh': {'context': CONTEXT, 'namespace': 'shop', 'timeout': 120}})
     monkeypatch.setenv('IPANDORA_LOCK_DIR', str(tmp_path / 'locks'))
-    try:
-        _get()
-    except requests.RequestException as exc:
+    if not _until(_answers, 60):
         if REQUIRED:
-            pytest.fail('IPANDORA_REQUIRE_CHAOS_MESH is set and the web service does not answer: {}'.format(exc))
-        pytest.skip('the web service does not answer: {}'.format(exc))
+            pytest.fail('IPANDORA_REQUIRE_CHAOS_MESH is set and the web service does not answer at ' + URL)
+        pytest.skip('the web service does not answer at ' + URL)
     yield
     assert _ours() == [], 'a Chaos object was left on the cluster'
 
 
-def _get(timeout=10):
-    _r = requests.get(URL, timeout=timeout, proxies=NO_PROXY)
-    _r.raise_for_status()
-    return _r
+def _get(timeout=10, resets=0):
+    """
+    One answer; `resets` connection resets tried again (none by default).
+    The resets seen on CI were the pod leaving its Service: under a 1 s delay
+    its readiness probe (1 s timeout) failed -- kind/web.yaml now gives it 5 s.
+    """
+    for _attempt in range(resets + 1):
+        try:
+            _r = requests.get(URL, timeout=timeout, proxies=NO_PROXY)
+            _r.raise_for_status()
+            return _r
+        except requests.ConnectionError as exc:
+            if 'reset' not in str(exc).lower() or _attempt == resets:
+                raise
+            print('connection reset, trying again')
+            time.sleep(0.5)
 
 
 def _seconds(n=5):
@@ -79,7 +89,7 @@ def _until(predicate, seconds):
 
 def _answers():
     try:
-        _get(timeout=2)
+        _get(timeout=2, resets=0)
         return True
     except requests.RequestException:
         return False
@@ -87,9 +97,8 @@ def _answers():
 
 def _settled(seconds=15):
     """
-    Seconds until the service answers again. Right after a network fault is
-    undone, Chaos Mesh tearing its rules down can reset a connection (seen on
-    CI); the guide says so. How long it takes is printed, to keep track of it.
+    Seconds until the service answers again after an undo -- 0 unless the
+    fault took the pod out of its Service. Printed, to keep track of it.
     """
     _start = time.monotonic()
     assert _until(_answers, seconds), 'the service does not answer {}s after the undo'.format(seconds)
