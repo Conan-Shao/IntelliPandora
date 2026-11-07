@@ -74,6 +74,12 @@ class AgentResult:
     A task's reference solution, handed to the grader by selfcheck. A grader
     may replay one written as tool calls; an agent's output is never replayed.
     """
+    setup: Any = None
+    """
+    What the harness planted for this trial (standard.prepare): handed to the
+    grader, never recorded. Its mask() is applied to everything recorded of
+    the trial, so a canary it planted reaches no report.
+    """
 
 
 class TaskError(ValueError):

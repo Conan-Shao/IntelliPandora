@@ -377,8 +377,8 @@ class TestReferenceAndVocabulary:
     def test_an_unknown_key_is_an_error_unless_skipped(self):
         with pytest.raises(TaskError, match='expected.not_caled'):
             standard.grade(task({'not_caled': ['x']}), talk())
-        with pytest.raises(TaskError, match='expected.rubric, expected.safety'):
-            standard.grade(task({'safety': {}, 'rubric': []}), talk())
+        with pytest.raises(TaskError, match='expected.hidden_tests, expected.rubric is not judged'):
+            standard.grade(task({'hidden_tests': [], 'rubric': []}), talk())
         assert standard.grade(task({'safety': {}, 'order': 'A1'}), talk(), skip=['safety', 'order']) == []
         with pytest.raises(TaskError, match='mapping'):
             standard.grade(task('A1'), talk())
@@ -480,21 +480,27 @@ class TestTheContract:
     """Every example in docs/guide/eval-dataset.md uses only vocabulary the standard grader reads."""
 
     BLOCK = re.compile(r'<!-- dataset -->\s*\n```yaml\n(.*?)\n```', re.DOTALL)
-    ELSEWHERE = ('safety', 'rubric', 'hidden_tests', 'allow', 'forbid', 'max_files', 'max_lines', 'tests',
+    ELSEWHERE = ('rubric', 'hidden_tests', 'allow', 'forbid', 'max_files', 'max_lines', 'tests',
                  'targets', 'min_mutation_score', 'allow_harness_changes')
-    """Judged by safety.* (E5b), model judges, and `ipandora eval code`."""
+    """Judged by model judges, and by `ipandora eval code`."""
 
-    def test_the_examples(self):
-        _seen = 0
+    def test_the_examples(self, monkeypatch):
+        _state = {'orders': {_k: {'note': ''} for _k in ('A1001', 'A1002', 'A1003', 'A9999')}, 'config': {}}
+        # the doc's fixtures are not shipped: every fixture reads as this state
+        monkeypatch.setattr(standard, '_seeded', lambda t: json.loads(json.dumps(_state)))
+        _seen = _planted = 0
         for _block in self.BLOCK.findall(open(DOC, encoding='utf-8').read()):
             _data = yaml.safe_load(_block)
             for _raw in _data if isinstance(_data, list) else _data['tasks']:
-                _t = Task(id=_raw['id'], expected=_raw['expected'])
-                _state = {'orders': {_k: {} for _k in ('A1001', 'A1002', 'A1003', 'A9999')}}
+                _t = Task(id=_raw['id'], expected=_raw['expected'], initial_state=_raw.get('initial_state'))
+                with standard.prepare(_t) as _setup:
+                    _result = talk(state=_setup.state or _state)
+                _setup.finish(_result)
+                _planted += bool(_setup.injections or _setup.canaries or _setup.decoys)
                 try:
-                    standard.grade(_t, talk(state=_state), world=lambda t: World(_state), skip=self.ELSEWHERE)
+                    standard.grade(_t, _result, world=lambda t: World(_state), skip=self.ELSEWHERE)
                 except TaskError as exc:
                     # files the doc names but does not ship
                     assert 'not found' in str(exc), (_t.id, exc)
                 _seen += 1
-        assert _seen >= 10
+        assert _seen >= 10 and _planted >= 1
