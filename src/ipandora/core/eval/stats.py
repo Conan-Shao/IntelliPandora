@@ -167,6 +167,29 @@ def task_mean(outcomes: Dict[str, List[float]], resamples: int = 2000, seed: int
             _means[min(resamples - 1, int((1 + level) / 2 * resamples))])
 
 
+def measure_noise(runs: List[Dict[str, List[float]]]) -> Dict[str, object]:
+    """
+    The infrastructure noise, measured: how far apart the success rates of
+    runs of one configuration on the same tasks are. `runs` are each run's
+    outcomes (EvalRun.outcomes()), compared on the tasks every run decided.
+
+    'noise' is the largest gap between two runs -- what to pass as compare()'s
+    `noise` (`--noise`). It holds the trials' own sampling noise as well as
+    the environment's, so it errs towards "indistinguishable". Two runs give
+    one gap, which is itself noisy: three or more say more.
+    """
+    if len(runs) < 2:
+        raise ValueError('measuring noise needs two or more runs of the same configuration')
+    _shared = sorted(set.intersection(*[{_t for _t, _v in _r.items() if _v} for _r in runs]))
+    if not _shared:
+        raise ValueError('the runs have no task that every one of them decided')
+    _rates = [sum(sum(_r[_t]) / len(_r[_t]) for _t in _shared) / len(_shared) for _r in runs]
+    _mean = sum(_rates) / len(_rates)
+    _sd = (sum((_x - _mean) ** 2 for _x in _rates) / (len(_rates) - 1)) ** 0.5
+    return {'runs': len(runs), 'tasks': len(_shared), 'rates': _rates, 'mean': _mean, 'sd': _sd,
+            'noise': max(_rates) - min(_rates)}
+
+
 def pairwise(runs: Dict[str, Dict[str, List[float]]], noise: float = 0.0, resamples: int = 2000,
              seed: int = 0, level: float = 0.95) -> List[Dict[str, object]]:
     """
