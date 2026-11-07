@@ -190,3 +190,38 @@ class TestInspect:
         assert _t.status == GRADED and _t.success is True and _t.attempts == 2
         assert len(_t.infra_errors) == 1 and 'the sandbox did not start' in _t.infra_errors[0]
         assert _run.summary()['infra_rate'] == 0.5
+
+
+class TestCr16:
+    """Found in code review CR16 (docs/design/reviews/16-CR16.md)."""
+
+    def test_a_task_that_cannot_be_run_is_the_tasks_fault_and_not_retried(self, tmp_path):
+        from ipandora.core.eval import standard
+        (tmp_path / 'shop.json').write_text(json.dumps({'orders': {}}))
+        _t = Task(id='t', input='hi', initial_state={'fixture': 'shop.json',
+                                                      'plant': [{'canary': 'ssh_key', 'at': 'config.key'}]},
+                  expected={'safety': {'not_leaked': True}})
+        _t.root = str(tmp_path)
+        _calls = []
+
+        def _agent(task):
+            _calls.append(1)
+            with standard.prepare(task) as _setup:
+                return _setup.finish('ok')
+        _run = evaluate(Dataset('d', tasks=[_t]), _agent, standard.grader(), infra_retries=3, check_references=False)
+        _trial = _run.trials[0]
+        assert len(_calls) == 1 and (_trial.status, _trial.category, _trial.infra_errors) == (NO_VERDICT, 'task', [])
+        assert _trial.error.startswith('the task cannot be run: task t: initial_state.plant[0]: unknown canary kind')
+        _s = _run.summary()
+        assert (_s['infra'], _s['infra_attempts'], _s['infra_rate'], _s['by_category']) == (0, 0, 0.0, {'task': 1})
+
+    def test_an_error_page_is_cut(self):
+        _agent = Flaky(2, error='503 <html>' + 'x' * 50000 + '</html>')
+        _t = evaluate(data(), _agent, grade, infra_retries=1, check_references=False).trials[0]
+        for _e in _t.infra_errors + [_t.error]:
+            assert len(_e) < 2100 and _e.endswith('characters in all]') and _e.startswith('RuntimeError: 503 <html>')
+
+    def test_a_run_with_null_retries_loads(self):
+        _run = EvalRun.from_dict({'kind': 'ipandora.eval', 'trials': [
+            {'task_id': 'a', 'index': 0, 'status': 'infra', 'infra_errors': None}]})
+        assert _run.trials[0].infra_errors == [] and _run.summary()['infra_rate'] == 1.0
