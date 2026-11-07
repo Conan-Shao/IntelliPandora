@@ -296,9 +296,11 @@ def _remove_auth_dir(config):
 
 def _clean_faults(config, when: str) -> None:
     """
-    Remove injected faults left on Toxiproxy: at the start, what a killed run
-    left behind; at the end, anything this run did not undo. Only where
-    injection is allowed, and only in the process that starts the workers.
+    Remove injected faults left on the environment's backends (Toxiproxy by
+    default, `faults.backends`): at the start, what a killed run left behind;
+    at the end, anything this run did not undo. Only where injection is
+    allowed, and only in the process that starts the workers. Each backend on
+    its own: one that cannot be reached does not keep the others dirty.
     """
     # Only the outermost session: a run started inside a case -- run() called
     # from a test -- would otherwise remove the faults that case is injecting
@@ -311,13 +313,20 @@ def _clean_faults(config, when: str) -> None:
     try:
         if not faults.allowed():
             return
-        _removed = faults.clean(faults.Toxiproxy(timeout=2.0))
-    except (faults.ToxiproxyError, OSError, ValueError) as exc:
+        _names = faults.configured()
+    except (OSError, ValueError) as exc:
         logger.info('ipandora: fault cleanup at {} skipped: {}'.format(when, exc))
         return
-    if _removed:
-        logger.warning('ipandora: removed {} injected fault(s) left on Toxiproxy at {}: {}'.format(
-            len(_removed), when, ', '.join(_removed[:5])))
+    for _name in _names:
+        try:
+            _backend = faults.Toxiproxy(timeout=2.0) if _name == 'toxiproxy' else faults.backend(_name)
+            _removed = _backend.clean()
+        except (faults.BackendError, OSError, ValueError) as exc:
+            logger.info('ipandora: fault cleanup on {} at {} skipped: {}'.format(_name, when, exc))
+            continue
+        if _removed:
+            logger.warning('ipandora: removed {} injected fault(s) left on {} at {}: {}'.format(
+                len(_removed), _name, when, ', '.join(_removed[:5])))
 
 
 def pytest_unconfigure(config):
