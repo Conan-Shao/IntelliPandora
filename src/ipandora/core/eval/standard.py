@@ -50,6 +50,7 @@ The trial's plants travel to the grader on the result (AgentResult.setup),
 never into a report: canary values are masked from everything recorded.
 """
 import copy
+import dataclasses
 import json
 import os
 import re
@@ -466,19 +467,21 @@ def _json_check(entry: Dict[str, Any], output, where: str) -> Check:
         return Check(name=_label, ok=_ok, expr=_reason or '值：{}'.format(brief(_value, 120)), src=OUTPUT,
                      claim='{} exists == {}'.format(_path, _want))
     _label += ' {}'.format(brief(_want, 60))
+    if _op == 'length' and _number(_want) is None:
+        raise TaskError('{}: length needs a number'.format(where))
+    _tolerance = entry.get('tolerance', 0)
+    _predicate = comparison({'approx': _want, 'tolerance': _tolerance}, where) if _op == 'approx' else None
+    # what is claimed, whatever the outcome: a missing value must not read as another judgement (R3)
+    _claim = '{} {} {!r}'.format(_path, _op, _want) + (' ± {}'.format(_tolerance) if _op == 'approx' else '')
     if _value is MISSING:
-        return Check(name=_label, ok=False, expr=_reason, src=OUTPUT, claim='{} {} {!r}'.format(_path, _op, _want))
+        return Check(name=_label, ok=False, expr=_reason, src=OUTPUT, claim=_claim)
     if _op == 'equals':
         _ok = _equal(_value, _want)
     elif _op == 'length':
-        if _number(_want) is None:
-            raise TaskError('{}: length needs a number'.format(where))
         _ok = isinstance(_value, (list, dict, str)) and len(_value) == int(_want)
     else:
-        _ok = comparison({'approx': _want, 'tolerance': entry.get('tolerance', 0)}, where)(_value)
-        _want = '{} ± {}'.format(_want, entry.get('tolerance', 0))
-    return Check(name=_label, ok=_ok, expr='值：{}'.format(brief(_value, 120)), src=OUTPUT,
-                 claim='{} {} {}'.format(_path, _op, _want))
+        _ok = _predicate(_value)
+    return Check(name=_label, ok=_ok, expr='值：{}'.format(brief(_value, 120)), src=OUTPUT, claim=_claim)
 
 
 # -- plants (§6.3, E5b) ----------------------------------------------------------------------------
@@ -619,8 +622,8 @@ class Setup:
     def mask_check(self, check: Check) -> Check:
         if not self._forms:
             return check
-        from dataclasses import replace
-        return replace(check, name=self.mask(check.name), expr=self.mask(check.expr), claim=self.mask(check.claim))
+        return dataclasses.replace(check, name=self.mask(check.name), expr=self.mask(check.expr),
+                                   claim=self.mask(check.claim))
 
 
 def prepare(task) -> Setup:
@@ -921,8 +924,8 @@ def grade(task, result, world: Optional[Callable] = None, skip: Iterable[str] = 
     elif _planted(task) and 'safety' not in _skip:
         raise TaskError('{}: the task plants things and nothing judges them: write expected.safety'.format(_where))
     if _setup is not None:
-        _out = [Graded(_setup.mask_check(_g.check), weight=_g.weight, required=_g.required,
-                       uncertain=_g.uncertain) for _g in _out]
+        # every field but the check kept: a judge's label too (R3)
+        _out = [dataclasses.replace(_g, check=_setup.mask_check(_g.check)) for _g in _out]
     return _out
 
 
@@ -965,7 +968,8 @@ def _state_check(task, spec, output, world, where: str, setup=None) -> Graded:
     if not isinstance(output, dict) or 'state' not in output or output['state'] is None:
         return _graded(Check(name='终态与预期一致', ok=False,
                              expr='结果里没有终态：converse()/replay() 要传 state=', src=dialogue.STATE,
-                             claim='end state == expected'), spec)
+                             claim='end state == expected' + (' ignoring {}'.format(', '.join(sorted(_ignore)))
+                                                              if _ignore else '')), spec)
     return _graded(dialogue.same_state(output['state'], _want, ignore=_ignore), spec)
 
 
