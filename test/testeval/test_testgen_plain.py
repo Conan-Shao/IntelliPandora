@@ -128,3 +128,18 @@ class TestTheCommand:
         _line = json.loads(_done.stdout.strip().splitlines()[-1])
         assert _line['f2p'] and _line['rules'] == {'discard_out_of_scope': False, 'weak_rule': False}
         assert _line['checks'][0]['name'] == 'F→P：修复前失败、修复后通过（关掉了：越界丢弃、弱复现规则）'
+
+
+class TestCr18:
+    """Found in code review CR18 (docs/design/reviews/18-CR18.md)."""
+
+    def test_only_files_that_do_not_collect_count_as_failing_before(self, repo):
+        from test.testeval.test_testgen import EXISTING
+        write(repo, 'tests/test_mul.py', IMPORTS_MUL)
+        write(repo, 'tests/test_existing.py', EXISTING + '\n\ndef test_new_passes_anyway():\n    assert parse("4") == 4\n')
+        _r = testgen.grade(str(repo), adds_mul(repo), test_cmd=CMD, max_mutants=0, weak_rule=False)
+        # the agent's test in the file that collects ran before the fix and passed; the unchanged ones are not its own
+        assert _r.before == {'tests/test_existing.py::test_new_passes_anyway': 'passed',
+                             'tests/test_mul.py::test_mul': 'reproduced'}
+        assert _r.tests == ['tests/test_existing.py::test_new_passes_anyway', 'tests/test_mul.py::test_mul']
+        assert _r.f2p and len(_r.after) == 3

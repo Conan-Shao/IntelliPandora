@@ -651,7 +651,8 @@ def grade(workdir: str, fix: str, base: str = 'HEAD', test_cmd: str = DEFAULT_CM
         return _r
     _r.tests, _r.error = _selected(workdir, base, _tests, test_cmd, timeout)
     if _r.error.startswith(COLLECT_ERROR) and not weak_rule:
-        return _uncollected(workdir, _r, _patch, fix, test_cmd, runs, max_mutants, min_score, timeout, _start)
+        return _uncollected(workdir, _r, _patch, fix, base, _tests, test_cmd, runs, max_mutants, min_score, timeout,
+                            _start)
     if _r.error.startswith(COLLECT_ERROR):
         # a test that cannot even be collected is a weak reproduction, not a grading failure
         _r.before = {_f: 'weak' for _f in _r.tests}
@@ -708,35 +709,55 @@ def _with_fix(workdir: str, r: Result, patch: str, test_cmd: str, runs: int, max
     return r
 
 
-def _uncollected(workdir: str, r: Result, patch: str, fix: str, test_cmd: str, runs: int, max_mutants: int,
-                 min_score: float, timeout: float, start: float) -> Result:
+def _uncollected(workdir: str, r: Result, patch: str, fix: str, base: str, test_files: List[str], test_cmd: str,
+                 runs: int, max_mutants: int, min_score: float, timeout: float, start: float) -> Result:
     """
-    Without the weak rule: the agent's files do not collect before the fix --
-    typically a test importing what the fix adds. Each test collected with
-    the fix failed before it (it could not even be collected), as SWT-bench
-    counts it.
+    Without the weak rule: some of the agent's files do not collect before
+    the fix -- typically a test importing what the fix adds. Each test of
+    such a file collected with the fix failed before it (it could not even
+    be collected), as SWT-bench counts a module that does not import. The
+    agent's tests in its other files are chosen and run before the fix as
+    always (CR18: they were all counted as failing, unchanged ones too).
     """
     _files, _why = r.tests, r.error[len(COLLECT_ERROR):]
-    r.error = ''
-    if not _apply(workdir, fix, r):
+    r.error, r.tests = '', []
+    _probe = pytest_run(workdir, _files, test_cmd, collect_only=True, timeout=timeout)
+    _broken = sorted({_row['nodeid'].split('::')[0] for _row in _probe.collect_errors} & set(_files)) or list(_files)
+    _picked, r.error = _selected(workdir, base, [_f for _f in test_files if _f not in _broken], test_cmd, timeout) \
+        if len(_broken) < len(_files) else ([], '')
+    if r.error:
         r.seconds = round(time.monotonic() - start, 3)
         return r
-    _collected = pytest_run(workdir, _files, test_cmd, collect_only=True, timeout=timeout)
-    _ids = [_r['nodeid'] for _r in _collected.rows if _r['when'] == 'collected']
+    if _picked:
+        _pre = pytest_run(workdir, _picked, test_cmd, timeout=timeout)
+        if _pre.timed_out or not _pre.consistent:
+            r.error = 'the tests timed out before the fix' if _pre.timed_out else INCONSISTENT
+            r.seconds = round(time.monotonic() - start, 3)
+            return r
+        for _t in _picked:
+            _row = _pre.outcome(_t)
+            r.before[_t] = classify(_row, workdir, weak_rule=False)
+            r.before_detail[_t] = {_k: _row.get(_k, '') for _k in ('when', 'outcome', 'exc', 'message')}
+    if not _apply(workdir, fix, r):
+        r.tests = _picked + _broken
+        r.seconds = round(time.monotonic() - start, 3)
+        return r
+    _collected = pytest_run(workdir, _broken, test_cmd, collect_only=True, timeout=timeout)
+    _ids = [_x['nodeid'] for _x in _collected.rows if _x['when'] == 'collected']
+    _detail = {'when': 'collect', 'outcome': 'failed', 'exc': 'CollectError', 'message': _why}
     if _collected.timed_out or _collected.collect_errors or not _ids:
         # not even the fix makes them collect: they fail before and after
-        r.before = {_f: 'reproduced' for _f in _files}
-        r.before_detail = {_f: {'when': 'collect', 'outcome': 'failed', 'exc': 'CollectError', 'message': _why}
-                           for _f in _files}
-        r.after = [{_f: 'error' for _f in _files}]
-        r.asserting = {_f: False for _f in _files}
+        r.tests = _picked + _broken
+        r.before.update({_f: 'reproduced' for _f in _broken})
+        r.before_detail.update({_f: dict(_detail) for _f in _broken})
+        r.asserting = dict(asserting(workdir, _picked), **{_f: False for _f in _broken})
+        r.after = [dict({_t: 'not run' for _t in _picked}, **{_f: 'error' for _f in _broken})]
         r.seconds = round(time.monotonic() - start, 3)
         return r
-    r.tests = _ids
-    r.before = {_t: 'reproduced' for _t in _ids}
-    r.before_detail = {_t: {'when': 'collect', 'outcome': 'failed', 'exc': 'CollectError', 'message': _why}
-                       for _t in _ids}
-    r.asserting = asserting(workdir, _ids)
+    r.tests = _picked + _ids
+    r.before.update({_t: 'reproduced' for _t in _ids})
+    r.before_detail.update({_t: dict(_detail) for _t in _ids})
+    r.asserting = asserting(workdir, r.tests)
     return _with_fix(workdir, r, patch, test_cmd, runs, max_mutants, min_score, timeout, start)
 
 
