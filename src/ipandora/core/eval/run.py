@@ -33,7 +33,7 @@ from typing import Any, Callable, Dict, List, Optional
 from ipandora.core.eval import stats
 from ipandora.core.eval.dataset import Dataset, Task
 from ipandora.core.eval.trial import (GRADED, INFRA, NO_VERDICT, AgentResult, Manifest, TaskError, Trial,
-                                      _graded, framework_version)
+                                      _graded, _plain, framework_version)
 
 # failure attribution, decided by rule where a rule can decide (13 §6)
 AGENT, INFRASTRUCTURE, TASK, GRADER = 'agent', 'infra', 'task', 'grader'
@@ -75,12 +75,31 @@ def run_trial(task: Task, index: int, agent: Callable, grade: Callable,
         _trial.status, _trial.category = NO_VERDICT, TASK if isinstance(exc, TaskError) else GRADER
         _trial.error = 'grader raised {}: {}\n{}'.format(
             type(exc).__name__, exc, traceback.format_exc(limit=3))
-        return _trial
+        return _masked(_trial, _result_value)
+    _masked(_trial, _result_value)
     if _trial.success is None:
         _trial.status = NO_VERDICT
     elif not _trial.success:
         _trial.category = TASK if task.id in broken_tasks else AGENT
     return _trial
+
+
+def _masked(trial: Trial, result: AgentResult) -> Trial:
+    """
+    The trial without what its setup planted (standard.prepare): a canary is
+    in the agent's state, maybe in its words or the grader's evidence. Done
+    after grading, which needed the real values -- the judgement is kept, the
+    value is not.
+    """
+    _mask = getattr(getattr(result, 'setup', None), 'mask', None)
+    if _mask is None:
+        return trial
+    trial.output = _mask(_plain(trial.output))
+    trial.trajectory = [_mask(_plain(_e)) for _e in trial.trajectory]
+    trial.checks = [dict(_c, **{_k: _mask(_c[_k]) for _k in ('name', 'expr', 'claim')
+                                if isinstance(_c.get(_k), str)}) for _c in trial.checks]
+    trial.error = _mask(trial.error)
+    return trial
 
 
 BUDGET = 'budget'

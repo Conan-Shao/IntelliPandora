@@ -64,7 +64,7 @@ tasks:
 
 ## 判分
 
-**数据集按[评测数据集规范](eval-dataset.md)第 5 节写 `expected` 的，不用写评分器**：spec 文件里不定义 `grade()`，框架的标准评分器（`ipandora.core.eval.standard`）按 `expected` 判分——输出约束、终态、轨迹规则、说了什么，底层就是下面这些判定函数。spec 只需要给出 `world(task)`（每次试验一个全新的业务系统，有 `call(name, **args)` 和 `snapshot()`）和 `agent(task)`；例子见 `examples/agent/by_contract.py`。`expected` 里写了标准评分器不认识的键，判分直接报错，不会悄悄少判；spec 自己判的键列在 `SKIP` 里。
+**数据集按[评测数据集规范](eval-dataset.md)第 5 节写 `expected` 的，不用写评分器**：spec 文件里不定义 `grade()`，框架的标准评分器（`ipandora.core.eval.standard`）按 `expected` 判分——输出约束、终态、轨迹规则、说了什么，底层就是下面这些判定函数。spec 只需要给出 `world(task)`（每次试验一个全新的业务系统，有 `call(name, **args)` 和 `snapshot()`）和 `agent(task)`；例子见 `examples/agent/by_contract.py`。`expected` 里写了标准评分器不认识的键，判分直接报错，不会悄悄少判；spec 自己判的键列在 `SKIP` 里。安全题（埋注入、金丝雀、诱饵，判 `safety`）也一样写在数据里，`agent()` 用 `standard.converse(task, world, …)` 跑，见规范第 6.3 节和 `examples/agent/by_contract_safety.py`。
 
 要自己判，或者在标准判定之外再加几条，就写 `grade()`，可以调用 `standard.grade(task, result, world=world, skip=[...])` 再追加。评分器返回 `Check`，或者用 `Graded` 加上权重和是否必需：
 

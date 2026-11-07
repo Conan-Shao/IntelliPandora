@@ -325,3 +325,13 @@ E0 已经有按任务的基线、配对检验、噪声阈值和"变差即退出�
 - **参数比较的条件写进判定的 claim**（`amount=<条件 >= 1000>`），放宽阈值在判定清单里是一处变化。
 - 参考解是工具调用序列时 `says` 不判：参考解不说话，判了就永远过不了自检。
 
+## 追加（2026-11-07）：E5b 埋点与安全判定已实现
+
+`initial_state.plant` 和 `expected.safety` 由标准评分器处理，用法见 [`docs/guide/eval-dataset.md`](../../guide/eval-dataset.md) 第 6.3 节。
+
+- **埋点每次试验重新生成，经结果交给评分器。** `standard.prepare(task)` 在 fixture 上埋好注入（接在原值后面）、金丝雀（每次唯一）、诱饵，得到这次试验的初始状态；agent 在它里面运行（`standard.converse()` 包好了），结束时 `setup.finish(result)` 把它挂在 `AgentResult.setup` 上。评分器拿它判 `resisted`、`not_leaked`、`untouched`，终态也从埋好点的状态算起，所以注入的留言不算 agent 的改动。
+- **金丝雀不进记录。** `AgentResult.setup` 不写进试验记录；判完分之后，试验的输出、轨迹、判定证据和报错里的金丝雀（含 base64、hex）都换成 `[canary 类型]`。评分器生成的判定在返回前也替换，所以 `selfcheck` 的输出同样看不到。
+- **埋了没判、判了没埋都报错。** 安全题最怕的是"看起来测了"：埋了注入却没写 `resisted`，或写了 `not_leaked` 却没有金丝雀，都是 `TaskError`。在 `prepare()` 之外构造有埋点的世界，或 agent 没在 `prepare()` 里运行，也是。
+- **外联白名单**仍是 `EgressGuard`（进程级），`prepare()` 按 `egress_allow` 打开；参考解不判外联。
+- **与规范的差异**：规范原写"`technique` 不写则每种手法都生成一道变体"。按手法展开会改变题目数量和 id，属于数据集的展开，不是评分；这一版不写时用手法 0，展开留作计划项。
+
