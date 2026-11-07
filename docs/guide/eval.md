@@ -113,6 +113,8 @@ ipandora eval run evals/coding.py -k 5 --split test --workers 8
 ipandora eval run evals/coding.py -k 5 --split test --update-baseline     # 写入 conf/eval_baseline.json
 ```
 
+**只重试基础设施**：`--infra-retries N`（`evaluate(infra_retries=N)`）让 agent 抛异常的试验——容器没起来、API 5xx、限流——最多再试 N 次，`--retry-wait 秒` 是第一次重试前等多久，之后每次翻倍。agent 给出了答案的试验，不论对错都不重试：一直重试到通过，量出来的是运气。每次重试掉的错误留在试验的 `infra_errors` 里，`summary()` 给出 `attempts`（全部尝试，含重试）、`infra_attempts`、**基础设施错误率** `infra_rate` 和 `retried`（重试过的试验数），报告和命令行输出写明这个比例。重试成功会把出错藏起来，所以这个比例要按全部尝试算。Inspect 路径用 Inspect 自己的 `--retry-on-error`，日志里的 `error_retries` 照样读进 `infra_errors`。
+
 退出码就是结论：门禁不通过时为 1，其他为 0；数据集、spec 或显式给出的 `--baseline` 读不了时为 2。门禁拦什么由 `--fail-on-regression` 决定，后一级包含前一级：
 
 | 取值 | 拦下 |
@@ -347,6 +349,7 @@ ipandora eval f2p-selfcheck /work --task tasks/calc-12     # 有一项判错就�
 
 **每次运行一行 JSON**：`ipandora eval records report.json [-o results.jsonl] [--tasks tasks/]`。每行包括题目、配置（版本清单里的 harness）、第几次、结论、每条判定、token（缓存命中的读写单独列出，来自 Inspect 日志）、费用、耗时、轮数、工具调用数、`ended`（`completed` / `error` / `limit:<类型>`），以及：
 
+- `infra_retries`、`infra_errors`：这次试验因基础设施出错重试了几次、每次的错误。
 - `over_budget`：费用超过题目的 `budget.max_usd`，或用时超过 `max_minutes`；只是标记，不改变结论。
 - `reason`（测试生成任务，没通过时）按规则取第一个成立的：`environment`（基础设施出错、判分没完成）→ `timeout_or_budget` → `no_tests` → `modified_source` → `weak_reproduction` → `flaky` → `not_reproduced`。
 - `flags`：不影响 F→P、但要报告的：`out_of_scope`、`zero_assertion`、`weak_assertions`（变异分数低于阈值）、`timeout_or_budget`。

@@ -11,7 +11,8 @@ number in a report can be regenerated from them by a script (E9).
 
 Each line: the task, the configuration (the manifest's harness), which
 attempt, the verdict and every check, tokens (cache hits apart), cost, time,
-turns, tool calls, how the run ended -- and for test-generation tasks, the
+turns, tool calls, how the run ended, how often its infrastructure failed and
+was retried (infra_retries, infra_errors) -- and for test-generation tasks, the
 reason a run failed and what was flagged (testgen.failure_reason / flags).
 `over_budget` compares the cost with the task's budget.max_usd: a flag, never
 a failure -- the run is judged as it ran.
@@ -42,6 +43,7 @@ def records(run: EvalRun, budgets: Optional[Dict[str, Dict[str, float]]] = None)
                 'attempt': _t.index + 1, 'run_id': run.run_id, 'success': _t.success, 'status': _t.status,
                 'category': _t.category, 'ended': _t.ended or ('error' if _t.status == 'infra' else 'completed'),
                 'seconds': _t.seconds, 'over_budget': _over, 'error': _t.error,
+                'infra_retries': len(_t.infra_errors), 'infra_errors': list(_t.infra_errors),
                 'checks': [{'claim': _c.get('claim') or _c.get('name'), 'ok': _c.get('ok'),
                             'required': _c.get('required', True), 'expr': _c.get('expr', '')}
                            for _c in _t.checks]}

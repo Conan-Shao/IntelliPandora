@@ -60,7 +60,10 @@ class Command(CommandBase):
         from ipandora.core.eval import evaluate, spec
         _spec = spec.load(options.spec)
         _run = evaluate(_spec.dataset, _spec.agent, _spec.grade, trials=options.trials,
-                        split=options.split, workers=options.workers, manifest=_spec.manifest)
+                        split=options.split, workers=options.workers, manifest=_spec.manifest,
+                        # options built by hand (a caller of handle()) may predate them
+                        infra_retries=getattr(options, 'infra_retries', 0),
+                        retry_wait=getattr(options, 'retry_wait', 0.0))
         return Command._conclude(_run, options)
 
     @staticmethod
@@ -139,6 +142,9 @@ class Command(CommandBase):
                 report._pct(_s['success_rate']), report._pct(_s['interval'][0]),
                 report._pct(_s['interval'][1]), _s['k'], report._pct(_s['pass_hat_k']),
                 _s['trials'], _s['infra']))
+        if _s.get('infra_attempts'):
+            print('  基础设施错误率 {}（{} 次尝试里 {} 次；{} 次试验重试过）'.format(
+                report._pct(_s['infra_rate']), _s['attempts'], _s['infra_attempts'], _s['retried']))
         for _kind, _text in SELFCHECK_KINDS:
             _ids = [_p['task_id'] for _p in _run.selfcheck if _p.get('kind') == _kind]
             if _ids:
@@ -320,6 +326,12 @@ class Command(CommandBase):
         _run.add_argument('--split', choices=['dev', 'test'], default=None,
                           help='run one split only. Tune on dev; conclude on test')
         _run.add_argument('-w', '--workers', type=int, default=1, help='trials run at once (threads)')
+        _run.add_argument('--infra-retries', type=int, default=0, metavar='N',
+                          help='try a trial again, at most N times, while its infrastructure fails (the agent '
+                               'raised: a container, an API 5xx, a rate limit). Answers are never retried; '
+                               'every attempt counts in the infrastructure error rate')
+        _run.add_argument('--retry-wait', type=float, default=0.0, metavar='SECONDS',
+                          help='seconds before the first retry, doubling after each')
         _common(_run)
 
         _inspect = _sub.add_parser('inspect', help='read Inspect logs as an evaluation run: report, '

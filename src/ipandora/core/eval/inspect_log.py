@@ -214,6 +214,9 @@ def _trial(task_id: str, sample, convert, threshold, judges) -> Trial:
                    seconds=round(float(getattr(sample, 'total_time', None) or 0.0), 3))
     _error = getattr(sample, 'error', None)
     _limit = getattr(sample, 'limit', None)
+    # Inspect's --retry-on-error: what failed before the attempt that was kept
+    _trial.infra_errors = [_short(getattr(_e, 'message', None) or str(_e))
+                           for _e in getattr(sample, 'error_retries', None) or []]
     _trial.ended = 'error' if _error is not None else (
         'limit:{}'.format(getattr(_limit, 'type', '') or 'limit') if _limit is not None else 'completed')
     if _error is not None:
