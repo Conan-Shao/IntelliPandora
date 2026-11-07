@@ -43,6 +43,9 @@ Fault injection (core/faults.py). Off unless an environment turns it on in its c
 | `faults.chaos_mesh.timeout` | `60` | seconds to wait for a fault to be in effect, and for its undo |
 | `faults.chaos_mesh.max_duration` | `600` | seconds a fault lasts at most: Chaos Mesh ends it by itself if the run died |
 | `faults.chaos_mesh.kubectl` | `kubectl` | the kubectl to run |
+| `faults.netem.image` | `null` | an image with tc (iproute2); default the admitted chaos-daemon image, by digest |
+| `faults.netem.docker` | `docker` | the docker to run |
+| `faults.netem.timeout` | `120` | seconds for each helper container |
 
 ## `tracing`
 

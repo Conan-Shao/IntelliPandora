@@ -35,6 +35,10 @@ faults:
     timeout: 60         # seconds to wait for a fault to be in effect, and for its undo
     max_duration: 600   # seconds a fault lasts at most: Chaos Mesh ends it by itself if the run died
     kubectl: kubectl    # the kubectl to run
+  netem:                # the netem backend (core/netem.py): tc in a Docker container's network namespace
+    image:              # an image with tc (iproute2); default the admitted chaos-daemon image, by digest
+    docker: docker      # the docker to run
+    timeout: 120        # seconds for each helper container
 
 # Cross-service traces (core/tracing.py): each request carries a W3C traceparent,
 # one trace per case, so the services' spans line up under the case.
