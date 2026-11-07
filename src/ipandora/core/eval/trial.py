@@ -51,6 +51,8 @@ class Graded:
     weight: float = 1.0
     required: bool = True
     uncertain: bool = False
+    label: str = ''
+    """A judge's category for this judgement ('是' / '部分' / '否', pass / fail): what people label too."""
 
 
 def _graded(item) -> Graded:
@@ -130,9 +132,12 @@ class Trial:
     @staticmethod
     def check_dict(graded: Graded) -> Dict[str, Any]:
         _c = graded.check
-        return {'name': _c.name, 'ok': _c.ok, 'expr': _c.expr, 'src': _c.src, 'kind': _c.kind,
+        _out = {'name': _c.name, 'ok': _c.ok, 'expr': _c.expr, 'src': _c.src, 'kind': _c.kind,
                 'claim': _c.claim, 'weight': graded.weight, 'required': graded.required,
                 'uncertain': graded.uncertain}
+        if graded.label:
+            _out['label'] = graded.label
+        return _out
 
     def _counted(self) -> List[Dict[str, Any]]:
         """The checks that decide success and score: deterministic, decided, not gaps."""

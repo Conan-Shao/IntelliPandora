@@ -22,7 +22,8 @@ the tasks are data (docs/design/decisions/13 §4).
 A spec without grade() is judged by the standard grader: the `expected`
 vocabulary of docs/guide/eval-dataset.md §5, with the spec's `world(task)`
 -- a fresh business system -- for end states and reference replays, and
-`SKIP`, the `expected` keys a spec judges some other way.
+`SKIP`, the `expected` keys a spec judges some other way, and `JUDGE`, a
+model judge for `rubric` (shown, never counted).
 """
 import importlib.util
 import os
@@ -82,7 +83,10 @@ def load(path: str) -> Spec:
         _skip = getattr(_module, 'SKIP', ())
         if isinstance(_skip, str) or not all(isinstance(_k, str) for _k in _skip):
             raise ValueError("{}: SKIP is a list of expected keys, e.g. ['rubric']".format(path))
-        _module.grade = standard.grader(_world, skip=_skip)
+        _judge = getattr(_module, 'JUDGE', None)
+        if _judge is not None and not callable(getattr(_judge, 'rubric', None)):
+            raise ValueError('{}: JUDGE must be a model judge (ipandora.ai.judge.Judge)'.format(path))
+        _module.grade = standard.grader(_world, skip=_skip, judge=_judge)
     _data = _module.DATASET
     if isinstance(_data, str):
         _data = datasets.load(_data if os.path.isabs(_data) else os.path.join(_dir, _data))

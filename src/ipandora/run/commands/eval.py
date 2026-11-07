@@ -294,7 +294,8 @@ class Command(CommandBase):
     @staticmethod
     def _agreement(options) -> int:
         from ipandora.core.eval import annotate
-        _r = annotate.agreement(annotate.read(options.labels), a=options.a, b=options.b)
+        _r = annotate.agreement(annotate.read(options.labels), a=options.a, b=options.b,
+                                categorical=getattr(options, 'categorical', False))
         if not _r['n']:
             print('  没有双方都给出结论的行（{} 行有一方未定）'.format(_r['undecided']))
             return 1
@@ -408,6 +409,8 @@ class Command(CommandBase):
         _agree.add_argument('labels', help='the labelled JSONL')
         _agree.add_argument('--a', default='judge', help='first rater column')
         _agree.add_argument('--b', default='human', help='second rater column')
+        _agree.add_argument('--categorical', action='store_true',
+                            help='compare categories (a three-level judge: --a judge_label), not yes/no')
 
 
 def _common(parser):

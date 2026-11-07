@@ -36,6 +36,7 @@ agreement and Cohen kappa between two raters
 | `labels` |  | the labelled JSONL |
 | `--a` `A` | `judge` | first rater column |
 | `--b` `B` | `human` | second rater column |
+| `--categorical` |  | compare categories (a three-level judge: --a judge_label), not yes/no |
 
 ### `ipandora eval code`
 

@@ -67,7 +67,9 @@ STATE_KEYS = ('state',)
 TRAJECTORY_KEYS = ('called', 'not_called', 'called_at_most', 'no_loops', 'finished')
 SAYS_KEYS = ('says', 'never_says')
 SAFETY_KEYS = ('safety',)
-KNOWN = OUTPUT_KEYS + STATE_KEYS + TRAJECTORY_KEYS + SAYS_KEYS + SAFETY_KEYS
+JUDGED_KEYS = ('rubric',)
+"""Judged by a model judge the spec gives (JUDGE); shown, never counted."""
+KNOWN = OUTPUT_KEYS + STATE_KEYS + TRAJECTORY_KEYS + SAYS_KEYS + SAFETY_KEYS + JUDGED_KEYS
 """The `expected` keys this grader judges."""
 
 MULTI_TURN = STATE_KEYS + TRAJECTORY_KEYS + SAYS_KEYS + SAFETY_KEYS
@@ -814,7 +816,8 @@ def _world_state(world, task):
     return copy.deepcopy(_w.snapshot())
 
 
-def grade(task, result, world: Optional[Callable] = None, skip: Iterable[str] = ()) -> List[Graded]:
+def grade(task, result, world: Optional[Callable] = None, skip: Iterable[str] = (),
+          judge: Any = None) -> List[Graded]:
     """
     Judge `result` by `task.expected` (docs/guide/eval-dataset.md §5).
 
@@ -823,6 +826,9 @@ def grade(task, result, world: Optional[Callable] = None, skip: Iterable[str] = 
                   initial_state.fixture) and to replay a reference written
                   as tool calls.
     :param skip:  `expected` keys the spec judges itself.
+    :param judge: a model judge (ipandora.ai.judge.Judge) for `rubric`: its
+                  verdicts are shown, never counted. Without one, a task
+                  with a rubric is an error unless `rubric` is skipped.
     :raises TaskError: on anything in the task it cannot read -- attributed
                   to the task, and reported by `ipandora eval selfcheck`.
     """
@@ -905,6 +911,8 @@ def grade(task, result, world: Optional[Callable] = None, skip: Iterable[str] = 
                                 if 'never_says' in _keys else ()):
         _p, _what, _raw = _pattern_entry(_entry, '{}.never_says[{}]'.format(_where, _i))
         _out.append(_graded(dialogue.never_says(result, _p, _what), _raw))
+    if 'rubric' in _keys and not _replayed:
+        _out += _rubric_checks(task, _expected['rubric'], _output, judge, _where + '.rubric')
     if 'safety' in _keys:
         _out += _safety_checks(task, _expected['safety'], result, _output, _setup, _replayed, _where + '.safety')
     elif _planted(task) and 'safety' not in _skip:
@@ -912,6 +920,23 @@ def grade(task, result, world: Optional[Callable] = None, skip: Iterable[str] = 
     if _setup is not None:
         _out = [Graded(_setup.mask_check(_g.check), weight=_g.weight, required=_g.required,
                        uncertain=_g.uncertain) for _g in _out]
+    return _out
+
+
+def _rubric_checks(task, rubric, output, judge, where: str) -> List[Graded]:
+    if judge is None:
+        raise TaskError('{}: a rubric needs a model judge: give the spec JUDGE = Judge(...) '
+                        '(ipandora.ai.judge), or name rubric in SKIP'.format(where))
+    if not isinstance(rubric, list) or not rubric:
+        raise TaskError('{} is a non-empty list of dimensions'.format(where))
+    _question = task.input if isinstance(task.input, str) else json.dumps(task.input, ensure_ascii=False,
+                                                                        sort_keys=True, default=str)
+    _out = []
+    for _i, _dim in enumerate(rubric):
+        try:
+            _out.append(judge.rubric(_dim, question=_question, answer=output_text(output)))
+        except ValueError as exc:
+            raise TaskError('{}[{}]: {}'.format(where, _i, exc))
     return _out
 
 
@@ -941,12 +966,12 @@ def _state_check(task, spec, output, world, where: str, setup=None) -> Graded:
     return _graded(dialogue.same_state(output['state'], _want, ignore=_ignore), spec)
 
 
-def grader(world: Optional[Callable] = None, skip: Iterable[str] = ()) -> Callable:
-    """`grade(task, result)` for a spec: the standard grader with this world."""
+def grader(world: Optional[Callable] = None, skip: Iterable[str] = (), judge: Any = None) -> Callable:
+    """`grade(task, result)` for a spec: the standard grader with this world (and judge)."""
     _skip = tuple(skip)
 
     def _grade(task, result):
-        return grade(task, result, world=world, skip=_skip)
+        return grade(task, result, world=world, skip=_skip, judge=judge)
     _grade.standard = True
     return _grade
 
