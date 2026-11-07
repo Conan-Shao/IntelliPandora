@@ -175,6 +175,17 @@ grade every reference solution; exit 1 if any fails
 | `spec` |  |  |
 | `--split` `SPLIT` |  |  |
 
+### `ipandora eval table`
+
+the main, green-washing, cost and failure-reason tables, and every pairwise comparison, from the records of `eval records` alone
+
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `records` |  | JSONL files written by `ipandora eval records` |
+| `--k` `K` |  | k for pass@k and pass^k. Default: the fewest runs of any task of a configuration |
+| `--json` |  | the numbers as JSON, not markdown |
+| `-o`, `--out` `OUT` |  | file to write; default stdout |
+
 ### `ipandora eval to-inspect`
 
 a dataset as Inspect samples (JSONL for json_dataset())
