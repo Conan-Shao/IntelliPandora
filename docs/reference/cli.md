@@ -57,6 +57,15 @@ grade a coding agent's work directory: change scope, its tests, weakened judgeme
 | `--allow-harness-changes` |  | do not fail when conftest.py, pytest.ini, pyproject.toml ... changed (checked by default with --base: code there runs inside the test run) |
 | `--json` |  | print the checks as JSON, for coding.from_json() |
 
+### `ipandora eval compare`
+
+compare configurations run on the same tasks, every pair: paired difference and interval; exit 1 if not comparable
+
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `runs` |  | report.json of each run (two or more) |
+| `--name` `NAME` |  | a name per run, in order (default: its harness) |
+
 ### `ipandora eval inspect`
 
 read Inspect logs as an evaluation run: report, baseline, gate (needs the inspect extra)

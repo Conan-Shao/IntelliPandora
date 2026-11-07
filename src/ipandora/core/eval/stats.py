@@ -142,6 +142,48 @@ def hierarchical_bootstrap(base: Dict[str, List[float]], now: Dict[str, List[flo
             _means[min(resamples - 1, int((1 + level) / 2 * resamples))])
 
 
+def task_mean(outcomes: Dict[str, List[float]], resamples: int = 2000, seed: int = 0,
+              level: float = 0.95) -> Tuple[Optional[float], Optional[float], Optional[float]]:
+    """
+    The mean over tasks of each task's success rate, and its interval.
+
+    Every task counts once, however many of its trials were decided. The
+    interval resamples tasks, and the trials within each task: the trials of
+    one task are not independent of each other -- an agent that cannot do a
+    task fails it five times -- so a Wilson interval over all trials pooled
+    is too narrow, by as much as the trials per task (a task-level question
+    with 30 tasks has 30 observations, not 150).
+    """
+    _tasks = [_t for _t, _v in sorted(outcomes.items()) if _v]
+    if not _tasks:
+        return None, None, None
+    _mean = sum(sum(outcomes[_t]) / len(outcomes[_t]) for _t in _tasks) / len(_tasks)
+    # bandit B311: resampling for a confidence interval, not secrecy
+    _rng = random.Random(seed)  # nosec B311
+    _draw = [_sampler(outcomes[_t]) for _t in _tasks]
+    _means = sorted(sum(_d(_rng) for _d in _rng.choices(_draw, k=len(_draw))) / len(_draw)
+                    for _ in range(resamples))
+    return (_mean, _means[int((1 - level) / 2 * resamples)],
+            _means[min(resamples - 1, int((1 + level) / 2 * resamples))])
+
+
+def pairwise(runs: Dict[str, Dict[str, List[float]]], noise: float = 0.0, resamples: int = 2000,
+             seed: int = 0, level: float = 0.95) -> List[Dict[str, object]]:
+    """
+    Every pair of configurations, compared on the tasks both ran: the paired
+    difference in success rate (b - a), its interval, and a verdict. An
+    interval that spans zero is INDISTINGUISHABLE -- "no reliable difference",
+    not a ranking. With m configurations there are m(m-1)/2 comparisons, so
+    the level is Bonferroni-corrected: at 95% and 6 pairs each is made at
+    99.17%, or one pair in fourteen is called different by chance alone.
+    """
+    _names = list(runs)
+    _pairs = [(_a, _b) for _i, _a in enumerate(_names) for _b in _names[_i + 1:]]
+    _level = 1 - (1 - level) / max(1, len(_pairs))
+    return [dict(compare(runs[_a], runs[_b], noise=noise, resamples=resamples, seed=seed, level=_level),
+                 a=_a, b=_b) for _a, _b in _pairs]
+
+
 def compare(base: Dict[str, List[float]], now: Dict[str, List[float]], noise: float = 0.0,
             resamples: int = 2000, seed: int = 0, level: float = 0.95) -> Dict[str, object]:
     """

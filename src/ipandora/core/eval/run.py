@@ -216,8 +216,10 @@ class EvalRun:
         _trials = [_t for _t in self.trials if task_ids is None or _t.task_id in task_ids]
         _decided = [_t for _t in _trials if _t.success is not None]
         _ok = sum(1 for _t in _decided if _t.success)
-        _lo, _hi = stats.wilson(_ok, len(_decided))
         _by_task = self.outcomes(task_ids)
+        # the rate is the mean of each task's rate, its interval resamples
+        # tasks: trials of one task are not independent (stats.task_mean)
+        _rate, _lo, _hi = stats.task_mean(_by_task)
         _k = self.manifest.trials or 1
         _pass_at = [stats.pass_at_k(len(_v), int(sum(_v)), _k) for _v in _by_task.values()]
         _pass_hat = [stats.pass_hat_k(len(_v), int(sum(_v)), _k) for _v in _by_task.values()]
@@ -238,8 +240,10 @@ class EvalRun:
         _judge = [_c for _t in _trials for _c in _t.judge_checks]
         return {
             'trials': len(_trials), 'decided': len(_decided), 'successes': _ok,
-            'success_rate': (_ok / len(_decided)) if _decided else None,
-            'interval': [_lo, _hi] if _decided else None,
+            'success_rate': _rate,
+            'interval': [_lo, _hi] if _rate is not None else None,
+            'pooled_rate': (_ok / len(_decided)) if _decided else None,
+            'wilson': list(stats.wilson(_ok, len(_decided))) if _decided else None,
             'k': _k,
             'pass_at_k': _mean(_pass_at), 'pass_hat_k': _mean(_pass_hat),
             'tasks_all_k': sum(1 for _v in _by_task.values() if len(_v) >= _k and all(_v)),
