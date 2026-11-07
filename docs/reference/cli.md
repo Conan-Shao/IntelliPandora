@@ -66,6 +66,22 @@ compare configurations run on the same tasks, every pair: paired difference and 
 | `runs` |  | report.json of each run (two or more) |
 | `--name` `NAME` |  | a name per run, in order (default: its harness) |
 
+### `ipandora eval f2p`
+
+judge an agent's reproduction tests by fail-to-pass, in place: exit 0 when F→P holds (give it a disposable copy of the workspace)
+
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `workdir` |  | the agent's workspace: a git repository at the base commit |
+| `--fix` `FIX` |  | the official fix, a unified diff |
+| `--task` `TASK` |  | a task directory (task.yaml): its fix.patch and test_cmd |
+| `--base` `BASE` | `HEAD` | the commit the agent started from |
+| `--test-cmd` `TEST_CMD` |  | how to run tests, with {test_files}; default: python -m pytest -q {test_files} |
+| `--runs` `RUNS` | `3` | runs with the fix; a test failing in any is flaky |
+| `--max-mutants` `MAX_MUTANTS` | `20` | mutants of the functions the fix touched, when F→P holds (0: none) |
+| `--timeout` `TIMEOUT` | `600` | seconds per pytest run |
+| `--json` |  | print the record and the checks as one JSON line |
+
 ### `ipandora eval inspect`
 
 read Inspect logs as an evaluation run: report, baseline, gate (needs the inspect extra)
