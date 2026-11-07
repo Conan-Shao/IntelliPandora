@@ -62,12 +62,15 @@ def run_trial(task: Task, index: int, agent: Callable, grade: Callable,
         _result_value = _result(agent(task))
     except Exception as exc:  # noqa: BLE001 -- any harness failure is an outcome to report
         return Trial(task_id=task.id, index=index, status=INFRA, category=INFRASTRUCTURE,
-                     seconds=round(time.perf_counter() - _start, 3),
+                     seconds=round(time.perf_counter() - _start, 3), ended='error',
                      error='{}: {}'.format(type(exc).__name__, exc))
     _seconds = round(time.perf_counter() - _start, 3)
+    _out = _result_value.output
+    _ended = _out.get('ended') if isinstance(_out, dict) and isinstance(_out.get('ended'), str) \
+        and 'reply' in _out else 'completed'
     _trial = Trial(task_id=task.id, index=index, output=_result_value.output,
                    trajectory=list(_result_value.trajectory or []),
-                   cost=dict(_result_value.cost or {}), seconds=_seconds)
+                   cost=dict(_result_value.cost or {}), seconds=_seconds, ended=_ended)
     try:
         _trial.checks = grade_one(task, _result_value, grade) + _budget_checks(task, _trial)
     except Exception as exc:  # noqa: BLE001 -- the grader is under test too

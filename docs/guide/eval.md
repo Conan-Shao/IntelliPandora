@@ -329,6 +329,28 @@ budget: {max_usd: 0.5, max_minutes: 20}
 - `fix.patch` 和参考解的内容都算进数据集哈希。
 - `budget` 放在 `meta` 里，不作为失败条件：按计划，超时由运行侧强制，费用超了只标记，不判失败。
 
+**自检判分器**（在基线提交的工作区里，每一项之前都恢复到基线，结束时也恢复）：
+
+```shell
+ipandora eval f2p-selfcheck /work --task tasks/calc-12     # 有一项判错就退出码为 1
+```
+
+| 情况 | 应判为 |
+|---|---|
+| oracle：打上 `reference_test.patch`，判 3 次（`--oracle-runs`） | 每次都 F→P，且不是弱复现；3 次结论不一致也算不过 |
+| noop：什么都不改 | 不是 F→P |
+| 只改源码：把 fix.patch 当成 agent 的改动，不写测试 | 不是 F→P，记越界 |
+| 零断言：一个什么都不做的测试 | 不是 F→P，记零断言 |
+| 只是 import 失败 | 弱复现 |
+
+**每次运行一行 JSON**：`ipandora eval records report.json [-o results.jsonl] [--tasks tasks/]`。每行包括题目、配置（版本清单里的 harness）、第几次、结论、每条判定、token（缓存命中的读写单独列出，来自 Inspect 日志）、费用、耗时、轮数、工具调用数、`ended`（`completed` / `error` / `limit:<类型>`），以及：
+
+- `over_budget`：费用超过题目的 `budget.max_usd`，或用时超过 `max_minutes`；只是标记，不改变结论。
+- `reason`（测试生成任务，没通过时）按规则取第一个成立的：`environment`（基础设施出错、判分没完成）→ `timeout_or_budget` → `no_tests` → `modified_source` → `weak_reproduction` → `flaky` → `not_reproduced`。
+- `flags`：不影响 F→P、但要报告的：`out_of_scope`、`zero_assertion`、`weak_assertions`（变异分数低于阈值）、`timeout_or_budget`。
+
+在 Inspect 的 scorer 里跑 `ipandora eval f2p … --json`，再用 `testgen.from_json(stdout)` 还原成判定；`Result.graded()` 只把 F→P 作为必需判定，其余是并列报告。
+
 ## 人工标注
 
 ```shell

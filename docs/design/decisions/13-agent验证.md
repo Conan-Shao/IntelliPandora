@@ -353,3 +353,9 @@ E0 已经有按任务的基线、配对检验、噪声阈值和"变差即退出�
 - **预算**：`max_usd` 超了只标记（之后的运行记录里），`max_minutes` 由运行侧的超时强制；不作为 F→P 的条件。
 - **还没做的**（E9）：selfcheck 的 oracle 跑 3 次一致、noop 必须全挂、手工坏答案判对；每次运行一行 JSON 的其余字段（缓存命中的 token、退出原因、over_budget）；按规则细分失败原因。
 
+## 追加（2026-11-07）：E9 判分器自检、运行记录、失败归因
+
+- `ipandora eval f2p-selfcheck`：在已知结论的答案上检验判分器（oracle 3 次、noop、只改源码、零断言、只是 import 失败），对应使用方计划的 2.4 / 4.2。
+- 试验多了 `ended`（怎么结束的），Inspect 日志里缓存命中的 token 单独记下。`ipandora eval records` 每次运行写一行 JSON，`over_budget` 只标记。
+- 失败归因按规则（`testgen.failure_reason`）：环境、超时或超预算、没写测试、改了源码、弱复现、不稳定、没复现；零断言、断言太弱、越界作为标记单列，不改变 F→P。规则的顺序就是优先级，测试逐条固定。
+

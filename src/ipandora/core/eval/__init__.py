@@ -21,11 +21,12 @@ judges are shown but take no part in a verdict until calibrated against
 people (annotate.agreement). Comparing with the committed baseline is paired
 and noise-aware (stats.compare). Nothing here calls a model.
 """
-from ipandora.core.eval import annotate, baseline, coding, dataset, dialogue, report, safety, standard, stats
+from ipandora.core.eval import annotate, baseline, coding, dataset, dialogue, report, safety, standard, stats, testgen
 from ipandora.core.eval.dataset import Dataset, Task
 from ipandora.core.eval.run import EvalRun, evaluate, selfcheck
+from ipandora.core.eval import records  # noqa: E402 -- needs run
 from ipandora.core.eval.trial import AgentResult, Graded, Manifest, Trial
 
-__all__ = ['dataset', 'coding', 'dialogue', 'safety', 'standard', 'stats', 'baseline', 'annotate', 'report',
+__all__ = ['dataset', 'coding', 'dialogue', 'safety', 'standard', 'stats', 'testgen', 'records', 'baseline', 'annotate', 'report',
            'Dataset', 'Task', 'EvalRun', 'evaluate', 'selfcheck',
            'AgentResult', 'Graded', 'Manifest', 'Trial']

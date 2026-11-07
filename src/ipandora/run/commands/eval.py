@@ -32,6 +32,10 @@ class Command(CommandBase):
                 sys.exit(self._inspect(options))
             if _action == 'code':
                 sys.exit(self._code(options))
+            if _action == 'f2p-selfcheck':
+                sys.exit(self._f2p_selfcheck(options))
+            if _action == 'records':
+                sys.exit(self._records(options))
             if _action == 'f2p':
                 sys.exit(self._f2p(options))
             if _action == 'compare':
@@ -181,6 +185,34 @@ class Command(CommandBase):
             for _c in _checks:
                 print('  {}  {}：{}'.format('PASS' if _c.ok else 'FAIL', _c.name, _c.expr))
         return 0 if _r.f2p else 1
+
+    @staticmethod
+    def _f2p_selfcheck(options) -> int:
+        from ipandora.core.eval import testgen
+        _rows = testgen.selfcheck(options.workdir, options.task, runs=options.runs, oracle_runs=options.oracle_runs,
+                                  base=options.base, timeout=options.timeout)
+        for _r in _rows:
+            print('  {}  {:<16} 应为 {:<8} 实际 {:<8} {}'.format('OK  ' if _r['ok'] else 'FAIL', _r['case'],
+                                                              _r['expected'], _r['got'], _r['detail']))
+        _bad = [_r for _r in _rows if not _r['ok']]
+        print('  {} 项中 {} 项不对'.format(len(_rows), len(_bad)) if _bad else '  {} 项全部判对'.format(len(_rows)))
+        return 1 if _bad else 0
+
+    @staticmethod
+    def _records(options) -> int:
+        import json
+        import sys as _sys
+        from ipandora.core.eval import EvalRun, records, testgen
+        _budgets = records.budgets_of(testgen.load(options.tasks)) if options.tasks else None
+        _lines = ''.join(json.dumps(_r, ensure_ascii=False, default=str) + '\n'
+                         for _p in options.runs for _r in records.records(EvalRun.load(_p), _budgets))
+        if options.out:
+            with open(options.out, 'w', encoding='utf-8') as fh:
+                fh.write(_lines)
+            print('  {} 行  ->  {}'.format(_lines.count('\n'), options.out))
+        else:
+            _sys.stdout.write(_lines)
+        return 0
 
     @staticmethod
     def _compare(options) -> int:
@@ -339,6 +371,20 @@ class Command(CommandBase):
                           help='mutants of the functions the fix touched, when F→P holds (0: none)')
         _f2p.add_argument('--timeout', type=float, default=600, help='seconds per pytest run')
         _f2p.add_argument('--json', action='store_true', help='print the record and the checks as one JSON line')
+
+        _sc = _sub.add_parser('f2p-selfcheck', help='the F→P grader on known answers in a workspace at the base '
+                                                   'commit: oracle x3, noop, bad answers; exit 1 if any is misjudged')
+        _sc.add_argument('workdir', help='the workspace at the base commit (reset after each case)')
+        _sc.add_argument('--task', required=True, help='the task directory (task.yaml, fix.patch, reference_test.patch)')
+        _sc.add_argument('--base', default='HEAD')
+        _sc.add_argument('--runs', type=int, default=3, help='runs with the fix, per case')
+        _sc.add_argument('--oracle-runs', type=int, default=3, help='times the reference tests are graded')
+        _sc.add_argument('--timeout', type=float, default=600)
+
+        _rec = _sub.add_parser('records', help='one JSON line per run (tokens, cost, how it ended, failure reason)')
+        _rec.add_argument('runs', nargs='+', help='report.json of one or more runs')
+        _rec.add_argument('-o', '--out', default=None, help='file to write; default stdout')
+        _rec.add_argument('--tasks', default=None, help='task directories (task.yaml): their budgets flag over_budget')
 
         _cmp = _sub.add_parser('compare', help='compare configurations run on the same tasks, every pair: '
                                                'paired difference and interval; exit 1 if not comparable')

@@ -183,16 +183,21 @@ def _events_of(sample) -> List[Dict[str, Any]]:
 
 
 def _cost(sample, trajectory) -> Dict[str, float]:
-    _in = _out_tokens = 0
+    _in = _out_tokens = _read = _write = 0
     _usd, _priced = 0.0, False
     for _usage in (getattr(sample, 'model_usage', None) or {}).values():
         _in += int(getattr(_usage, 'input_tokens', 0) or 0)
         _out_tokens += int(getattr(_usage, 'output_tokens', 0) or 0)
+        # cached input is billed differently: kept apart, so cost can be checked against the provider
+        _read += int(getattr(_usage, 'input_tokens_cache_read', 0) or 0)
+        _write += int(getattr(_usage, 'input_tokens_cache_write', 0) or 0)
         if getattr(_usage, 'total_cost', None) is not None:
             _usd += float(_usage.total_cost)
             _priced = True
     _cost = {'tokens_in': _in, 'tokens_out': _out_tokens,
              'tool_calls': sum(1 for _e in trajectory if _e['kind'] == 'tool')}
+    if _read or _write:
+        _cost.update(tokens_cache_read=_read, tokens_cache_write=_write)
     if _priced:
         _cost['usd'] = round(_usd, 6)
     _turns = getattr(sample, 'turn_count', None)
@@ -209,6 +214,8 @@ def _trial(task_id: str, sample, convert, threshold, judges) -> Trial:
                    seconds=round(float(getattr(sample, 'total_time', None) or 0.0), 3))
     _error = getattr(sample, 'error', None)
     _limit = getattr(sample, 'limit', None)
+    _trial.ended = 'error' if _error is not None else (
+        'limit:{}'.format(getattr(_limit, 'type', '') or 'limit') if _limit is not None else 'completed')
     if _error is not None:
         _trial.status, _trial.category = INFRA, INFRASTRUCTURE
         _trial.error = _short(getattr(_error, 'message', None) or str(_error))

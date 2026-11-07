@@ -426,11 +426,20 @@ class Result:
         _out.append(Check(name='每个测试都有断言', ok=bool(self.tests) and not self.zero_assertion,
                           expr='没有断言：{}'.format('、'.join(self.zero_assertion[:5])) if self.zero_assertion
                           else '都有', src=TESTGEN, claim='tests assert'))
+        _out.append(Check(name='写了测试', ok=bool(self.tests),
+                          expr='{} 个新增或改动的测试'.format(len(self.tests)), src=TESTGEN, claim='agent wrote tests'))
+        _out.append(Check(name='判分完成', ok=not self.error, expr=self.error or '—', src=TESTGEN,
+                          claim='grading completed'))
         if self.mutation is not None and self.mutation.get('score') is not None:
             _out.append(Check(name='杀死修复处的变异', ok=self.mutation['score'] >= self.mutation.get('min_score', 0),
                               expr='{killed}/{tested} 个变异被杀死'.format(**self.mutation), src=TESTGEN,
                               claim='kills mutants of the fixed functions'))
         return _out
+
+    def graded(self) -> List[Any]:
+        """The checks for a grader: F→P required, every other one reported beside it."""
+        from ipandora.core.eval.trial import Graded
+        return [Graded(_c, required=_c.claim == 'fail to pass') for _c in self.checks()]
 
     def record(self) -> Dict[str, Any]:
         """The grading half of one JSON line per run."""
@@ -710,5 +719,162 @@ def load(tasks_dir: str, name: str = 'tasks', version: str = ''):
     return Dataset(name=name, version=version, tasks=_tasks, path=os.path.join(os.path.abspath(tasks_dir), '.dataset'))
 
 
-__all__ = ['grade', 'load', 'load_task', 'TASK_FIELDS', 'TASK_FILES', 'Result', 'Run', 'pytest_run', 'split_changes', 'restore', 'is_test_file', 'classify',
+# -- reading a verdict back, attributing a failure ---------------------------------------------------
+
+def from_json(text: str) -> List[Check]:
+    """The checks of an `ipandora eval f2p --json` line -- for a scorer that ran it in the sandbox."""
+    _line = next((_l for _l in reversed((text or '').strip().splitlines()) if _l.startswith('{')), '')
+    try:
+        _data = json.loads(_line)
+    except ValueError:
+        raise ValueError('not the output of `ipandora eval f2p --json`: {}'.format((text or '')[-200:]))
+    return [Check(name=_c['name'], ok=bool(_c['ok']), expr=_c.get('expr', ''), src=TESTGEN,
+                  claim=_c.get('claim', '')) for _c in _data.get('checks', [])]
+
+
+ENVIRONMENT, TIMEOUT_OR_BUDGET, MODIFIED_SOURCE, WEAK_REPRODUCTION, NOT_REPRODUCED, FLAKY, NO_TESTS = (
+    'environment', 'timeout_or_budget', 'modified_source', 'weak_reproduction', 'not_reproduced', 'flaky',
+    'no_tests')
+ZERO_ASSERTION, WEAK_ASSERTIONS, OUT_OF_SCOPE = 'zero_assertion', 'weak_assertions', 'out_of_scope'
+REASONS = {ENVIRONMENT: '环境问题', TIMEOUT_OR_BUDGET: '超时或超预算', MODIFIED_SOURCE: '改了源码',
+           WEAK_REPRODUCTION: '弱复现', NOT_REPRODUCED: '没复现（修复前就通过）', FLAKY: '修复后不稳定',
+           NO_TESTS: '没有写测试', ZERO_ASSERTION: '零断言', WEAK_ASSERTIONS: '断言太弱（变异分数低）',
+           OUT_OF_SCOPE: '越界改动'}
+
+
+def _by_claim(checks: Sequence[Any]) -> Dict[str, bool]:
+    _out = {}
+    for _c in checks:
+        _claim = _c.get('claim') if isinstance(_c, dict) else getattr(_c, 'claim', '')
+        _ok = _c.get('ok') if isinstance(_c, dict) else getattr(_c, 'ok', None)
+        _out[_claim] = bool(_ok)
+    return _out
+
+
+def failure_reason(checks: Sequence[Any], status: str = 'graded', ended: str = 'completed',
+                   over_budget: bool = False) -> str:
+    """
+    Why a test-generation run did not reach F→P, by rule -- the first that
+    applies: environment, timeout_or_budget, no_tests, modified_source,
+    weak_reproduction, flaky, not_reproduced. '' when it succeeded.
+    """
+    _c = _by_claim(checks)
+    if status == 'infra' or ended == 'error':
+        return ENVIRONMENT
+    if _c.get('fail to pass'):
+        return ''
+    if ended.startswith('limit:') or over_budget:
+        return TIMEOUT_OR_BUDGET
+    if 'fail to pass' not in _c or _c.get('grading completed') is False:
+        return ENVIRONMENT                         # the fix did not apply, the tests timed out, nothing graded
+    _changed_source = _c.get('only test files changed') is False
+    if _c.get('agent wrote tests') is False:
+        return MODIFIED_SOURCE if _changed_source else NO_TESTS
+    if _c.get('not a weak reproduction') is False:
+        return WEAK_REPRODUCTION
+    if _c.get('not flaky') is False:
+        return FLAKY
+    if _changed_source:
+        return MODIFIED_SOURCE                     # its tests did not reproduce, and it changed the code
+    return NOT_REPRODUCED
+
+
+def flags(checks: Sequence[Any], over_budget: bool = False) -> List[str]:
+    """Problems that do not decide F→P but are reported: zero assertions, weak assertions, out of scope, budget."""
+    _c = _by_claim(checks)
+    _out = []
+    if _c.get('only test files changed') is False:
+        _out.append(OUT_OF_SCOPE)
+    if _c.get('tests assert') is False:
+        _out.append(ZERO_ASSERTION)
+    if _c.get('kills mutants of the fixed functions') is False:
+        _out.append(WEAK_ASSERTIONS)
+    if over_budget:
+        _out.append(TIMEOUT_OR_BUDGET)
+    return _out
+
+
+# -- selfcheck: the grader on answers whose verdict is known --------------------------------------------
+
+def _reset(workdir: str, base: str) -> None:
+    """Back to `base`: tracked files as committed, untracked ones removed -- ignored files (an editable
+    install's metadata, build output) are kept, the environment depends on them."""
+    coding._git(workdir, 'reset', '-q', '--hard', base)
+    coding._git(workdir, 'clean', '-q', '-fd')
+
+
+_BAD_ANSWERS = {
+    'source_only': None,                            # the fix itself, no test: out of scope, nothing to judge
+    'zero_assertion': 'def test_ipandora_selfcheck_does_nothing():\n    pass\n',
+    'import_only': 'import ipandora_selfcheck_no_such_module\n\n\ndef test_ipandora_selfcheck():\n'
+                   '    assert ipandora_selfcheck_no_such_module\n',
+}
+
+
+def selfcheck(workdir: str, task_dir: str, runs: int = 3, oracle_runs: int = 3, base: str = 'HEAD',
+              timeout: float = 600) -> List[Dict[str, Any]]:
+    """
+    The grader on answers whose verdict is known, in `workdir` at `base`
+    (reset before each and at the end):
+
+    - oracle: the reference tests (reference_test.patch), `oracle_runs`
+      times -- F→P every time, and not weakly;
+    - noop: no change -- not F→P;
+    - source_only: the fix applied as the agent's change, no test -- not F→P,
+      out of scope;
+    - zero_assertion: a test that does nothing -- not F→P;
+    - import_only: a test that fails only on an import -- a weak reproduction.
+
+    Returns one row per check: {'case', 'expected', 'got', 'ok', 'detail'}.
+    """
+    _task = load_task(task_dir)
+    _f2p = _task.expected['f2p']
+    _fix = os.path.join(_task.root, _f2p['fix'])
+    _ref = os.path.join(_task.root, _task.reference)
+    _cmd = _f2p['test_cmd']
+    _test_dir = os.path.dirname(_f2p['reference_tests'][0].split('::')[0]) or 'tests'
+    _rows = []
+
+    def _grade():
+        return grade(workdir, _fix, base=base, test_cmd=_cmd, runs=runs, max_mutants=0, timeout=timeout)
+
+    def _row(case, expected, result, ok):
+        _rows.append({'case': case, 'expected': expected, 'ok': ok,
+                      'got': 'F→P' if result.f2p else ('weak' if result.weak else 'not F→P'),
+                      'detail': result.checks()[0].expr})
+    try:
+        _verdicts = []
+        for _i in range(oracle_runs):
+            _reset(workdir, base)
+            coding._git(workdir, 'apply', '--whitespace=nowarn', os.path.abspath(_ref))
+            _r = _grade()
+            _verdicts.append(_r.f2p)
+            _row('oracle#{}'.format(_i + 1), 'F→P', _r, _r.f2p and not _r.weak)
+        if len(set(_verdicts)) > 1:
+            _rows.append({'case': 'oracle', 'expected': 'the same verdict every run', 'got': str(_verdicts),
+                          'ok': False, 'detail': 'the reference tests are flaky on this task'})
+        _reset(workdir, base)
+        _r = _grade()
+        _row('noop', 'not F→P', _r, not _r.f2p)
+        _reset(workdir, base)
+        coding._git(workdir, 'apply', '--whitespace=nowarn', os.path.abspath(_fix))
+        _r = _grade()
+        _row('source_only', 'not F→P', _r, not _r.f2p and bool(_r.out_of_scope))
+        for _case in ('zero_assertion', 'import_only'):
+            _reset(workdir, base)
+            _path = os.path.join(workdir, _test_dir, 'test_ipandora_selfcheck_{}.py'.format(_case))
+            os.makedirs(os.path.dirname(_path), exist_ok=True)
+            with open(_path, 'w', encoding='utf-8') as _f:
+                _f.write(_BAD_ANSWERS[_case])
+            _r = _grade()
+            if _case == 'import_only':
+                _row(_case, 'weak', _r, _r.weak and not _r.f2p)
+            else:
+                _row(_case, 'not F→P', _r, not _r.f2p and bool(_r.zero_assertion))
+    finally:
+        _reset(workdir, base)
+    return _rows
+
+
+__all__ = ['grade', 'load', 'load_task', 'selfcheck', 'from_json', 'failure_reason', 'flags', 'REASONS', 'TASK_FIELDS', 'TASK_FILES', 'Result', 'Run', 'pytest_run', 'split_changes', 'restore', 'is_test_file', 'classify',
            'asserting', 'patched_files', 'touched_functions', 'mutants_in', 'WEAK_EXCEPTIONS', 'TESTGEN']
